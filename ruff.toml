@@ -1,0 +1,10 @@
+# Support Python 3.13+.
+target-version = "py313"
+
+# Set the maximum line length to 79.
+line-length = 79
+
+[lint]
+extend-select = [
+  "I",  # isort
+]
