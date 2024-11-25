@@ -1,8 +1,8 @@
 import os
-from base64 import b64encode, b64decode
+from base64 import b64decode, b64encode
 
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 
 # AES 암호화/복호화 클래스
@@ -48,7 +48,9 @@ class AESEncryption:
             algorithms.AES(self.key), modes.CBC(iv), backend=default_backend()
         )
         decryptor = cipher.decryptor()
-        padded_data = decryptor.update(encrypted_content) + decryptor.finalize()
+        padded_data = (
+            decryptor.update(encrypted_content) + decryptor.finalize()
+        )
 
         # PKCS7 패딩 제거
         return self._unpad(padded_data).decode()
