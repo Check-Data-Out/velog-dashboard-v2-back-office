@@ -14,6 +14,9 @@ Velog-Dashboard v2의 데이터, 스크래핑, 백오피스용 레포지토리�
 git clone https://github.com/Check-Data-Out/velog-dashboard-v2-back-office.git
 cd velog-dashboard-v2-back-office
 
+# 전역적으로 3.13 python version 이 아니라면
+pyenv local 3.13
+
 # 가상환경 생성 및 패키지 설치
 poetry shell
 poetry install
