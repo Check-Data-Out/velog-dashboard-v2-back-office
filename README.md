@@ -22,6 +22,9 @@ poetry shell
 poetry install
 ```
 
+## Database Configuration
+[Install TimescaleDB from a Docker container](https://docs.timescale.com/self-hosted/latest/install/installation-docker/)를 참고하여 설치 후 .env.sample과 같이 설정
+
 ## Run Test
 
 ### 1) unit testing
