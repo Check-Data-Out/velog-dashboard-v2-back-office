@@ -11,6 +11,8 @@ django = "^5.1.3"
 django-cors-headers = "^4.6.0"
 django-environ = "^0.11.2"
 cryptography = "^43.0.3"
+django-timescaledb = "^0.2.13"
+psycopg = "^3.2.3"
 
 
 [tool.poetry.group.dev.dependencies]
