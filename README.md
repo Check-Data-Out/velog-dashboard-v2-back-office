@@ -23,7 +23,9 @@ poetry install
 ```
 
 ## Database Configuration
-[Install TimescaleDB from a Docker container](https://docs.timescale.com/self-hosted/latest/install/installation-docker/)를 참고하여 설치 후 .env.sample과 같이 설정
+#### 1. [dockerdocs](https://docs.docker.com/get-started/)를 참고하여 Docker, Docker Compose 설치
+#### 2. .env.sample의 형식으로 환경 변수 설정
+#### 3. ```docker-compose up -d```로 실행
 
 ## Run Test
 
