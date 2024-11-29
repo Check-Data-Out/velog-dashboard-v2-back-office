@@ -10,7 +10,7 @@ class User(TimeStampedModel):
     """
 
     velog_uuid = models.UUIDField(
-        blank=False, null=True, unique=True, verbose_name="사용자 UUID"
+        blank=False, null=False, unique=True, verbose_name="사용자 UUID"
     )
     access_token = models.TextField(
         blank=False, null=False, verbose_name="Access Token"
