@@ -12,7 +12,7 @@ class User(models.Model):
     access_token = models.TextField()
     refresh_token = models.TextField()
     group_id = models.IntegerField(
-        default=generate_random_group_id(), verbose_name="그룹 ID"
+        default=generate_random_group_id, verbose_name="그룹 ID"
     )
     email = models.EmailField(unique=True, verbose_name="이메일")
     is_active = models.BooleanField(default=True, verbose_name="활성 여부")

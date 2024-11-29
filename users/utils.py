@@ -2,4 +2,4 @@ import random
 
 
 def generate_random_group_id():
-    return random.randint(1, 10)
+    return random.randint(1, 1000)
