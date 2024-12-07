@@ -1,6 +1,9 @@
 name: Test CI
 
 on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
   pull_request:
     branches:
       - main
@@ -37,5 +40,21 @@ jobs:
       - name: Install dependencies
         run: poetry install --with dev
 
+      - name: Create .env file
+        run: |
+          echo "DEBUG=True" >> .env
+          echo "DATABASE_URL=sqlite:///db.sqlite3" >> .env
+
+      - name: Install Model dependencies
+        run: |
+          python manage.py migrate
+
+      - name: Run Django system check
+        run: |
+          python manage.py check
+
       - name: Run tests
-        run: poetry run pytest -v --full-trace --showlocals --tb=long --capture=no
+        env:
+          DJANGO_SETTINGS_MODULE: backoffice.settings.test
+        run: |
+          poetry run pytest -v --full-trace --showlocals --tb=long --capture=no
