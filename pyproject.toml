@@ -13,6 +13,7 @@ django-environ = "^0.11.2"
 cryptography = "^43.0.3"
 django-timescaledb = "^0.2.13"
 psycopg = {extras = ["binary"], version = "^3.2.3"}
+aiohttp = "^3.11.10"
 
 
 [tool.poetry.group.dev.dependencies]
