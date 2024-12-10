@@ -31,12 +31,6 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 (
-                    "updated_at",
-                    models.DateTimeField(
-                        auto_now=True, verbose_name="수정 일시"
-                    ),
-                ),
-                (
                     "event_type",
                     models.CharField(
                         choices=[

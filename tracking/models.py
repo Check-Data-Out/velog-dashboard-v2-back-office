@@ -1,6 +1,5 @@
 from django.db import models
 
-from common.models import TimeStampedModel
 from users.models import User
 
 
@@ -14,7 +13,7 @@ class UserEventType(models.TextChoices):
     NOTHING = "99", "nothing"  # 디폴트 값, 또는 임의 부여 값
 
 
-class UserEventTracking(TimeStampedModel):
+class UserEventTracking(models.Model):
     """
     사용자 이벤트 추적을 위한 모델
     """
@@ -33,6 +32,10 @@ class UserEventTracking(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="event_tracks",
         verbose_name="사용자",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="생성 일시",
     )
 
     def __str__(self):
