@@ -45,8 +45,12 @@ INSTALLED_APPS = [
     "debug_toolbar",
     "corsheaders",
     "django_extensions",
-    "users.apps.UsersConfig",
-    "posts.apps.PostsConfig",
+    # ========================
+    # apps
+    # ========================
+    "users",
+    "posts",
+    "tracking",
 ]
 
 MIDDLEWARE = [
@@ -85,7 +89,14 @@ WSGI_APPLICATION = "backoffice.wsgi.application"
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
 DATABASES = {
-    "default": env.db_url(engine=env("DATABASE_ENGINE")),
+    "default": {
+        "ENGINE": env("DATABASE_ENGINE", default="django.db.backends.sqlite3"),
+        "NAME": env("DATABASE_NAME", default=str(BASE_DIR / "db.sqlite3")),
+        "USER": env("POSTGRES_USER", default=""),
+        "PASSWORD": env("POSTGRES_PASSWORD", default=""),
+        "HOST": env("POSTGRES_HOST", default=""),
+        "PORT": env("POSTGRES_PORT", default=""),
+    }
 }
 
 # Password validation

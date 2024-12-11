@@ -1,6 +1,9 @@
 name: Test CI
 
 on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
   pull_request:
     branches:
       - main
@@ -23,19 +26,33 @@ jobs:
         with:
           poetry-version: 1.8.4
 
-      - name: Setup a local virtual environment (if no poetry.toml file)
+      - name: Setup a local virtual environment
         run: |
           poetry config virtualenvs.create true --local
           poetry config virtualenvs.in-project true --local
 
-      - name: Define a cache for the virtual environment based on the dependencies lock file
+      - name: Define a cache for the virtual environment
         uses: actions/cache@v3
         with:
           path: ./.venv
-          key: venv-${{ hashFiles('poetry.lock') }}
+          key: venv-${{ hashFiles('poetry.lock') }}-${{ runner.os }}
 
       - name: Install dependencies
-        run: poetry install
+        run: poetry install --with dev
+
+      - name: Create .env file
+        run: |
+          echo "SECRET_KEY=adsfgdsftrgdfsvdf" >> .env
+          echo "DEBUG=True" >> .env
+          echo "DATABASE_URL=sqlite:///db.sqlite3" >> .env
+
+      - name: Run migrations
+        run: poetry run python manage.py migrate
+
+      - name: Run Django system check
+        run: poetry run python manage.py check
 
       - name: Run tests
-        run: poetry run pytest
+        env:
+          DJANGO_SETTINGS_MODULE: backoffice.settings.test
+        run: poetry run pytest -v --full-trace --showlocals --tb=long --capture=no
