@@ -3,13 +3,44 @@ import asyncio
 import aiohttp
 import environ
 import setup_django  # noqa
+from aiohttp.client import ClientSession
 
 from modules.token_encryption.aes_encryption import AESEncryption
-from scraping.constants.queries import CURRENT_USER_QUERY
+from posts.models import Post
+from scraping.constants.queries import CURRENT_USER_QUERY, VELOG_POSTS_QUERY
 from scraping.constants.urls import V3_URL
 from users.models import User
 
 env = environ.Env()
+
+
+async def fetch_velog_posts(
+    session: ClientSession,
+    username: str,
+    access_token: str,
+    refresh_token: str,
+) -> list[dict[str, str]]:
+    query = VELOG_POSTS_QUERY
+    variable = {
+        "input": {
+            "cursor": "",
+            "username": f"{username}",
+            "limit": 50,
+            "tag": "",
+        }
+    }
+    payload = {"query": query, "variables": variable}
+    headers = {
+        "Content-Type": "application/json",
+        "Cookie": f"access_token={access_token}; refresh_token={refresh_token};",
+    }
+
+    async with session.post(V3_URL, json=payload, headers=headers) as response:
+        data = await response.json()
+        print(data["data"]["posts"])
+        posts: list[dict[str, str]] = data["data"]["posts"]
+
+        return posts
 
 
 # TODO: logging
@@ -70,6 +101,32 @@ async def main() -> None:
                     await user.asave(
                         update_fields=["access_token", "refresh_token"]
                     )
+
+            # username으로 velog post 조회
+            username = data["data"]["currentUser"]["username"]
+            fetched_posts = await fetch_velog_posts(
+                session, username, access_token, refresh_token
+            )
+
+            # 새로운 post 저장
+            existing_posts_id: list[str] = [
+                str(post.post_uuid) async for post in user.posts.all()
+            ]
+            new_posts = [
+                fetched_post
+                for fetched_post in fetched_posts
+                if fetched_post["id"] not in existing_posts_id
+            ]
+            await Post.objects.abulk_create(
+                [
+                    Post(
+                        post_uuid=new_posts["id"],
+                        title=new_posts["title"],
+                        user=user,
+                    )
+                    for new_posts in new_posts
+                ]
+            )
 
 
 asyncio.run(main())

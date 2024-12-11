@@ -23,7 +23,7 @@ class Post(TimeStampedModel):
         blank=False, null=False, max_length=255, verbose_name="제목"
     )
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.post_uuid}"
 
     class Meta:
@@ -49,7 +49,7 @@ class PostStatistics(TimeStampedModel):
         blank=False, null=False, default=0, verbose_name="전체 좋아요 수"
     )
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.post.post_uuid}"
 
     class Meta:
@@ -90,7 +90,7 @@ class PostDailyStatistics(TimeStampedModel):
     objects = models.Manager()
     timescale = TimescaleManager()
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.post.post_uuid}"
 
     class Meta:
