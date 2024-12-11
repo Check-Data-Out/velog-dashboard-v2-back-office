@@ -1,7 +1,7 @@
 from django.db import models
 
 
-class TimeStampedModel(models.Model):
+class TimeStampedModel(models.Model):  # type: ignore
     """
     생성일시, 수정일시 필드 베이스 모델
     """

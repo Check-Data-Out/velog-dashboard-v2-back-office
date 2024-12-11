@@ -40,9 +40,9 @@ class AESEncryption:
         :param encrypted_data: base64로 인코딩된 암호화 데이터
         :return: 복호화된 문자열
         """
-        encrypted_data = b64decode(encrypted_data)
-        iv = encrypted_data[:16]  # 암호화 데이터에서 IV 추출
-        encrypted_content = encrypted_data[16:]
+        _encrypted_data: bytes = b64decode(encrypted_data)
+        iv = _encrypted_data[:16]  # 암호화 데이터에서 IV 추출
+        encrypted_content = _encrypted_data[16:]
 
         cipher = Cipher(
             algorithms.AES(self.key), modes.CBC(iv), backend=default_backend()
