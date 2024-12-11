@@ -31,7 +31,7 @@ class User(TimeStampedModel):
         default=True, null=False, verbose_name="활성 여부"
     )
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.velog_uuid}"
 
     class Meta:
