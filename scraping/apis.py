@@ -7,27 +7,13 @@ from scraping.constants import CURRENT_USER_QUERY, V3_URL, VELOG_POSTS_QUERY
 logger = logging.getLogger(__name__)
 
 
-# async def fetch_all_posts_stats(
-#     user: UserInfo, all_post_stats_result: dict
-# ) -> list[PostStats]:
-#     return [
-#         PostStats(
-#             userId=user.userId,
-#             uuid=post_id,
-#             url=post_data["url"],
-#             title=post_data["title"],
-#             stats=[
-#                 Stats(
-#                     date=daily_cnt["day"],
-#                     viewCount=daily_cnt["count"],
-#                     likeCount=post_data["likes"],
-#                 )
-#                 for daily_cnt in post_data.get("stats", [])
-#             ],
-#             totalViewCount=post_data.get("total", 0),
-#         )
-#         for post_id, post_data in all_post_stats_result.items()
-#     ]
+def get_header(access_token: str, refresh_token: str) -> dict[str, str]:
+    return {
+        "authority": "v3.velog.io",
+        "origin": "https://velog.io",
+        "content-type": "application/json",
+        "cookie": f"access_token={access_token}; refresh_token={refresh_token}",
+    }
 
 
 async def fetch_velog_user_chk(
@@ -37,10 +23,7 @@ async def fetch_velog_user_chk(
 ) -> tuple[dict[str, str], dict[str, str]]:
     # 토큰 유효성 검증
     payload = {"query": CURRENT_USER_QUERY}
-    headers = {
-        "Content-Type": "application/json",
-        "Cookie": f"access_token={access_token}; refresh_token={refresh_token};",
-    }
+    headers = get_header(access_token, refresh_token)
     async with session.post(
         V3_URL,
         json=payload,
@@ -58,23 +41,76 @@ async def fetch_velog_posts(
     username: str,
     access_token: str,
     refresh_token: str,
+    cursor: str = "",
 ) -> list[dict[str, str]]:
     query = VELOG_POSTS_QUERY
     variable = {
         "input": {
-            "cursor": "",
+            "cursor": cursor,
             "username": f"{username}",
             "limit": 50,
             "tag": "",
         }
     }
     payload = {"query": query, "variables": variable}
-    headers = {
-        "Content-Type": "application/json",
-        "Cookie": f"access_token={access_token}; refresh_token={refresh_token};",
-    }
+    headers = get_header(access_token, refresh_token)
 
     async with session.post(V3_URL, json=payload, headers=headers) as response:
         data = await response.json()
         posts: list[dict[str, str]] = data["data"]["posts"]
         return posts
+
+
+async def fetch_all_velog_posts(
+    session: ClientSession,
+    username: str,
+    access_token: str,
+    refresh_token: str,
+) -> list[dict[str, str]]:
+    cursor = ""
+    total_posts = list()
+    while True:
+        posts = await fetch_velog_posts(
+            session,
+            username,
+            access_token,
+            refresh_token,
+            cursor,
+        )
+        if not posts:
+            break
+        total_posts.extend(posts)
+        cursor = posts[-1]["id"]
+    return total_posts
+
+
+async def fetch_post_stats(
+    session: ClientSession,
+    post_id: str,
+    access_token: str,
+    refresh_token: str,
+) -> dict[str, str]:
+    """
+    ### post_id에 대한 통계 정보 가져오는 graphQL 호출
+    - `post_id` 라는 velog post의 `uuid` 값 필요
+    """
+    query = """
+    query GetStats($post_id: ID!) {
+        getStats(post_id: $post_id) {
+            total
+        }
+    }"""
+    variables = {"post_id": post_id}
+    payload = {
+        "query": query,
+        "variables": variables,
+        "operationName": "GetStats",
+    }
+    headers = get_header(access_token, refresh_token)
+    async with session.post(
+        "https://v2cdn.velog.io/graphql",
+        json=payload,
+        headers=headers,
+    ) as response:
+        res: dict[str, str] = await response.json()
+        return res
