@@ -37,10 +37,10 @@ async def update_old_tokens(
 async def bulk_create_posts(
     user: User, fetched_posts: list[dict[str, str]]
 ) -> bool:
-    existing_posts_id = list()
-    for post in user.posts.all():
-        post: Post  # type: ignore
-        existing_posts_id.append(str(post.post_uuid))
+    existing_posts_id = [
+        str(post.post_uuid)
+        async for post in Post.objects.filter(user=user).aiterator()
+    ]
 
     # 중복된 post 는 bulk_create 에 제외
     # TODO: 페이지네이션 감안해서 돌려야함
@@ -81,14 +81,14 @@ async def main() -> None:
             aes_key_index = (user.group_id % 100) % 10
             aes_key = env(f"AES_KEY_{aes_key_index}").encode()
             aes_encryption = AESEncryption(aes_key)
-            access_token = aes_encryption.decrypt(encrypted_access_token)
-            refresh_token = aes_encryption.decrypt(encrypted_refresh_token)
+            old_access_token = aes_encryption.decrypt(encrypted_access_token)
+            old_refresh_token = aes_encryption.decrypt(encrypted_refresh_token)
 
             # 토큰 유효성 검증
             user_cookies, user_data = await fetch_velog_user_chk(
                 session,
-                access_token,
-                refresh_token,
+                old_access_token,
+                old_refresh_token,
             )
 
             # 잘못된 토큰으로 인한 유저 정보 조회 불가
@@ -97,18 +97,18 @@ async def main() -> None:
 
             # 에러 상황임, 빈 값이면 안됨
             # TODO: 올바른 에러 처리 필요
-            if not user_cookies:
-                continue
+            # if not user_cookies:
+            #     continue
 
             # 토큰 만료로 인한 토큰 업데이트
             # TODO: return 값 을 기반으로 성공 실패 판단 해야함, 곧 에러처리로 이어짐
-            await update_old_tokens(
-                user,
-                aes_encryption,
-                user_cookies,
-                access_token,
-                refresh_token,
-            )
+            # await update_old_tokens(
+            #     user,
+            #     aes_encryption,
+            #     user_cookies,
+            #     old_access_token,
+            #     old_refresh_token,
+            # )
 
             # username으로 velog post 조회
             # TODO: 페이지네이션 감안해서 돌려야함
@@ -116,9 +116,10 @@ async def main() -> None:
             fetched_posts = await fetch_velog_posts(
                 session,
                 username,
-                access_token,
-                refresh_token,
+                old_access_token,
+                old_refresh_token,
             )
+            print(fetched_posts)
 
             # 새로운 post 저장
             await bulk_create_posts(user, fetched_posts)
