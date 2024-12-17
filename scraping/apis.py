@@ -77,7 +77,7 @@ async def fetch_all_velog_posts(
             refresh_token,
             cursor,
         )
-        if not posts:
+        if not posts or "id" not in posts[-1]:
             break
         total_posts.extend(posts)
         cursor = posts[-1]["id"]

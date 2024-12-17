@@ -37,7 +37,7 @@ async def update_old_tokens(
     old_access_token: str,
     old_refresh_token: str,
 ) -> None:
-    # 토큰 만료로 인한 토큰 업데이트
+    """토큰 만료로 인한 토큰 업데이트"""
     response_access_token, response_refresh_token = (
         user_cookies["access_token"],
         user_cookies["refresh_token"],
@@ -54,6 +54,7 @@ async def update_old_tokens(
 async def bulk_create_posts(
     user: User, fetched_posts: list[dict[str, str]]
 ) -> bool:
+    """post 를 bulk로 만드는 함수"""
     existing_posts_id = [
         str(post.post_uuid)
         async for post in Post.objects.filter(user=user).aiterator()
@@ -102,9 +103,7 @@ async def bulk_create_posts(
 async def update_daily_statistics(
     post: dict[str, str], stats: dict[str, str]
 ) -> None:
-    """
-    PostDailyStatistics를 업데이트 또는 생성
-    """
+    """PostDailyStatistics를 업데이트 또는 생성 (upsert)"""
     post_obj = await sync_to_async(Post.objects.get)(post_uuid=post["id"])
     today = get_local_now().date()
     daily_stats, created = await PostDailyStatistics.objects.aget_or_create(
@@ -127,6 +126,7 @@ async def update_daily_statistics(
 
 
 async def main() -> None:
+    # TODO: print 는 모두 제거 해야 함
     # TODO: group별 batch job 실행 방식 확정 후 리팩토링
     users: list[User] = [user async for user in User.objects.all()]
     async with aiohttp.ClientSession() as session:
