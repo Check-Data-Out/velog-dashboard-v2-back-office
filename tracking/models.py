@@ -44,3 +44,29 @@ class UserEventTracking(models.Model):
     class Meta:
         verbose_name = "사용자 이벤트"
         verbose_name_plural = "사용자 이벤트 목록"
+
+
+class UserStayTime(models.Model):
+    """
+    사용자 체류시간 추적을 위한 모델
+    """
+
+    loaded_at = models.DateTimeField(verbose_name="진입 일시")
+    unloaded_at = models.DateTimeField(verbose_name="퇴출 일시")
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="event_staytimes",
+        verbose_name="사용자",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="생성 일시",
+    )
+
+    def __str__(self):
+        return f"{self.user.email} - {self.unloaded_at - self.loaded_at} 체류"
+
+    class Meta:
+        verbose_name = "사용자 체류시간"
+        verbose_name_plural = "사용자 체류시간 목록"
