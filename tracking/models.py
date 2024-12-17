@@ -1,3 +1,6 @@
+from datetime import timedelta
+
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from users.models import User
@@ -64,8 +67,24 @@ class UserStayTime(models.Model):
         verbose_name="생성 일시",
     )
 
+    @property
+    def stay_duration(self) -> timedelta:
+        if self.unloaded_at and self.loaded_at:
+            return self.unloaded_at - self.loaded_at
+        return timedelta(0)
+
+    def clean(self):
+        if (
+            self.unloaded_at
+            and self.loaded_at
+            and self.unloaded_at < self.loaded_at
+        ):
+            raise ValidationError(
+                "퇴출 일시는 진입 일시보다 나중이어야 합니다."
+            )
+
     def __str__(self):
-        return f"{self.user.email} - {self.unloaded_at - self.loaded_at} 체류"
+        return f"{self.user.email} - {self.stay_duration} 체류"
 
     class Meta:
         verbose_name = "사용자 체류시간"
