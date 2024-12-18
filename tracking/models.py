@@ -62,10 +62,6 @@ class UserStayTime(models.Model):
         related_name="event_staytimes",
         verbose_name="사용자",
     )
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name="생성 일시",
-    )
 
     @property
     def stay_duration(self) -> timedelta:
