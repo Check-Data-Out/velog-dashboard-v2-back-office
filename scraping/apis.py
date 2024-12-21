@@ -4,7 +4,7 @@ from aiohttp.client import ClientSession
 
 from scraping.constants import CURRENT_USER_QUERY, V3_URL, VELOG_POSTS_QUERY
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("scraping")
 
 
 def get_header(access_token: str, refresh_token: str) -> dict[str, str]:
@@ -24,16 +24,21 @@ async def fetch_velog_user_chk(
     # 토큰 유효성 검증
     payload = {"query": CURRENT_USER_QUERY}
     headers = get_header(access_token, refresh_token)
-    async with session.post(
-        V3_URL,
-        json=payload,
-        headers=headers,
-    ) as response:
-        data = await response.json()
-        cookies = {
-            cookie.key: cookie.value for cookie in response.cookies.values()
-        }
-        return cookies, data
+    try:
+        async with session.post(
+            V3_URL,
+            json=payload,
+            headers=headers,
+        ) as response:
+            data = await response.json()
+            cookies = {
+                cookie.key: cookie.value
+                for cookie in response.cookies.values()
+            }
+            return cookies, data
+    except Exception as e:
+        logger.error(f"Failed to fetch user: {e}")
+        return {}, {}
 
 
 async def fetch_velog_posts(

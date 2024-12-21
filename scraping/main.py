@@ -52,6 +52,7 @@ async def update_old_tokens(
         new_refresh_token = aes_encryption.encrypt(response_refresh_token)
         user.refresh_token = new_refresh_token
     await user.asave(update_fields=["access_token", "refresh_token"])
+    logger.info(f"Tokens updated: {user.velog_uuid}")
 
 
 async def bulk_create_posts(
@@ -150,26 +151,27 @@ async def main() -> None:
                 old_access_token,
                 old_refresh_token,
             )
-            print(user_cookies, user_data)
+
+            # 유저 정보 조회 실패
+            if not user_data and not user_cookies:
+                continue
 
             # 잘못된 토큰으로 인한 유저 정보 조회 불가
             if user_data["data"]["currentUser"] is None:  # type: ignore
+                logger.warning(
+                    f"Failed to fetch user data because of wrong tokens: {user.velog_uuid}"
+                )
                 continue
 
-            # 에러 상황임, 빈 값이면 안됨
-            # TODO: 올바른 에러 처리 필요
-            # if not user_cookies:
-            #     continue
-
             # 토큰 만료로 인한 토큰 업데이트
-            # TODO: return 값 을 기반으로 성공 실패 판단 해야함, 곧 에러처리로 이어짐
-            # await update_old_tokens(
-            #     user,
-            #     aes_encryption,
-            #     user_cookies,
-            #     old_access_token,
-            #     old_refresh_token,
-            # )
+            if user_cookies:
+                await update_old_tokens(
+                    user,
+                    aes_encryption,
+                    user_cookies,
+                    old_access_token,
+                    old_refresh_token,
+                )
 
             # username으로 velog post 조회
             # TODO: 페이지네이션 감안해서 돌려야함
