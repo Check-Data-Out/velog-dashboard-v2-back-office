@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime
 
 import aiohttp
@@ -15,6 +16,8 @@ from scraping.apis import (
     fetch_velog_user_chk,
 )
 from users.models import User
+
+logger = logging.getLogger("scraping")
 
 env = environ.Env()
 
