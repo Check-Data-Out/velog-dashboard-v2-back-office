@@ -26,6 +26,7 @@ django-extensions = "^3.2.3"
 pre-commit = "^4.0.1"
 ipython = "^8.29.0"
 pytest-django = "^4.9.0"
+pytest-asyncio = "^0.25.0"
 
 [build-system]
 requires = ["poetry-core"]

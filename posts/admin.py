@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.urls import reverse
 from django.utils.html import format_html
 
-from posts.models import Post, PostDailyStatistics, PostStatistics
+from posts.models import Post, PostDailyStatistics
 
 
 class BasePostRelatedAdmin(admin.ModelAdmin):
@@ -34,18 +34,6 @@ class PostAdmin(admin.ModelAdmin):
         )
 
     user_link.short_description = "사용자"
-
-
-@admin.register(PostStatistics)
-class PostStatisticsAdmin(BasePostRelatedAdmin):
-    list_display = [
-        "post",
-        "post_link",
-        "view_count",
-        "like_count",
-        "created_at",
-        "updated_at",
-    ]
 
 
 @admin.register(PostDailyStatistics)

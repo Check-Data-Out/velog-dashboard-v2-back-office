@@ -31,32 +31,6 @@ class Post(TimeStampedModel):
         verbose_name_plural = "게시글 목록"
 
 
-class PostStatistics(TimeStampedModel):
-    """
-    게시글 전체 통계 모델
-    """
-
-    post = models.OneToOneField(
-        to="Post",
-        related_name="statistics",
-        on_delete=models.CASCADE,
-        verbose_name="게시글",
-    )
-    view_count = models.PositiveIntegerField(
-        blank=False, null=False, default=0, verbose_name="전체 조회수"
-    )
-    like_count = models.PositiveIntegerField(
-        blank=False, null=False, default=0, verbose_name="전체 좋아요 수"
-    )
-
-    def __str__(self) -> str:
-        return f"{self.post.post_uuid}"
-
-    class Meta:
-        verbose_name = "게시글 전체 통계"
-        verbose_name_plural = "게시글 전체 통계 목록"
-
-
 class PostDailyStatistics(TimeStampedModel):
     """
     게시글 일별 통계 모델
