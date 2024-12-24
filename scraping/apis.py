@@ -1,10 +1,17 @@
 import logging
 
 from aiohttp.client import ClientSession
+from aiohttp_retry import ExponentialRetry, RetryClient
 
-from scraping.constants import CURRENT_USER_QUERY, V3_URL, VELOG_POSTS_QUERY
+from scraping.constants import (
+    CURRENT_USER_QUERY,
+    POSTS_STATS_QUERY,
+    V2_CDN_URL,
+    V3_URL,
+    VELOG_POSTS_QUERY,
+)
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("scraping")
 
 
 def get_header(access_token: str, refresh_token: str) -> dict[str, str]:
@@ -24,16 +31,21 @@ async def fetch_velog_user_chk(
     # 토큰 유효성 검증
     payload = {"query": CURRENT_USER_QUERY}
     headers = get_header(access_token, refresh_token)
-    async with session.post(
-        V3_URL,
-        json=payload,
-        headers=headers,
-    ) as response:
-        data = await response.json()
-        cookies = {
-            cookie.key: cookie.value for cookie in response.cookies.values()
-        }
-        return cookies, data
+    try:
+        async with session.post(
+            V3_URL,
+            json=payload,
+            headers=headers,
+        ) as response:
+            data = await response.json()
+            cookies = {
+                cookie.key: cookie.value
+                for cookie in response.cookies.values()
+            }
+            return cookies, data
+    except Exception as e:
+        logger.error(f"Failed to fetch user: {e}")
+        return {}, {}
 
 
 async def fetch_velog_posts(
@@ -43,8 +55,9 @@ async def fetch_velog_posts(
     refresh_token: str,
     cursor: str = "",
 ) -> list[dict[str, str]]:
+    """한 유저의 포스트를 50개씩(최대 개수) 가져오는 함수"""
     query = VELOG_POSTS_QUERY
-    variable = {
+    variables = {
         "input": {
             "cursor": cursor,
             "username": f"{username}",
@@ -52,13 +65,21 @@ async def fetch_velog_posts(
             "tag": "",
         }
     }
-    payload = {"query": query, "variables": variable}
+    payload = {"query": query, "variables": variables}
     headers = get_header(access_token, refresh_token)
 
-    async with session.post(V3_URL, json=payload, headers=headers) as response:
-        data = await response.json()
-        posts: list[dict[str, str]] = data["data"]["posts"]
-        return posts
+    try:
+        async with session.post(
+            V3_URL,
+            json=payload,
+            headers=headers,
+        ) as response:
+            data = await response.json()
+            posts: list[dict[str, str]] = data["data"]["posts"]
+            return posts
+    except Exception as e:
+        logger.error(f"Failed to fetch posts: {e} (username: {username})")
+        return []
 
 
 async def fetch_all_velog_posts(
@@ -67,6 +88,7 @@ async def fetch_all_velog_posts(
     access_token: str,
     refresh_token: str,
 ) -> list[dict[str, str]]:
+    """한 유저의 모든 포스트를 가져오는 함수"""
     cursor = ""
     total_posts = list()
     while True:
@@ -85,7 +107,6 @@ async def fetch_all_velog_posts(
 
 
 async def fetch_post_stats(
-    session: ClientSession,
     post_id: str,
     access_token: str,
     refresh_token: str,
@@ -94,12 +115,7 @@ async def fetch_post_stats(
     ### post_id에 대한 통계 정보 가져오는 graphQL 호출
     - `post_id` 라는 velog post의 `uuid` 값 필요
     """
-    query = """
-    query GetStats($post_id: ID!) {
-        getStats(post_id: $post_id) {
-            total
-        }
-    }"""
+    query = POSTS_STATS_QUERY
     variables = {"post_id": post_id}
     payload = {
         "query": query,
@@ -107,10 +123,18 @@ async def fetch_post_stats(
         "operationName": "GetStats",
     }
     headers = get_header(access_token, refresh_token)
-    async with session.post(
-        "https://v2cdn.velog.io/graphql",
-        json=payload,
-        headers=headers,
-    ) as response:
-        res: dict[str, str] = await response.json()
-        return res
+    try:
+        retry_options = ExponentialRetry(attempts=3, start_timeout=1)
+        retry_client = RetryClient(retry_options=retry_options)
+        async with retry_client.post(
+            V2_CDN_URL,
+            json=payload,
+            headers=headers,
+        ) as response:
+            res: dict[str, str] = await response.json()
+            return res
+    except Exception as e:
+        logger.error(f"Failed to fetch post stats: {e} (post_id: {post_id})")
+        return {}
+    finally:
+        await retry_client.close()

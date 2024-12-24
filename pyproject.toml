@@ -14,6 +14,7 @@ cryptography = "^43.0.3"
 django-timescaledb = "^0.2.13"
 psycopg = { extras = ["binary"], version = "^3.2.3" }
 aiohttp = "^3.11.10"
+aiohttp-retry = "^2.9.1"
 
 
 [tool.poetry.group.dev.dependencies]

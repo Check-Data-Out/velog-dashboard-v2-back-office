@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime
 
 import aiohttp
@@ -15,6 +16,8 @@ from scraping.apis import (
     fetch_velog_user_chk,
 )
 from users.models import User
+
+logger = logging.getLogger("scraping")
 
 env = environ.Env()
 
@@ -48,56 +51,41 @@ async def update_old_tokens(
     if response_refresh_token != old_refresh_token:
         new_refresh_token = aes_encryption.encrypt(response_refresh_token)
         user.refresh_token = new_refresh_token
-    await user.asave(update_fields=["access_token", "refresh_token"])
+
+    try:
+        await user.asave(update_fields=["access_token", "refresh_token"])
+        logger.info(
+            f"Succeeded to update tokens. (user velog uuid: {user.velog_uuid})"
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to update tokens. {e} (user velog uuid: {user.velog_uuid})"
+        )
 
 
 async def bulk_create_posts(
     user: User, fetched_posts: list[dict[str, str]]
 ) -> bool:
     """post 를 bulk로 만드는 함수"""
-    existing_posts_id = [
-        str(post.post_uuid)
-        async for post in Post.objects.filter(user=user).aiterator()
-    ]
-
-    # 중복된 post 는 bulk_create 에 제외
-    # TODO: 페이지네이션 감안해서 돌려야함
-    new_posts = [
-        fetched_post
-        for fetched_post in fetched_posts
-        if fetched_post["id"] not in existing_posts_id
-    ]
-
-    # TODO: 주석 처리 된 부분과 같이 어떻게 트랜잭션으로 묶을지, 아니면 안묶을지 판단 필요
-    await Post.objects.abulk_create(
-        [
-            Post(
-                post_uuid=new_posts["id"],
-                title=new_posts["title"],
-                user=user,
-            )
-            for new_posts in new_posts
-        ]
-    )
-    return True
-
-    # try:
-    #     with transaction.atomic():
-    #         await Post.objects.abulk_create(
-    #             [
-    #                 Post(
-    #                     post_uuid=new_posts["id"],
-    #                     title=new_posts["title"],
-    #                     user=user,
-    #                 )
-    #                 for new_posts in new_posts
-    #             ]
-    #         )
-    # except Exception as e:
-    #     # 에러 발생 시 롤백
-    #     print("Error during bulk_create:", e)
-    #     return False
-    # return True
+    try:
+        await Post.objects.abulk_create(
+            [
+                Post(
+                    post_uuid=post["id"],
+                    title=post["title"],
+                    user=user,
+                )
+                for post in fetched_posts
+            ],
+            ignore_conflicts=True,
+            batch_size=500,
+        )
+        return True
+    except Exception as e:
+        logger.error(
+            f"Failed to bulk create posts. {e} (user velog uuid: {user.velog_uuid})"
+        )
+        return False
 
 
 async def update_daily_statistics(
@@ -126,7 +114,6 @@ async def update_daily_statistics(
 
 
 async def main() -> None:
-    # TODO: print 는 모두 제거 해야 함
     # TODO: group별 batch job 실행 방식 확정 후 리팩토링
     users: list[User] = [user async for user in User.objects.all()]
     async with aiohttp.ClientSession() as session:
@@ -147,29 +134,29 @@ async def main() -> None:
                 old_access_token,
                 old_refresh_token,
             )
-            print(user_cookies, user_data)
+
+            # 유저 정보 조회 실패
+            if not (user_data or user_cookies):
+                continue
 
             # 잘못된 토큰으로 인한 유저 정보 조회 불가
             if user_data["data"]["currentUser"] is None:  # type: ignore
+                logger.warning(
+                    f"Failed to fetch user data because of wrong tokens. (user velog uuid: {user.velog_uuid})"
+                )
                 continue
 
-            # 에러 상황임, 빈 값이면 안됨
-            # TODO: 올바른 에러 처리 필요
-            # if not user_cookies:
-            #     continue
-
             # 토큰 만료로 인한 토큰 업데이트
-            # TODO: return 값 을 기반으로 성공 실패 판단 해야함, 곧 에러처리로 이어짐
-            # await update_old_tokens(
-            #     user,
-            #     aes_encryption,
-            #     user_cookies,
-            #     old_access_token,
-            #     old_refresh_token,
-            # )
+            if user_cookies:
+                await update_old_tokens(
+                    user,
+                    aes_encryption,
+                    user_cookies,
+                    old_access_token,
+                    old_refresh_token,
+                )
 
             # username으로 velog post 조회
-            # TODO: 페이지네이션 감안해서 돌려야함
             username = user_data["data"]["currentUser"]["username"]  # type: ignore
             fetched_posts = await fetch_all_velog_posts(
                 session,
@@ -177,7 +164,6 @@ async def main() -> None:
                 old_access_token,
                 old_refresh_token,
             )
-            print(fetched_posts)
 
             # 새로운 post 저장
             await bulk_create_posts(user, fetched_posts)
@@ -187,7 +173,6 @@ async def main() -> None:
             for post in fetched_posts:
                 tasks.append(
                     fetch_post_stats(
-                        session,
                         post["id"],
                         old_access_token,
                         old_refresh_token,
@@ -196,7 +181,6 @@ async def main() -> None:
 
             # 병렬 처리 (모든 통계 API 호출 수행)
             statistics_results = await asyncio.gather(*tasks)
-            print(statistics_results)
 
             # PostDailyStatistics 업데이트
             for post, stats in zip(fetched_posts, statistics_results):
