@@ -1,0 +1,107 @@
+name: Velog Dashboard - Daily Stats Batch
+
+on:
+  workflow_dispatch:
+  # schedule:
+  # 30분 마다 동작
+  # - cron: "*/30 * * * *"
+
+jobs:
+  velog-posts-daily-stats-batch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.13.0
+
+      - name: Install Poetry
+        uses: abatilo/actions-poetry@v2
+        with:
+          poetry-version: 1.8.4
+
+      - name: Setup a local virtual environment
+        run: |
+          poetry config virtualenvs.create true --local
+          poetry config virtualenvs.in-project true --local
+
+      - name: Define a cache for the virtual environment
+        uses: actions/cache@v4
+        with:
+          path: ./.venv
+          key: venv-${{ hashFiles('poetry.lock') }}-${{ runner.os }}
+
+      - name: Install dependencies
+        run: poetry install --with dev
+
+      - name: Create .env file
+        run: |
+          echo "SECRET_KEY=${{ secrets.SECRET_KEY }}" >> .env
+          echo "DEBUG=False" >> .env
+          echo "DATABASE_ENGINE=${{ secrets.DATABASE_ENGINE }}" >> .env
+          echo "DATABASE_NAME=${{ secrets.DATABASE_NAME }}" >> .env
+          echo "POSTGRES_USER=${{ secrets.POSTGRES_USER }}" >> .env
+          echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" >> .env
+          echo "POSTGRES_HOST=${{ secrets.POSTGRES_HOST }}" >> .env
+          echo "POSTGRES_PORT=${{ secrets.POSTGRES_PORT }}" >> .env
+          echo "AES_KEY_0=${{ secrets.AES_KEY_0 }}" >> .env
+          echo "AES_KEY_1=${{ secrets.AES_KEY_1 }}" >> .env
+          echo "AES_KEY_2=${{ secrets.AES_KEY_2 }}" >> .env
+          echo "AES_KEY_3=${{ secrets.AES_KEY_3 }}" >> .env
+          echo "AES_KEY_4=${{ secrets.AES_KEY_4 }}" >> .env
+          echo "AES_KEY_5=${{ secrets.AES_KEY_5 }}" >> .env
+          echo "AES_KEY_6=${{ secrets.AES_KEY_6 }}" >> .env
+          echo "AES_KEY_7=${{ secrets.AES_KEY_7 }}" >> .env
+          echo "AES_KEY_8=${{ secrets.AES_KEY_8 }}" >> .env
+          echo "AES_KEY_9=${{ secrets.AES_KEY_9 }}" >> .env
+
+      - name: Run Velog Daily Stats Script
+        id: velog-daily-stats-main
+        timeout-minutes: 25
+        run: |
+          set -e
+          poetry run python scraping/main.py
+
+      - name: Send Slack Notification on Success
+        if: success()
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "✅ Velog Dashboard Daily Stats Batch Successful",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Velog Dashboard Daily Stats Batch*\n\n✅ *Status:* Success\n📅 *Timestamp:* <!date^${{ github.event.repository.updated_at }}^{date_short_pretty} {time}|Timestamp>\n🔗 *Workflow URL:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Send Slack Notification on Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "❌ Velog Dashboard Daily Stats Batch Failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Velog Dashboard Daily Stats Batch*\n\n❌ *Status:* Failure\n📅 *Timestamp:* <!date^${{ github.event.repository.updated_at }}^{date_short_pretty} {time}|Timestamp>\n🔗 *Workflow URL:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

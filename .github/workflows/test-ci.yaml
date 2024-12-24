@@ -32,7 +32,7 @@ jobs:
           poetry config virtualenvs.in-project true --local
 
       - name: Define a cache for the virtual environment
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ./.venv
           key: venv-${{ hashFiles('poetry.lock') }}-${{ runner.os }}
