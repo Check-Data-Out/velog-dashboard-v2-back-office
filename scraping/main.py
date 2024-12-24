@@ -169,6 +169,7 @@ async def main() -> None:
             # 새로운 post 저장
             await bulk_create_posts(user, fetched_posts)
 
+            # TODO: task 하나 터지면 다 터짐. 따라서 retry 로직 추가 필요
             # 통계 API 호출 태스크 생성
             tasks = []
             for post in fetched_posts:
@@ -183,7 +184,6 @@ async def main() -> None:
 
             # 병렬 처리 (모든 통계 API 호출 수행)
             statistics_results = await asyncio.gather(*tasks)
-            print(statistics_results)
 
             # PostDailyStatistics 업데이트
             for post, stats in zip(fetched_posts, statistics_results):
