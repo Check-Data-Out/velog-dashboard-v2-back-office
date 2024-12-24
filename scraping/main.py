@@ -182,7 +182,6 @@ async def main() -> None:
                 )
 
             # username으로 velog post 조회
-            # TODO: 페이지네이션 감안해서 돌려야함
             username = user_data["data"]["currentUser"]["username"]  # type: ignore
             fetched_posts = await fetch_all_velog_posts(
                 session,
@@ -190,7 +189,6 @@ async def main() -> None:
                 old_access_token,
                 old_refresh_token,
             )
-            print(fetched_posts)
 
             # 새로운 post 저장
             await bulk_create_posts(user, fetched_posts)
