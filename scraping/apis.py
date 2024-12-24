@@ -136,3 +136,5 @@ async def fetch_post_stats(
     except Exception as e:
         logger.error(f"Failed to fetch post stats: {e} (post_id: {post_id})")
         return {}
+    finally:
+        await retry_client.close()
