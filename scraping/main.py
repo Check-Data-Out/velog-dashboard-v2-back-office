@@ -51,8 +51,16 @@ async def update_old_tokens(
     if response_refresh_token != old_refresh_token:
         new_refresh_token = aes_encryption.encrypt(response_refresh_token)
         user.refresh_token = new_refresh_token
-    await user.asave(update_fields=["access_token", "refresh_token"])
-    logger.info(f"Tokens updated: {user.velog_uuid}")
+
+    try:
+        await user.asave(update_fields=["access_token", "refresh_token"])
+        logger.info(
+            f"Succeeded to update tokens. (user velog uuid: {user.velog_uuid})"
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to update tokens. {e} (user velog uuid: {user.velog_uuid})"
+        )
 
 
 async def bulk_create_posts(
@@ -153,13 +161,13 @@ async def main() -> None:
             )
 
             # 유저 정보 조회 실패
-            if not user_data and not user_cookies:
+            if not (user_data or user_cookies):
                 continue
 
             # 잘못된 토큰으로 인한 유저 정보 조회 불가
             if user_data["data"]["currentUser"] is None:  # type: ignore
                 logger.warning(
-                    f"Failed to fetch user data because of wrong tokens: {user.velog_uuid}"
+                    f"Failed to fetch user data because of wrong tokens. (user velog uuid: {user.velog_uuid})"
                 )
                 continue
 
