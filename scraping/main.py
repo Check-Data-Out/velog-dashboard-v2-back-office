@@ -67,49 +67,25 @@ async def bulk_create_posts(
     user: User, fetched_posts: list[dict[str, str]]
 ) -> bool:
     """post 를 bulk로 만드는 함수"""
-    existing_posts_id = [
-        str(post.post_uuid)
-        async for post in Post.objects.filter(user=user).aiterator()
-    ]
-
-    # 중복된 post 는 bulk_create 에 제외
-    # TODO: 페이지네이션 감안해서 돌려야함
-    new_posts = [
-        fetched_post
-        for fetched_post in fetched_posts
-        if fetched_post["id"] not in existing_posts_id
-    ]
-
-    # TODO: 주석 처리 된 부분과 같이 어떻게 트랜잭션으로 묶을지, 아니면 안묶을지 판단 필요
-    await Post.objects.abulk_create(
-        [
-            Post(
-                post_uuid=new_posts["id"],
-                title=new_posts["title"],
-                user=user,
-            )
-            for new_posts in new_posts
-        ]
-    )
-    return True
-
-    # try:
-    #     with transaction.atomic():
-    #         await Post.objects.abulk_create(
-    #             [
-    #                 Post(
-    #                     post_uuid=new_posts["id"],
-    #                     title=new_posts["title"],
-    #                     user=user,
-    #                 )
-    #                 for new_posts in new_posts
-    #             ]
-    #         )
-    # except Exception as e:
-    #     # 에러 발생 시 롤백
-    #     print("Error during bulk_create:", e)
-    #     return False
-    # return True
+    try:
+        await Post.objects.abulk_create(
+            [
+                Post(
+                    post_uuid=post["id"],
+                    title=post["title"],
+                    user=user,
+                )
+                for post in fetched_posts
+            ],
+            ignore_conflicts=True,
+            batch_size=500,
+        )
+        return True
+    except Exception as e:
+        logger.error(
+            f"Failed to bulk create posts. {e} (user velog uuid: {user.velog_uuid})"
+        )
+        return False
 
 
 async def update_daily_statistics(
