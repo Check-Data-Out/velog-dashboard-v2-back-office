@@ -1,6 +1,7 @@
 import logging
 
 from aiohttp.client import ClientSession
+from aiohttp_retry import ExponentialRetry, RetryClient
 
 from scraping.constants import (
     CURRENT_USER_QUERY,
@@ -106,7 +107,6 @@ async def fetch_all_velog_posts(
 
 
 async def fetch_post_stats(
-    session: ClientSession,
     post_id: str,
     access_token: str,
     refresh_token: str,
@@ -124,7 +124,9 @@ async def fetch_post_stats(
     }
     headers = get_header(access_token, refresh_token)
     try:
-        async with session.post(
+        retry_options = ExponentialRetry(attempts=3, start_timeout=1)
+        retry_client = RetryClient(retry_options=retry_options)
+        async with retry_client.post(
             V2_CDN_URL,
             json=payload,
             headers=headers,

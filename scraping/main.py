@@ -114,7 +114,6 @@ async def update_daily_statistics(
 
 
 async def main() -> None:
-    # TODO: print 는 모두 제거 해야 함
     # TODO: group별 batch job 실행 방식 확정 후 리팩토링
     users: list[User] = [user async for user in User.objects.all()]
     async with aiohttp.ClientSession() as session:
@@ -169,13 +168,11 @@ async def main() -> None:
             # 새로운 post 저장
             await bulk_create_posts(user, fetched_posts)
 
-            # TODO: task 하나 터지면 다 터짐. 따라서 retry 로직 추가 필요
             # 통계 API 호출 태스크 생성
             tasks = []
             for post in fetched_posts:
                 tasks.append(
                     fetch_post_stats(
-                        session,
                         post["id"],
                         old_access_token,
                         old_refresh_token,
