@@ -74,6 +74,7 @@ async def bulk_create_posts(
                     post_uuid=post["id"],
                     title=post["title"],
                     user=user,
+                    released_at=post["released_at"],
                 )
                 for post in fetched_posts
             ],
