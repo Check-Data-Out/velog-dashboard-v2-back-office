@@ -53,8 +53,8 @@ class UserEventTracking(models.Model):
         verbose_name="사용자",
     )
     request_header = models.JSONField(
-        null=False,
-        blank=False,
+        null=True,
+        blank=True,
         default=dict,
         verbose_name="요청 헤더",
     )
