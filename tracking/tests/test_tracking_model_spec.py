@@ -30,9 +30,12 @@ class UserEventTrackingTest(TestCase):
         """트래킹 이벤트 타입 선택 테스트"""
         event_types = [
             UserEventType.LOGIN,
-            UserEventType.POST_CLICK,
-            UserEventType.POST_GRAPH_CLICK,
-            UserEventType.EXIT,
+            UserEventType.NAVIGATE,
+            UserEventType.LOGOUT,
+            UserEventType.SECTION_INTERACT_MAIN,
+            UserEventType.SORT_INTERACT_MAIN,
+            UserEventType.REFRESH_INTERACT_MAIN,
+            UserEventType.SORT_INTERACT_BOARD,
             UserEventType.NOTHING,
         ]
 
