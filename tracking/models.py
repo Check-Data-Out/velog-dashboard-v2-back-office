@@ -52,6 +52,12 @@ class UserEventTracking(models.Model):
         related_name="event_tracks",
         verbose_name="사용자",
     )
+    request_header = models.JSONField(
+        null=False,
+        blank=False,
+        default=dict,
+        verbose_name="요청 헤더",
+    )
     created_at = models.DateTimeField(
         auto_now_add=True,
         verbose_name="생성 일시",
