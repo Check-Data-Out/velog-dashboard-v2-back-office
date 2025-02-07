@@ -22,6 +22,12 @@ class Post(TimeStampedModel):
     title = models.CharField(
         blank=False, null=False, max_length=255, verbose_name="제목"
     )
+    slug = models.CharField(
+        blank=True,
+        null=True,
+        max_length=500,
+        verbose_name="게시글 슬러그",
+    )
     released_at = models.DateTimeField(
         blank=False, null=True, verbose_name="게시글 업로드 일시"
     )

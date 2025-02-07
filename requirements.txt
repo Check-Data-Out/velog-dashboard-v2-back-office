@@ -7,6 +7,7 @@ asttokens==3.0.0
 attrs==24.3.0
 cffi==1.17.1
 cfgv==3.4.0
+click==8.1.8
 coverage==7.6.9
 cryptography==43.0.3
 decorator==5.1.1
@@ -20,6 +21,7 @@ django-timescaledb==0.2.13
 executing==2.1.0
 filelock==3.16.1
 frozenlist==1.5.0
+h11==0.14.0
 identify==2.6.3
 idna==3.10
 iniconfig==2.0.0
@@ -55,6 +57,7 @@ sqlparse==0.5.3
 stack-data==0.6.3
 traitlets==5.14.3
 typing_extensions==4.12.2
+uvicorn==0.34.0
 virtualenv==20.28.0
 wcwidth==0.2.13
 yarl==1.18.3

@@ -39,17 +39,17 @@ class Scraper:
         user: User,
         aes_encryption: AESEncryption,
         user_cookies: dict[str, str],
-        old_access_token: str,
-        old_refresh_token: str,
+        origin_access_token: str,
+        origin_refresh_token: str,
     ) -> None:
         """토큰 만료로 인한 토큰 업데이트"""
         response_access_token, response_refresh_token = (
             user_cookies["access_token"],
             user_cookies["refresh_token"],
         )
-        if response_access_token != old_access_token:
+        if response_access_token != origin_access_token:
             user.access_token = aes_encryption.encrypt(response_access_token)
-        if response_refresh_token != old_refresh_token:
+        if response_refresh_token != origin_refresh_token:
             user.refresh_token = aes_encryption.encrypt(response_refresh_token)
 
         try:
@@ -73,6 +73,7 @@ class Scraper:
                         post_uuid=post["id"],
                         title=post["title"],
                         user=user,
+                        slug=post["url_slug"],
                         released_at=post["released_at"],
                     )
                     for post in fetched_posts
@@ -107,6 +108,7 @@ class Scraper:
         if not created:
             daily_stats.daily_view_count = stats["data"]["getStats"]["total"]  # type: ignore
             daily_stats.daily_like_count = post.get("likes", 0)
+            daily_stats.updated_at = self.get_local_now()
             await daily_stats.asave(
                 update_fields=["daily_view_count", "daily_like_count"]
             )
@@ -118,12 +120,12 @@ class Scraper:
         aes_key_index = (user.group_id % 100) % 10
         aes_key = self.env(f"AES_KEY_{aes_key_index}").encode()
         aes_encryption = AESEncryption(aes_key)
-        old_access_token = aes_encryption.decrypt(user.access_token)
-        old_refresh_token = aes_encryption.decrypt(user.refresh_token)
+        origin_access_token = aes_encryption.decrypt(user.access_token)
+        origin_refresh_token = aes_encryption.decrypt(user.refresh_token)
 
         # 토큰 유효성 검증
         user_cookies, user_data = await fetch_velog_user_chk(
-            session, old_access_token, old_refresh_token
+            session, origin_access_token, origin_refresh_token
         )
         if not (user_data or user_cookies):
             return
@@ -139,19 +141,21 @@ class Scraper:
                 user,
                 aes_encryption,
                 user_cookies,
-                old_access_token,
-                old_refresh_token,
+                origin_access_token,
+                origin_refresh_token,
             )
 
         username = user_data["data"]["currentUser"]["username"]  # type: ignore
         fetched_posts = await fetch_all_velog_posts(
-            session, username, old_access_token, old_refresh_token
+            session, username, origin_access_token, origin_refresh_token
         )
 
         await self.bulk_create_posts(user, fetched_posts)
 
         tasks = [
-            fetch_post_stats(post["id"], old_access_token, old_refresh_token)
+            fetch_post_stats(
+                post["id"], origin_access_token, origin_refresh_token
+            )
             for post in fetched_posts
         ]
         statistics_results = await asyncio.gather(*tasks)
