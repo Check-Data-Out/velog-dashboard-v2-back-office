@@ -21,6 +21,7 @@ django-timescaledb==0.2.13
 executing==2.1.0
 filelock==3.16.1
 frozenlist==1.5.0
+gunicorn==23.0.0
 h11==0.14.0
 identify==2.6.3
 idna==3.10
