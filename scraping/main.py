@@ -197,7 +197,7 @@ class Scraper:
                 await self.update_daily_statistics(post, stats)
 
         self.logger.info(
-            f"Succeeded to update tokens. (user velog uuid: {user.velog_uuid}, email: {user.email})"
+            f"Succeeded to update stats. (user velog uuid: {user.velog_uuid}, email: {user.email})"
         )
 
     async def run(self) -> None:

@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from common.models import TimeStampedModel
@@ -25,7 +26,7 @@ class User(TimeStampedModel):
         verbose_name="그룹 ID",
     )
     email = models.EmailField(
-        blank=False, null=False, unique=True, verbose_name="이메일"
+        blank=True, null=True, unique=False, verbose_name="이메일"
     )
     is_active = models.BooleanField(
         default=True, null=False, verbose_name="활성 여부"
@@ -33,6 +34,16 @@ class User(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.velog_uuid}"
+
+    def clean(self) -> None:
+        if (
+            self.email
+            and self.email != ""
+            and self.objects.exclude(pk=self.pk)
+            .filter(email=self.email)
+            .exists()
+        ):
+            raise ValidationError({"email": "이미 존재하는 이메일입니다."})
 
     class Meta:
         verbose_name = "사용자"
