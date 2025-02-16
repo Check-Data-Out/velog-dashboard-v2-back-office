@@ -39,7 +39,7 @@ class User(TimeStampedModel):
         if (
             self.email
             and self.email != ""
-            and self.objects.exclude(pk=self.pk)
+            and User.objects.exclude(pk=self.pk)
             .filter(email=self.email)
             .exists()
         ):
