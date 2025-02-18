@@ -1,8 +1,16 @@
-name: Velog Dashboard - Daily Stats Batch
+name: Velog Dashboard - Daily Stats Batch (set2)
 
 on:
   workflow_dispatch:
-  # 30분 마다 동작
+    inputs:
+      min_group:
+        description: 'Minimum group number'
+        required: true
+        default: '501'
+      max_group:
+        description: 'Maximum group number'
+        required: true
+        default: '1000'
   schedule:
     - cron: "*/30 * * * *"
 
@@ -61,10 +69,10 @@ jobs:
 
       - name: Run Velog Daily Stats Script
         id: velog-daily-stats-main
-        timeout-minutes: 25
+        timeout-minutes: 28
         run: |
           set -e
-          poetry run python scraping/main.py
+          poetry run python scraping/main.py --min-group ${{ github.event.inputs.min_group || '501' }} --max-group ${{ github.event.inputs.max_group || '1000' }}
 
       # KST 시간을 GitHub Actions 환경 변수에 세팅
       - name: Get Current KST Time

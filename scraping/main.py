@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import logging
 import warnings
@@ -221,14 +222,38 @@ class Scraper:
         )
 
 
-async def main() -> None:
-    """3개의 동시성 작업으로 유저 그룹 처리"""
-    group_ranges = [
-        range(1, 334),
-        range(334, 667),
-        range(667, 1001),
-    ]
+def split_range(start: int, end: int, parts: int) -> list[range]:
+    """주어진 범위를 지정된 수만큼 균등하게 분할"""
+    width = end - start
+    part_width = width // parts
+    ranges = []
 
+    for i in range(parts):
+        part_start = start + (i * part_width)
+        part_end = start + ((i + 1) * part_width) if i < parts - 1 else end
+        ranges.append(range(part_start, part_end + 1))
+
+    return ranges
+
+
+async def main() -> None:
+    """커맨드라인 인자를 파싱하고 그룹 범위를 3분할하여 처리"""
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--min-group",
+        type=int,
+        default=1,
+        help="Minimum group number",
+    )
+    parser.add_argument(
+        "--max-group",
+        type=int,
+        default=1000,
+        help="Maximum group number",
+    )
+    args = parser.parse_args()
+
+    group_ranges = split_range(args.min_group, args.max_group, 3)
     scrapers = [Scraper(group_range) for group_range in group_ranges]
     await asyncio.gather(*(scraper.run() for scraper in scrapers))
 
