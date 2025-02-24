@@ -23,13 +23,16 @@ poetry install
 ```
 
 ## Database Configuration
+
 #### 1. [dockerdocs](https://docs.docker.com/get-started/)를 참고하여 Docker, Docker Compose 설치
+
 #### 2. .env.sample의 형식으로 환경 변수 설정
-#### 3. ```docker-compose up -d```로 실행 (또는 공백없이 `docker compose up -d`)
+
+#### 3. `docker-compose up -d`로 실행 (또는 공백없이 `docker compose up -d`)
 
 ## Pre-configue
 
-- ***DB 세팅 이후, 실행 전 꼭 `superuser` 을 만들어야 admin 진입 가능***
+- **_DB 세팅 이후, 실행 전 꼭 `superuser` 을 만들어야 admin 진입 가능_**
 
 1. `docker` 를 띄우고 `python manage.py migrate` 실행, 아래와 같은 화면
 
@@ -51,17 +54,20 @@ DJANGO_SUPERUSER_EMAIL=admin@example.com \
 DJANGO_SUPERUSER_PASSWORD=admin \
 python manage.py createsuperuser --noinput
 ```
+
 - `Superuser created successfully.` 결과를 만나면 성공
 - 그리고 아래 순서 F/U
-
 
 ## Run Test
 
 ### 1) unit testing
 
 ```bash
-poetry run pytest
+DJANGO_SETTINGS_MODULE=backoffice.settings.test poetry run pytest
 ```
+
+- `DJANGO_SETTINGS_MODULE=backoffice.settings.test` 이 필수
+- testing 을 위해서는 DBMS를 sqlite3 로 대체해서 활용함
 
 ### 2) formatting & linting
 
@@ -73,7 +79,7 @@ ruff format
 ruff check --fix
 ```
 
-### 3) register pre-commit 
+### 3) register pre-commit
 
 - need to be done `poetry config`
 
