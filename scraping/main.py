@@ -207,7 +207,7 @@ class Scraper:
         """스크래핑 작업 실행"""
         self.logger.info(
             f"Start scraping velog posts and statistics for group range "
-            "({min(self.group_range)} ~ {max(self.group_range)}) \n"
+            f"({min(self.group_range)} ~ {max(self.group_range)}) \n"
             f"{self.get_local_now().isoformat()}"
         )
         users: list[User] = [
