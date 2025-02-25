@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import logging
+import multiprocessing
 import warnings
 from datetime import datetime
 
@@ -31,7 +32,8 @@ class Scraper:
         """django timezone 을 기반으로 하는 실제 local의 now datetime"""
         utc_now = timezone.now()
         local_now: datetime = timezone.localtime(
-            utc_now, timezone=timezone.get_current_timezone()
+            utc_now,
+            timezone=timezone.get_current_timezone(),
         )
         return local_now
 
@@ -204,7 +206,8 @@ class Scraper:
     async def run(self) -> None:
         """스크래핑 작업 실행"""
         self.logger.info(
-            f"Start scraping velog posts and statistics for group range ({min(self.group_range)} ~ {max(self.group_range)})."
+            f"Start scraping velog posts and statistics for group range "
+            "({min(self.group_range)} ~ {max(self.group_range)}) \n"
             f"{self.get_local_now().isoformat()}"
         )
         users: list[User] = [
@@ -222,6 +225,12 @@ class Scraper:
         )
 
 
+def run_scraper(group_range: range) -> None:
+    """멀티프로세싱에서 실행될 동기 함수"""
+    # 각 프로세스에서 비동기 루프 실행
+    asyncio.run(Scraper(group_range).run())
+
+
 def split_range(start: int, end: int, parts: int) -> list[range]:
     """주어진 범위를 지정된 수만큼 균등하게 분할"""
     width = end - start
@@ -236,8 +245,8 @@ def split_range(start: int, end: int, parts: int) -> list[range]:
     return ranges
 
 
-async def main() -> None:
-    """커맨드라인 인자를 파싱하고 그룹 범위를 3분할하여 처리"""
+def main() -> None:
+    """커맨드라인 인자를 파싱하고 그룹 범위를 3분할하여 멀티프로세싱 처리"""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--min-group",
@@ -254,8 +263,16 @@ async def main() -> None:
     args = parser.parse_args()
 
     group_ranges = split_range(args.min_group, args.max_group, 3)
-    scrapers = [Scraper(group_range) for group_range in group_ranges]
-    await asyncio.gather(*(scraper.run() for scraper in scrapers))
+    # scrapers = [Scraper(group_range) for group_range in group_ranges]
+    # await asyncio.gather(*(scraper.run() for scraper in scrapers))
+    processes = []
+    for group_range in group_ranges:
+        p = multiprocessing.Process(target=run_scraper, args=(group_range,))
+        p.start()
+        processes.append(p)
+
+    for p in processes:
+        p.join()
 
 
 # Django에서 발생하는 RuntimeWarning 무시
@@ -270,4 +287,5 @@ warnings.filterwarnings(
 # TODO: await asyncio.sleep(delay) 와 같은 사용자 사이 딜레이 있으면 velog 쪽에서 좋아할 듯
 # TODO: return await asyncio.wait_for(task(*args), timeout=timeout) 와 같은 타임아웃이 필요
 if __name__ == "__main__":
-    asyncio.run(main())
+    # asyncio.run(main())
+    main()

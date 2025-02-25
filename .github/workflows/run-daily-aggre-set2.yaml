@@ -12,7 +12,7 @@ on:
         required: true
         default: '660'
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "*/40 * * * *"
 
 jobs:
   velog-posts-daily-stats-batch:
@@ -69,7 +69,7 @@ jobs:
 
       - name: Run Velog Daily Stats Script
         id: velog-daily-stats-main
-        timeout-minutes: 28
+        timeout-minutes: 38
         run: |
           set -e
           poetry run python scraping/main.py --min-group ${{ github.event.inputs.min_group || '331' }} --max-group ${{ github.event.inputs.max_group || '1000' }}
