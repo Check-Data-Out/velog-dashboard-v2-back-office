@@ -7,7 +7,7 @@ from datetime import datetime
 
 import aiohttp
 import environ
-import setup_django  # noqa
+# import setup_django  # noqa
 from asgiref.sync import sync_to_async
 from django.utils import timezone
 
