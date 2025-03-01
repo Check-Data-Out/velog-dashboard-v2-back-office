@@ -3,8 +3,11 @@ import multiprocessing
 import warnings
 
 import setup_django  # noqa
+from django.db.models import Avg, Count
 
 from scraping.main import ScraperTargetUser
+from users.models import User
+from utils.utils import split_list
 
 # Django에서 발생하는 RuntimeWarning 무시
 warnings.filterwarnings(
@@ -22,25 +25,25 @@ def run_scraper(user_pk_list: list[int]) -> None:
 def main() -> None:
     """커맨드라인 인자를 파싱하고 그룹 범위를 3분할하여 멀티프로세싱 처리"""
 
-    # # 1. 평균 게시글 수 구하기
-    # avg_posts_per_user = (
-    #     User.objects.annotate(post_count=Count("posts")).aggregate(
-    #         avg_posts_per_user=Avg("post_count")
-    #     )
-    # )["avg_posts_per_user"]
+    # 1. 모든 사용자에 대해 게시글 수를 계산하고 평균 게시글 수 구하기
+    avg_posts_per_user = (
+        User.objects.annotate(post_count=Count("posts")).aggregate(
+            avg_posts=Avg("post_count")
+        )
+    )["avg_posts"]
 
-    # # 2. 평균보다 많은 게시글을 가진 사용자 필터링
-    # users_above_avg = (
-    #     User.objects.annotate(post_count=Count("posts"))
-    #     .filter(post_count__gt=avg_posts_per_user)
-    #     .order_by("-id")
-    # )
+    # 2. 평균보다 많은 게시글을 가진 사용자들 필터링 (정렬은 최신순)
+    users_above_avg = (
+        User.objects.annotate(post_count=Count("posts"))
+        .filter(post_count__gt=avg_posts_per_user)
+        .order_by("-id")
+    )
 
-    # 3. 해당 user 들 pk list 형태로 파싱, 2 덩어리로 찢음
-    list_of_user_pk_list: list[list[int]] = [[1, 2, 3], [4, 5, 6]]
+    # 3. 필터링한 사용자들의 pk를 리스트로 추출
+    user_pk_list = list(users_above_avg.values_list("pk", flat=True))
 
     processes = []
-    for user_pk_list in list_of_user_pk_list:
+    for user_pk_list in split_list(user_pk_list, 2):
         p = multiprocessing.Process(target=run_scraper, args=(user_pk_list,))
         p.start()
         processes.append(p)

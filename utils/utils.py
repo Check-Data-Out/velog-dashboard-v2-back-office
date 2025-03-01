@@ -30,3 +30,12 @@ def split_range(start: int, end: int, parts: int) -> list[range]:
         ranges.append(range(part_start, part_end + 1))
 
     return ranges
+
+
+def split_list(lst: list[int], n_splits: int) -> list[list[int]]:
+    """리스트를 n_splits개의 대략 동일한 크기의 서브 리스트로 나눕니다."""
+    k, m = divmod(len(lst), n_splits)
+    return [
+        lst[i * k + min(i, m) : (i + 1) * k + min(i + 1, m)]
+        for i in range(n_splits)
+    ]

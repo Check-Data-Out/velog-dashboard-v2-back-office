@@ -12,7 +12,6 @@
 
 import argparse
 import asyncio
-import logging
 import multiprocessing
 import warnings
 
@@ -20,8 +19,6 @@ import setup_django  # noqa
 
 from scraping.main import Scraper
 from utils.utils import split_range
-
-logger = logging.getLogger("scraping")
 
 
 def run_scraper(group_range: range) -> None:
