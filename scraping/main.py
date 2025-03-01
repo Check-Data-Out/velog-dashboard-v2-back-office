@@ -4,7 +4,6 @@ import logging
 import aiohttp
 import environ
 from asgiref.sync import sync_to_async
-from django.db import transaction
 
 from modules.token_encryption.aes_encryption import AESEncryption
 from posts.models import Post, PostDailyStatistics
@@ -20,9 +19,11 @@ logger = logging.getLogger("scraping")
 
 
 class Scraper:
-    def __init__(self, group_range: range):
+    def __init__(self, group_range: range, max_connections: int = 20):
         self.env = environ.Env()
         self.group_range = group_range
+        # 최대 동시 연결 수 제한
+        self.semaphore = asyncio.Semaphore(max_connections)
 
     async def update_old_tokens(
         self,
@@ -33,38 +34,17 @@ class Scraper:
         """토큰 만료로 인한 토큰 업데이트"""
 
         try:
-            async with transaction.atomic():
-                # skip_locked 유의, 멀프에서 동시에 같은 유저 접근할 일 없게 해야 함
-                # 해당 배치는 group 마다 갈라지기때문에 절대 없을 것으로 판단됨
-                locked_user = await sync_to_async(
-                    User.objects.select_for_update(skip_locked=True).get
-                )(id=user.id)
-
-                # 토큰이 다르면 업데이트
-                if (
+            if new_user_cookies["access_token"] != user.access_token:
+                user.access_token = aes_encryption.encrypt(
                     new_user_cookies["access_token"]
-                    != locked_user.access_token
-                ):
-                    locked_user.access_token = aes_encryption.encrypt(
-                        new_user_cookies["access_token"]
-                    )
-                if (
+                )
+            if new_user_cookies["refresh_token"] != user.refresh_token:
+                user.refresh_token = aes_encryption.encrypt(
                     new_user_cookies["refresh_token"]
-                    != locked_user.refresh_token
-                ):
-                    locked_user.refresh_token = aes_encryption.encrypt(
-                        new_user_cookies["refresh_token"]
-                    )
-
-                await locked_user.asave(
-                    update_fields=["access_token", "refresh_token"]
-                )
-                logger.info(
-                    f"Updated tokens for user {locked_user.velog_uuid}"
                 )
 
-        except User.DoesNotExist:
-            logger.warning(f"User {user.velog_uuid} not found")
+            await user.asave(update_fields=["access_token", "refresh_token"])
+            logger.info(f"Updated tokens for user {user.velog_uuid}")
         except Exception as e:
             logger.error(
                 f"Failed to update tokens: {e}"
@@ -164,11 +144,9 @@ class Scraper:
         post_id: str,
         access_token: str,
         refresh_token: str,
-        semaphore_size: int = 20,
     ) -> dict[str, str] | None:
         """세마포어를 적용한 fetch_post_stats"""
-        semaphore = asyncio.Semaphore(semaphore_size)
-        async with semaphore:
+        async with self.semaphore:
             return await fetch_post_stats(post_id, access_token, refresh_token)
 
     async def process_user(
@@ -239,7 +217,9 @@ class Scraper:
                 group_id__in=self.group_range
             )
         ]
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(
+            connector=aiohttp.TCPConnector(limit=20)
+        ) as session:
             for user in users:
                 await self.process_user(user, session)
 
