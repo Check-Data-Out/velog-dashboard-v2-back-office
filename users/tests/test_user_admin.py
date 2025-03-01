@@ -1,3 +1,4 @@
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -75,5 +76,34 @@ class TestUserAdmin:
         messages_list = [m.message for m in request_with_messages._messages]
         assert any(
             "실시간 통계 업데이트를 실패했습니다" in msg
+            for msg in messages_list
+        )
+
+    @patch("users.admin.ScraperTargetUser")
+    def test_update_stats_more_than_three_users(
+        self, mock_scraper, user_admin, request_with_messages
+    ):
+        users = [
+            User.objects.create(
+                velog_uuid=uuid.uuid4(),
+                access_token=f"test-token-{i}",
+                refresh_token=f"test-refresh-token-{i}",
+                group_id=i,
+                email=f"user{i}@example.com",
+                is_active=True,
+            )
+            for i in range(3)
+        ]
+
+        queryset = User.objects.filter(pk__in=[user.pk for user in users])
+        user_admin.update_stats(request_with_messages, queryset)
+
+        # Scraper가 호출되지 않았는지 확인
+        mock_scraper.assert_not_called()
+
+        # 메시지 확인 (3명 초과 선택 시 오류)
+        messages_list = [m.message for m in request_with_messages._messages]
+        assert any(
+            "3명 이상의 유저를 선택하지 말아주세요" in msg
             for msg in messages_list
         )
