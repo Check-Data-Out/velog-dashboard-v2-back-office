@@ -2,7 +2,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 
 from common.models import TimeStampedModel
-from users.utils import generate_random_group_id
+from utils.utils import generate_random_group_id
 
 
 class User(TimeStampedModel):

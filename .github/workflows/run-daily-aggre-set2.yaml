@@ -72,7 +72,7 @@ jobs:
         timeout-minutes: 38
         run: |
           set -e
-          poetry run python scraping/main.py --min-group ${{ github.event.inputs.min_group || '331' }} --max-group ${{ github.event.inputs.max_group || '1000' }}
+          poetry run python scraping/aggregate_batch.py --min-group ${{ github.event.inputs.min_group || '331' }} --max-group ${{ github.event.inputs.max_group || '1000' }}
 
       # KST 시간을 GitHub Actions 환경 변수에 세팅
       - name: Get Current KST Time

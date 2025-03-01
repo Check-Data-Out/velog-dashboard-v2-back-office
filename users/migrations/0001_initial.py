@@ -2,7 +2,7 @@
 
 from django.db import migrations, models
 
-import users.utils
+from utils.utils import generate_random_group_id
 
 
 class Migration(migrations.Migration):
@@ -51,7 +51,7 @@ class Migration(migrations.Migration):
                     "group_id",
                     models.IntegerField(
                         blank=True,
-                        default=users.utils.generate_random_group_id,
+                        default=generate_random_group_id,
                         verbose_name="그룹 ID",
                     ),
                 ),
