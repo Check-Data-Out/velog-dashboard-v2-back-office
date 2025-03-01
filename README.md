@@ -66,8 +66,17 @@ python manage.py createsuperuser --noinput
 DJANGO_SETTINGS_MODULE=backoffice.settings.test poetry run pytest
 ```
 
+- `conftest.py` 파일은 `pytest` 을 위한 자동 `fixture` 세팅 파일임
 - `DJANGO_SETTINGS_MODULE=backoffice.settings.test` 이 필수
 - testing 을 위해서는 DBMS를 sqlite3 로 대체해서 활용함
+- `coverage` 는 아래와 같이 사용함
+
+```bash
+DJANGO_SETTINGS_MODULE=backoffice.settings.test poetry run coverage run -m pytest
+poetry run coverage report -m
+poetry run coverage html
+```
+
 
 ### 2) formatting & linting
 
