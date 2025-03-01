@@ -1,3 +1,12 @@
+"""
+[25.03.01] 리뉴얼 추가 배치 (작성자: 정현우)
+- 형태 및 주의사항은 기본 메인 배치인 aggregate_batch 와 완전 동일
+- 하지만 해당 배치는 평균 이상의 게시글을 가진 사용자만 가져와서 업데이트하는 배치
+- 실행은 아래와 같은 커멘드 활용
+- python ./scraping/aggregate_target_batch.py
+- poetry run python ./scraping/aggregate_target_batch.py
+"""
+
 import asyncio
 import multiprocessing
 import warnings

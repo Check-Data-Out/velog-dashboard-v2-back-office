@@ -44,13 +44,13 @@ class Scraper:
                 )
 
             await user.asave(update_fields=["access_token", "refresh_token"])
-            # logger.info(f"Updated tokens for user {user.velog_uuid}")
+            logger.info(f"Updated tokens for user {user.velog_uuid}")
             return True
-        except Exception:
-            # logger.error(
-            #     f"Failed to update tokens: {e}"
-            #     f"(user velog uuid: {user.velog_uuid})"
-            # )
+        except Exception as e:
+            logger.error(
+                f"Failed to update tokens: {e}"
+                f"(user velog uuid: {user.velog_uuid})"
+            )
             return False
 
     async def bulk_insert_posts(
@@ -77,11 +77,11 @@ class Scraper:
                 )
                 await bulk_create_sync(batch, ignore_conflicts=True)
             return True
-        except Exception:
-            # logger.error(
-            #     f"Failed to bulk create posts. {e}"
-            #     f" (user velog uuid: {user.velog_uuid})"
-            # )
+        except Exception as e:
+            logger.error(
+                f"Failed to bulk create posts. {e}"
+                f" (user velog uuid: {user.velog_uuid})"
+            )
             return False
 
     async def update_daily_statistics(
@@ -89,9 +89,9 @@ class Scraper:
     ) -> None:
         """PostDailyStatistics를 업데이트 또는 생성 (upsert)"""
         if not stats or not isinstance(stats, dict):
-            # logger.warning(
-            #     f"Skip updating statistics due to invalid stats data for post {post['id']}"
-            # )
+            logger.warning(
+                f"Skip updating statistics due to invalid stats data for post {post['id']}"
+            )
             return
 
         try:
@@ -105,9 +105,9 @@ class Scraper:
                 stats_data.get("getStats"),  # type: ignore
                 dict,
             ):
-                # logger.warning(
-                #     f"Skip updating statistics due to missing getStats data for post {post['id']}"
-                # )
+                logger.warning(
+                    f"Skip updating statistics due to missing getStats data for post {post['id']}"
+                )
                 return
 
             view_count = stats_data["getStats"].get("total", 0)  # type: ignore
@@ -135,10 +135,10 @@ class Scraper:
                         "updated_at",
                     ]
                 )
-        except Exception:
-            # logger.error(
-            #     f"Failed to update daily statistics for post {post['id']}: {str(e)}"
-            # )
+        except Exception as e:
+            logger.error(
+                f"Failed to update daily statistics for post {post['id']}: {str(e)}"
+            )
             return
 
     async def fetch_post_stats_limited(
@@ -171,9 +171,9 @@ class Scraper:
             return
 
         if user_data["data"]["currentUser"] is None:  # type: ignore
-            # logger.warning(
-            #     f"Failed to fetch user data because of wrong tokens. (user velog uuid: {user.velog_uuid})"
-            # )
+            logger.warning(
+                f"Failed to fetch user data because of wrong tokens. (user velog uuid: {user.velog_uuid})"
+            )
             return
 
         if new_user_cookies:
@@ -202,9 +202,9 @@ class Scraper:
             if stats:
                 await self.update_daily_statistics(post, stats)
 
-        # logger.info(
-        #     f"Succeeded to update stats. (user velog uuid: {user.velog_uuid}, email: {user.email})"
-        # )
+        logger.info(
+            f"Succeeded to update stats. (user velog uuid: {user.velog_uuid}, email: {user.email})"
+        )
 
     async def run(self) -> None:
         """스크래핑 작업 실행"""
