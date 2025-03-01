@@ -111,10 +111,8 @@ async def fetch_post_stats(
     access_token: str,
     refresh_token: str,
 ) -> dict[str, str]:
-    """
-    ### post_id에 대한 통계 정보 가져오는 graphQL 호출
-    - `post_id` 라는 velog post의 `uuid` 값 필요
-    """
+    """post_id에 대한 통계 정보 가져오는 graphQL 호출"""
+
     query = POSTS_STATS_QUERY
     variables = {"post_id": post_id}
     payload = {
@@ -123,18 +121,40 @@ async def fetch_post_stats(
         "operationName": "GetStats",
     }
     headers = get_header(access_token, refresh_token)
+
+    retry_client = None
     try:
         retry_options = ExponentialRetry(attempts=3, start_timeout=1)
         retry_client = RetryClient(retry_options=retry_options)
+
         async with retry_client.post(
             V2_CDN_URL,
             json=payload,
             headers=headers,
         ) as response:
-            res: dict[str, str] = await response.json()
-            return res
+            if response.status != 200:
+                logger.error(
+                    f"HTTP error {response.status}: {await response.text()} (post_id: {post_id})"
+                )
+                return {}
+
+            if "application/json" not in response.headers.get(
+                "Content-Type", ""
+            ):
+                logger.error(
+                    f"Unexpected response format: {await response.text()} (post_id: {post_id})"
+                )
+                return {}
+
+            try:
+                res: dict[str, str] = await response.json()
+                return res
+            except Exception as e:
+                logger.error(f"JSON decoding failed: {e} (post_id: {post_id})")
+                return {}
     except Exception as e:
         logger.error(f"Failed to fetch post stats: {e} (post_id: {post_id})")
         return {}
     finally:
-        await retry_client.close()
+        if retry_client is not None:
+            await retry_client.close()

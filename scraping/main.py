@@ -34,6 +34,8 @@ class Scraper:
 
         try:
             async with transaction.atomic():
+                # skip_locked 유의, 멀프에서 동시에 같은 유저 접근할 일 없게 해야 함
+                # 해당 배치는 group 마다 갈라지기때문에 절대 없을 것으로 판단됨
                 locked_user = await sync_to_async(
                     User.objects.select_for_update(skip_locked=True).get
                 )(id=user.id)
