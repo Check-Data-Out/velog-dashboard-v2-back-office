@@ -4,6 +4,7 @@ import logging
 import aiohttp
 import environ
 from asgiref.sync import sync_to_async
+from django.db import transaction
 
 from modules.token_encryption.aes_encryption import AESEncryption
 from posts.models import Post, PostDailyStatistics
@@ -62,8 +63,7 @@ class Scraper:
                 f"Failed to update tokens: {e}"
                 f"(user velog uuid: {user.velog_uuid})"
             )
-        finally:
-            return False
+        return False
 
     async def bulk_insert_posts(
         self,
@@ -84,10 +84,21 @@ class Scraper:
                     )
                     for post in fetched_posts[i : i + batch_size]
                 ]
-                bulk_create_sync = sync_to_async(
-                    Post.objects.bulk_create, thread_sensitive=True
-                )
-                await bulk_create_sync(batch, ignore_conflicts=True)
+
+                # 트랜잭션으로 감싸서 원자적으로 처리
+                @sync_to_async(thread_sensitive=True)  # type: ignore
+                def create_in_transaction(
+                    batch_posts: list[Post],
+                ) -> list[Post]:
+                    with transaction.atomic():
+                        return Post.objects.bulk_create(  # type: ignore
+                            batch_posts, ignore_conflicts=True
+                        )
+
+                await create_in_transaction(batch)
+
+                # 큰 배치 작업 사이에 짧은 대기 시간 추가
+                await asyncio.sleep(0.2)
             return True
         except Exception as e:
             logger.error(
@@ -107,10 +118,8 @@ class Scraper:
             return
 
         try:
-            post_obj = await sync_to_async(Post.objects.get)(
-                post_uuid=post["id"]
-            )
             today = get_local_now().date()
+            post_id = post["id"]
 
             stats_data = stats.get("data", {})  # type: ignore
             if not stats_data or not isinstance(
@@ -118,35 +127,49 @@ class Scraper:
                 dict,
             ):
                 logger.warning(
-                    f"Skip updating statistics due to missing getStats data for post {post['id']}"
+                    f"Skip updating statistics due to missing getStats data for post {post_id}"
                 )
                 return
 
             view_count = stats_data["getStats"].get("total", 0)  # type: ignore
             like_count = post.get("likes", 0)
 
-            (
-                daily_stats,
-                created,
-            ) = await PostDailyStatistics.objects.aget_or_create(
-                post=post_obj,
-                date=today,
-                defaults={
-                    "daily_view_count": view_count,
-                    "daily_like_count": like_count,
-                },
-            )
-            if not created:
-                daily_stats.daily_view_count = view_count
-                daily_stats.daily_like_count = like_count
-                daily_stats.updated_at = get_local_now()
-                await daily_stats.asave(
-                    update_fields=[
-                        "daily_view_count",
-                        "daily_like_count",
-                        "updated_at",
-                    ]
-                )
+            # 트랜잭션 내에서 실행
+            @sync_to_async  # type: ignore
+            def update_stats_in_transaction() -> None:
+                with transaction.atomic():
+                    # 락을 최소화하기 위해 select_for_update는 사용하지 않음
+                    try:
+                        post_obj = Post.objects.get(post_uuid=post_id)
+
+                        daily_stats, created = (
+                            PostDailyStatistics.objects.get_or_create(
+                                post=post_obj,
+                                date=today,
+                                defaults={
+                                    "daily_view_count": view_count,
+                                    "daily_like_count": like_count,
+                                },
+                            )
+                        )
+
+                        if not created:
+                            daily_stats.daily_view_count = view_count
+                            daily_stats.daily_like_count = like_count
+                            daily_stats.updated_at = get_local_now()
+                            daily_stats.save(
+                                update_fields=[
+                                    "daily_view_count",
+                                    "daily_like_count",
+                                    "updated_at",
+                                ]
+                            )
+                    except Post.DoesNotExist:
+                        logger.warning(f"Post not found: {post_id}")
+                        return
+
+            await update_stats_in_transaction()
+
         except Exception as e:
             logger.error(
                 f"Failed to update daily statistics for post {post['id']}: {str(e)}"
