@@ -19,7 +19,7 @@ logger = logging.getLogger("scraping")
 
 
 class Scraper:
-    def __init__(self, group_range: range, max_connections: int = 30):
+    def __init__(self, group_range: range, max_connections: int = 40):
         self.env = environ.Env()
         self.group_range = group_range
         # 최대 동시 연결 수 제한
@@ -32,25 +32,37 @@ class Scraper:
         new_user_cookies: dict[str, str],
     ) -> bool:
         """토큰 만료로 인한 토큰 업데이트"""
-
+        current_access_token = aes_encryption.decrypt(user.access_token)
+        current_refresh_token = aes_encryption.decrypt(user.refresh_token)
         try:
-            if new_user_cookies["access_token"] != user.access_token:
+            # 복호화된 토큰과 새 토큰을 비교
+            if new_user_cookies["access_token"] != current_access_token:
                 user.access_token = aes_encryption.encrypt(
                     new_user_cookies["access_token"]
                 )
-            if new_user_cookies["refresh_token"] != user.refresh_token:
+            if new_user_cookies["refresh_token"] != current_refresh_token:
                 user.refresh_token = aes_encryption.encrypt(
                     new_user_cookies["refresh_token"]
                 )
 
-            await user.asave(update_fields=["access_token", "refresh_token"])
-            logger.info(f"Updated tokens for user {user.velog_uuid}")
-            return True
+            # 변경된 필드만 업데이트
+            update_fields = []
+            if new_user_cookies["access_token"] != current_access_token:
+                update_fields.append("access_token")
+            if new_user_cookies["refresh_token"] != current_refresh_token:
+                update_fields.append("refresh_token")
+
+            # 변경된 필드가 있을 때만 저장
+            if update_fields:
+                await user.asave(update_fields=update_fields)
+                logger.info(f"Updated tokens for user {user.velog_uuid}")
+                return True
         except Exception as e:
             logger.error(
                 f"Failed to update tokens: {e}"
                 f"(user velog uuid: {user.velog_uuid})"
             )
+        finally:
             return False
 
     async def bulk_insert_posts(
@@ -190,17 +202,31 @@ class Scraper:
 
         await self.bulk_insert_posts(user, fetched_posts)
 
-        tasks = [
-            self.fetch_post_stats_limited(
-                post["id"], origin_access_token, origin_refresh_token
-            )
-            for post in fetched_posts
-        ]
-        statistics_results = await asyncio.gather(*tasks)
+        # 게시물을 적절한 크기의 청크로 나누어 처리
+        chunk_size = 40
+        for i in range(0, len(fetched_posts), chunk_size):
+            chunk_posts = fetched_posts[i : i + chunk_size]
+            tasks = [
+                self.fetch_post_stats_limited(
+                    post["id"], origin_access_token, origin_refresh_token
+                )
+                for post in chunk_posts
+            ]
+            statistics_results = await asyncio.gather(*tasks)
 
-        for post, stats in zip(fetched_posts, statistics_results):
-            if stats:
-                await self.update_daily_statistics(post, stats)
+            # 통계 정보 업데이트 처리
+            update_tasks = []
+            for post, stats in zip(chunk_posts, statistics_results):
+                if stats:
+                    update_tasks.append(
+                        self.update_daily_statistics(post, stats)
+                    )
+
+            if update_tasks:
+                await asyncio.gather(*update_tasks)
+
+            # 선택적으로 처리 사이에 짧은 대기 시간 추가
+            await asyncio.sleep(0.5)
 
         logger.info(
             f"Succeeded to update stats. (user velog uuid: {user.velog_uuid}, email: {user.email})"
@@ -232,7 +258,7 @@ class Scraper:
 
 class ScraperTargetUser(Scraper):
     def __init__(
-        self, user_pk_list: list[int], max_connections: int = 30
+        self, user_pk_list: list[int], max_connections: int = 40
     ) -> None:
         self.env = environ.Env()
         self.user_pk_list = user_pk_list
