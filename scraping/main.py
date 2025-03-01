@@ -19,7 +19,7 @@ logger = logging.getLogger("scraping")
 
 
 class Scraper:
-    def __init__(self, group_range: range, max_connections: int = 0):
+    def __init__(self, group_range: range, max_connections: int = 30):
         self.env = environ.Env()
         self.group_range = group_range
         # 최대 동시 연결 수 제한
@@ -228,3 +228,32 @@ class Scraper:
         logger.info(
             f"Finished scraping for group range ({min(self.group_range)} ~ {max(self.group_range)})."
         )
+
+
+class ScraperTargetUser(Scraper):
+    def __init__(
+        self, user_pk_list: list[int], max_connections: int = 30
+    ) -> None:
+        self.env = environ.Env()
+        self.user_pk_list = user_pk_list
+        # 최대 동시 연결 수 제한
+        self.semaphore = asyncio.Semaphore(max_connections)
+
+    async def run(self) -> None:
+        """타겟 유저 스크래핑 작업 실행"""
+        logger.info(
+            f"Start target user scraping velog posts and statistics"
+            f"({self.user_pk_list}) \n"
+            f"{get_local_now().isoformat()}"
+        )
+        users: list[User] = [
+            user
+            async for user in User.objects.filter(id__in=self.user_pk_list)
+        ]
+        async with aiohttp.ClientSession(
+            connector=aiohttp.TCPConnector(limit=30)
+        ) as session:
+            for user in users:
+                await self.process_user(user, session)
+
+        logger.info(f"Finished target user scraping ({self.user_pk_list}).")
