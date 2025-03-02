@@ -99,12 +99,16 @@ DATABASES = {
         "PORT": env("POSTGRES_PORT", default=""),
         "CONN_MAX_AGE": 600,  # 10분 동안 연결 유지
         "OPTIONS": {
-            "connect_timeout": 10,
             "keepalives": 1,
             "options": "-c statement_timeout=60000",
         },
     }
 }
+
+# sqlite3 에서는 해당 옵션 사용안하게
+if env("DATABASE_ENGINE", None) == "django.db.backends.postgresql":
+    DATABASES["default"]["OPTIONS"]["connect_timeout"] = 10
+
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
