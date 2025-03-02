@@ -2,7 +2,7 @@ import logging
 
 from asgiref.sync import async_to_sync
 from django.contrib import admin, messages
-from django.db.models import QuerySet
+from django.db.models import Count, QuerySet
 from django.http import HttpRequest
 
 from scraping.main import ScraperTargetUser
@@ -14,11 +14,13 @@ logger = logging.getLogger(__name__)
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
     list_display = [
+        "id",
         "velog_uuid",
         "email",
         "group_id",
         "is_active",
         "created_at",
+        "post_count",
     ]
 
     empty_value_display = "-"
@@ -36,6 +38,14 @@ class UserAdmin(admin.ModelAdmin):
             "created_at": "생성일",
         }
         return list_display
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.annotate(post_count=Count("posts"))
+
+    @admin.display(description="유저당 게시글 수")
+    def post_count(self, obj: QuerySet[User]):
+        return obj.post_count
 
     @admin.action(description="선택된 사용자를 비활성화")
     def make_inactive(self, request: HttpRequest, queryset: QuerySet[User]):
