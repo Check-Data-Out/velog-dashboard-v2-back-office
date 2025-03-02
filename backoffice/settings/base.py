@@ -106,7 +106,7 @@ DATABASES = {
 }
 
 # sqlite3 에서는 해당 옵션 사용안하게
-if env("DATABASE_ENGINE", None) == "django.db.backends.postgresql":
+if env("DATABASE_ENGINE", default=None) == "django.db.backends.postgresql":
     DATABASES["default"]["OPTIONS"]["connect_timeout"] = 10
 
 
