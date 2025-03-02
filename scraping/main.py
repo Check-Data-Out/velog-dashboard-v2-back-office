@@ -263,9 +263,12 @@ class Scraper:
             f"{get_local_now().isoformat()}"
         )
 
-        users = await User.objects.filter(
-            group_id__in=self.group_range
-        ).afetch()
+        users = [
+            user
+            async for user in User.objects.filter(
+                group_id__in=self.group_range
+            )
+        ]
         async with aiohttp.ClientSession(
             connector=aiohttp.TCPConnector(limit=30)
         ) as session:
@@ -294,7 +297,10 @@ class ScraperTargetUser(Scraper):
             f"{get_local_now().isoformat()}"
         )
 
-        users = await User.objects.filter(id__in=self.user_pk_list).afetch()
+        users = [
+            user
+            async for user in User.objects.filter(id__in=self.user_pk_list)
+        ]
         async with aiohttp.ClientSession(
             connector=aiohttp.TCPConnector(limit=30)
         ) as session:
