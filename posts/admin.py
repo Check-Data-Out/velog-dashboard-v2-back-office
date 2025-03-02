@@ -8,6 +8,7 @@ from posts.models import Post, PostDailyStatistics
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
     list_display = [
+        "id",
         "post_uuid",
         "user_link",
         "title",
