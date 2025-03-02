@@ -43,7 +43,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    group_ranges = split_range(args.min_group, args.max_group, 3)
+    group_ranges = split_range(args.min_group, args.max_group, 2)
     processes = []
     for group_range in group_ranges:
         p = multiprocessing.Process(target=run_scraper, args=(group_range,))

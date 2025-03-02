@@ -97,6 +97,12 @@ DATABASES = {
         "PASSWORD": env("POSTGRES_PASSWORD", default=""),
         "HOST": env("POSTGRES_HOST", default=""),
         "PORT": env("POSTGRES_PORT", default=""),
+        "CONN_MAX_AGE": 600,  # 10분 동안 연결 유지
+        "OPTIONS": {
+            "connect_timeout": 10,
+            "keepalives": 1,
+            "options": "-c statement_timeout=60000",
+        },
     }
 }
 
