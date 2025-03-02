@@ -39,12 +39,12 @@ class UserAdmin(admin.ModelAdmin):
         }
         return list_display
 
-    def get_queryset(self, request):
+    def get_queryset(self, request: HttpRequest):
         qs = super().get_queryset(request)
         return qs.annotate(post_count=Count("posts"))
 
     @admin.display(description="유저당 게시글 수")
-    def post_count(self, obj: QuerySet[User]):
+    def post_count(self, obj: User):
         return obj.post_count
 
     @admin.action(description="선택된 사용자를 비활성화")
