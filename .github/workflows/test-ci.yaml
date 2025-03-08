@@ -45,6 +45,16 @@ jobs:
           echo "SECRET_KEY=adsfgdsftrgdfsvdf" >> .env
           echo "DEBUG=True" >> .env
           echo "DATABASE_URL=sqlite:///db.sqlite3" >> .env
+          echo "AES_KEY_0=${{ secrets.AES_KEY_0 }}" >> .env
+          echo "AES_KEY_1=${{ secrets.AES_KEY_1 }}" >> .env
+          echo "AES_KEY_2=${{ secrets.AES_KEY_2 }}" >> .env
+          echo "AES_KEY_3=${{ secrets.AES_KEY_3 }}" >> .env
+          echo "AES_KEY_4=${{ secrets.AES_KEY_4 }}" >> .env
+          echo "AES_KEY_5=${{ secrets.AES_KEY_5 }}" >> .env
+          echo "AES_KEY_6=${{ secrets.AES_KEY_6 }}" >> .env
+          echo "AES_KEY_7=${{ secrets.AES_KEY_7 }}" >> .env
+          echo "AES_KEY_8=${{ secrets.AES_KEY_8 }}" >> .env
+          echo "AES_KEY_9=${{ secrets.AES_KEY_9 }}" >> .env
 
       - name: Run migrations
         run: poetry run python manage.py migrate
