@@ -69,7 +69,6 @@ class TestScraper:
         assert result is False
         mock_asave.assert_not_called()
 
-
     @patch("scraping.main.AESEncryption")
     @pytest.mark.asyncio
     async def test_update_old_tokens_expired_failure(self, mock_aes, scraper, user):
@@ -91,7 +90,9 @@ class TestScraper:
 
     @patch("scraping.main.AESEncryption")
     @pytest.mark.asyncio
-    async def test_update_old_tokens_with_mocked_decryption_failure(self, mock_aes, scraper, user):
+    async def test_update_old_tokens_with_mocked_decryption_failure(
+        self, mock_aes, scraper, user
+    ):
         """복호화가 제대로 되지 않았을 경우 업데이트 실패 테스트"""
         mock_encryption = mock_aes.return_value
         mock_encryption.decrypt.side_effect = lambda token: None
@@ -144,19 +145,49 @@ class TestScraper:
         assert result is False
         mock_bulk_create.assert_called()
 
-
-    @patch("scraping.main.sync_to_async", new_callable=MagicMock)
     @pytest.mark.asyncio
-    async def test_update_daily_statistics_success(self, mock_sync_to_async, scraper):
+    async def test_update_daily_statistics_success(self, scraper):
         """데일리 통계 업데이트 또는 생성 성공 테스트"""
         post_data = {"id": "post-123"}
         stats_data = {"data": {"getStats": {"total": 100}}, "likes": 5}
 
-        mock_sync_to_async.return_value = AsyncMock()
+        with patch(
+            "scraping.main.sync_to_async", new_callable=MagicMock
+        ) as mock_sync_to_async:
+            mock_async_func = AsyncMock()
+            mock_sync_to_async.return_value = mock_async_func
 
-        await scraper.update_daily_statistics(post_data, stats_data)
+            await scraper.update_daily_statistics(post_data, stats_data)
+
+            mock_sync_to_async.assert_called()
+            mock_async_func.assert_called_once()
+
+            for call_args in mock_sync_to_async.call_args_list:
+                args, kwargs = call_args
+
+                assert callable(args[0])
+
+                if kwargs:
+                    assert "post-123" in str(kwargs.get("post_data", ""))
+                    assert 100 in str(kwargs.get("stats_data", ""))
+
+    @patch("scraping.main.sync_to_async", new_callable=MagicMock)
+    @pytest.mark.asyncio
+    async def test_update_daily_statistics_exception(self, mock_sync_to_async, scraper):
+        """데일리 통계 업데이트 실패 테스트"""
+        post_data = {"id": "post-123"}
+        stats_data = {"data": {"getStats": {"total": 100}}, "likes": 5}
+
+        mock_async_func = AsyncMock(side_effect=Exception("Database error"))
+        mock_sync_to_async.return_value = mock_async_func
+
+        try:
+            await scraper.update_daily_statistics(post_data, stats_data)
+        except Exception:
+            pass
 
         mock_sync_to_async.assert_called()
+        mock_async_func.assert_called_once()
 
     @patch("scraping.main.fetch_post_stats")
     @pytest.mark.asyncio
@@ -171,6 +202,29 @@ class TestScraper:
         assert result is not None
         mock_fetch.assert_called()
         assert mock_fetch.call_count == 3
+
+        for call_args in mock_fetch.call_args_list:
+            args, kwargs = call_args
+            assert "post-123" in str(args) or "post-123" in str(kwargs)
+            assert (
+                "token-1" in str(args)
+                or "token-1" in str(kwargs)
+                or "token-2" in str(args)
+                or "token-2" in str(kwargs)
+            )
+
+    @patch("scraping.main.fetch_post_stats")
+    @pytest.mark.asyncio
+    async def test_fetch_post_stats_limited_max_retries(self, mock_fetch, scraper):
+        """최대 재시도 횟수 초과 테스트"""
+        mock_fetch.return_value = None
+
+        result = await scraper.fetch_post_stats_limited(
+            "post-123", "token-1", "token-2"
+        )
+
+        assert result is None
+        assert mock_fetch.call_count >= 3
 
     @patch("scraping.main.fetch_post_stats", new_callable=AsyncMock)
     @pytest.mark.asyncio
@@ -210,26 +264,35 @@ class TestScraper:
 
         mock_update_tokens.assert_called_once()
 
+    @patch("scraping.main.transaction.atomic")
     @pytest.mark.django_db(transaction=True)
-    async def test_process_user_failure_rollback(scraper, user):
+    async def test_process_user_failure_rollback(self, mock_atomic, scraper, user):
         """유저 데이터 처리 실패 시 롤백 확인 테스트"""
         mock_session = AsyncMock()
-    
-        with patch("myapp.scraper.fetch_velog_user_chk", side_effect=Exception("Failed to fetch user data")):
+        mock_atomic.side_effect = (
+            transaction.atomic
+        )  # 실제 트랜잭션을 패치한 형태로 유지
+
+        with patch(
+            "scraping.main.fetch_velog_user_chk",
+            side_effect=Exception("Failed to fetch user data"),
+        ):
             try:
-                async with transaction.atomic():
-                    await scraper.process_user(user, mock_session)
+                await scraper.process_user(user, mock_session)
             except Exception:
                 pass
 
-        assert not Post.objects.filter(user=user).exists()
+        assert Post.objects.filter(user=user).count() == 0
 
     @pytest.mark.django_db(transaction=True)
-    async def test_process_user_partial_failure_rollback(scraper, user):
+    async def test_process_user_partial_failure_rollback(self, scraper, user):
         """통계 업데이트 중 실패 시 롤백 확인 테스트"""
         mock_session = AsyncMock()
-    
-        with patch("myapp.scraper.fetch_post_stats_limited", side_effect=Exception("Faile to fetch post stats_limited failed")):
+
+        with patch(
+            "scraping.main.fetch_post_stats_limited",
+            side_effect=Exception("Failed to fetch post stats limited"),
+        ):
             try:
                 async with transaction.atomic():
                     await scraper.process_user(user, mock_session)
