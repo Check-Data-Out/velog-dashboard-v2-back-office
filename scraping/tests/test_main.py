@@ -47,6 +47,63 @@ class TestScraper:
         mock_asave.assert_called_once()
         assert user.access_token == "encrypted-new-access-token"
         assert user.refresh_token == "encrypted-new-refresh-token"
+        mock_encryption.decrypt.assert_any_call("encrypted-access-token")
+        mock_encryption.decrypt.assert_any_call("encrypted-refresh-token")
+
+    @patch("scraping.main.AESEncryption")
+    @pytest.mark.asyncio
+    async def test_update_old_tokens_no_change(self, mock_aes, scraper, user):
+        """토큰 업데이트 없음 테스트"""
+        mock_encryption = mock_aes.return_value
+        mock_encryption.decrypt.side_effect = lambda token: token
+        mock_encryption.encrypt.side_effect = lambda token: f"encrypted-{token}"
+
+        new_tokens = {
+            "access_token": "encrypted-access-token",
+            "refresh_token": "encrypted-refresh-token",
+        }
+
+        with patch.object(user, "asave", new_callable=AsyncMock) as mock_asave:
+            result = await scraper.update_old_tokens(user, mock_encryption, new_tokens)
+
+        assert result is False
+        mock_asave.assert_not_called()
+
+
+    @patch("scraping.main.AESEncryption")
+    @pytest.mark.asyncio
+    async def test_update_old_tokens_expired_failure(self, mock_aes, scraper, user):
+        """토큰이 만료되었을 때 업데이트 실패 테스트"""
+        mock_encryption = mock_aes.return_value
+        mock_encryption.decrypt.side_effect = lambda token: f"decrypted-{token}"
+        mock_encryption.encrypt.side_effect = lambda token: f"encrypted-{token}"
+
+        new_tokens = {
+            "access_token": "decrypted-encrypted-access-token",
+            "refresh_token": "decrypted-encrypted-refresh-token",
+        }
+
+        with patch.object(user, "asave", new_callable=AsyncMock) as mock_asave:
+            result = await scraper.update_old_tokens(user, mock_encryption, new_tokens)
+
+        assert result is False
+        mock_asave.assert_not_called()
+
+    @patch("scraping.main.AESEncryption")
+    @pytest.mark.asyncio
+    async def test_update_old_tokens_with_mocked_decryption_failure(self, mock_aes, scraper, user):
+        """복호화가 제대로 되지 않았을 경우 업데이트 실패 테스트"""
+        mock_encryption = mock_aes.return_value
+        mock_encryption.decrypt.side_effect = lambda token: None
+        mock_encryption.encrypt.side_effect = lambda token: f"encrypted-{token}"
+
+        new_tokens = {"access_token": "valid_token", "refresh_token": "valid_token"}
+
+        with patch.object(user, "asave", new_callable=AsyncMock) as mock_asave:
+            result = await scraper.update_old_tokens(user, mock_encryption, new_tokens)
+
+        assert result is False
+        mock_asave.assert_not_called()
 
     @patch("scraping.main.Post.objects.bulk_create", new_callable=AsyncMock)
     @pytest.mark.asyncio
@@ -67,6 +124,26 @@ class TestScraper:
         assert result is True
         mock_bulk_create.assert_called()
         assert mock_bulk_create.call_count == 5
+
+    @patch("scraping.main.Post.objects.bulk_create", side_effect=Exception("DB 에러"))
+    @pytest.mark.asyncio
+    async def test_bulk_insert_posts_failure(self, mock_bulk_create, scraper, user):
+        """Post 객체 배치 분할 삽입 실패 테스트"""
+        posts_data = [
+            {
+                "id": f"post-{i}",
+                "title": f"Title {i}",
+                "url_slug": f"slug-{i}",
+                "released_at": "2025-03-07",
+            }
+            for i in range(10)
+        ]
+
+        result = await scraper.bulk_insert_posts(user, posts_data, batch_size=5)
+
+        assert result is False
+        mock_bulk_create.assert_called()
+
 
     @patch("scraping.main.sync_to_async", new_callable=MagicMock)
     @pytest.mark.asyncio
@@ -95,6 +172,19 @@ class TestScraper:
         mock_fetch.assert_called()
         assert mock_fetch.call_count == 3
 
+    @patch("scraping.main.fetch_post_stats", new_callable=AsyncMock)
+    @pytest.mark.asyncio
+    async def test_fetch_post_stats_limited_failure(self, mock_fetch, scraper):
+        """fetch_post_stats 실패 테스트"""
+        mock_fetch.side_effect = [None, None, None]
+
+        result = await scraper.fetch_post_stats_limited(
+            "post-123", "token-1", "token-2"
+        )
+
+        assert result is None
+        assert mock_fetch.call_count == 3
+
     @patch("scraping.main.fetch_velog_user_chk")
     @patch("scraping.main.fetch_all_velog_posts")
     @patch("scraping.main.AESEncryption")
@@ -119,3 +209,32 @@ class TestScraper:
             await scraper.process_user(user, MagicMock())
 
         mock_update_tokens.assert_called_once()
+
+    @pytest.mark.django_db(transaction=True)
+    async def test_process_user_failure_rollback(scraper, user):
+        """유저 데이터 처리 실패 시 롤백 확인 테스트"""
+        mock_session = AsyncMock()
+    
+        with patch("myapp.scraper.fetch_velog_user_chk", side_effect=Exception("Failed to fetch user data")):
+            try:
+                async with transaction.atomic():
+                    await scraper.process_user(user, mock_session)
+            except Exception:
+                pass
+
+        assert not Post.objects.filter(user=user).exists()
+
+    @pytest.mark.django_db(transaction=True)
+    async def test_process_user_partial_failure_rollback(scraper, user):
+        """통계 업데이트 중 실패 시 롤백 확인 테스트"""
+        mock_session = AsyncMock()
+    
+        with patch("myapp.scraper.fetch_post_stats_limited", side_effect=Exception("Faile to fetch post stats_limited failed")):
+            try:
+                async with transaction.atomic():
+                    await scraper.process_user(user, mock_session)
+            except Exception:
+                pass
+
+        assert Post.objects.filter(user=user).exists()
+        assert not any(post.statistics for post in Post.objects.filter(user=user))
