@@ -1,9 +1,11 @@
 from unittest.mock import AsyncMock, MagicMock, patch
+from django.db import transaction
 
 import pytest
 import uuid
 
 from users.models import User
+from posts.models import Post
 from scraping.main import Scraper
 
 
@@ -27,8 +29,8 @@ class TestScraper:
 
     @patch("scraping.main.AESEncryption")
     @pytest.mark.asyncio
-    async def test_update_old_tokens(self, mock_aes, scraper, user):
-        """토큰 만료로 인한 토큰 업데이트 테스트"""
+    async def test_update_old_tokens_success(self, mock_aes, scraper, user):
+        """토큰 업데이트 성공 테스트"""
         mock_encryption = mock_aes.return_value
         mock_encryption.decrypt.side_effect = lambda token: f"decrypted-{token}"
         mock_encryption.encrypt.side_effect = lambda token: f"encrypted-{token}"
@@ -48,8 +50,8 @@ class TestScraper:
 
     @patch("scraping.main.Post.objects.bulk_create", new_callable=AsyncMock)
     @pytest.mark.asyncio
-    async def test_bulk_insert_posts(self, mock_bulk_create, scraper, user):
-        """Post 객체를 일정 크기의 배치로 나눠서 삽입 테스트"""
+    async def test_bulk_insert_posts_success(self, mock_bulk_create, scraper, user):
+        """Post 객체 배치 분할 삽입 성공 테스트"""
         posts_data = [
             {
                 "id": f"post-{i}",
@@ -68,8 +70,8 @@ class TestScraper:
 
     @patch("scraping.main.sync_to_async", new_callable=MagicMock)
     @pytest.mark.asyncio
-    async def test_update_daily_statistics(self, mock_sync_to_async, scraper):
-        """PostDailyStatistics 업데이트 또는 생성 테스트"""
+    async def test_update_daily_statistics_success(self, mock_sync_to_async, scraper):
+        """데일리 통계 업데이트 또는 생성 성공 테스트"""
         post_data = {"id": "post-123"}
         stats_data = {"data": {"getStats": {"total": 100}}, "likes": 5}
 
@@ -81,8 +83,8 @@ class TestScraper:
 
     @patch("scraping.main.fetch_post_stats")
     @pytest.mark.asyncio
-    async def test_fetch_post_stats_limited(self, mock_fetch, scraper):
-        """세마포어를 적용한 fetch_post_stats + 엄격한 재시도 로직 추가 테스트"""
+    async def test_fetch_post_stats_limited_success(self, mock_fetch, scraper):
+        """fetch_post_stats 성공 테스트"""
         mock_fetch.side_effect = [None, None, {"data": {"getStats": {"total": 100}}}]
 
         result = await scraper.fetch_post_stats_limited(
@@ -97,10 +99,10 @@ class TestScraper:
     @patch("scraping.main.fetch_all_velog_posts")
     @patch("scraping.main.AESEncryption")
     @pytest.mark.asyncio
-    async def test_process_user(
+    async def test_process_user_success(
         self, mock_aes, mock_fetch_posts, mock_fetch_user_chk, scraper, user
     ):
-        """scraping 메인 비즈니스로직, 유저 데이터를 전체 처리 테스트"""
+        """유저 데이터 전체 처리 성공 테스트"""
         mock_encryption = mock_aes.return_value
         mock_encryption.decrypt.side_effect = lambda token: f"decrypted-{token}"
         mock_encryption.encrypt.side_effect = lambda token: f"encrypted-{token}"
