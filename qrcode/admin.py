@@ -15,8 +15,8 @@ class QRLoginTokenAdmin(admin.ModelAdmin):
         "user_agent",
     )
     list_filter = ("is_used", "expires_at", "user")
-    search_fields = ("token", "user__username", "ip_address")
-    ordering = ("-created_at",)
+    search_fields = ("token", "ip_address")
+    ordering = ("-id",)
     readonly_fields = ("token", "created_at")
     actions = ["make_used", "make_unused"]
 
