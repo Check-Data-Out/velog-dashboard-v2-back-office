@@ -1,9 +1,8 @@
 from django.contrib.auth import get_user_model
 from django.db import models
 
+from users.models import User;
 from common.models import TimeStampedModel
-
-User = get_user_model()
 
 
 class QRLoginToken(TimeStampedModel):
@@ -14,12 +13,12 @@ class QRLoginToken(TimeStampedModel):
     )
     user = models.ForeignKey(
         User,
-        on_delete=models.SET_NULL,
+        on_delete=models.CASCADE,
         null=True,
         verbose_name="로그인 요청한 사용자"
     )
     expires_at = models.DateTimeField(
-        verbose_name="QR Code 유효 기간(기본값 5분 후)"
+        help_text="QR Code 유효 기간(기본값 5분 후)"
     )
     is_used = models.BooleanField(
         default=False,
@@ -43,7 +42,6 @@ class QRLoginToken(TimeStampedModel):
         verbose_name_plural = "QR 로그인 토큰 목록"
         indexes = [
             models.Index(fields=["token"]),
-            models.Index(fields=["expires_at"]),
         ]
     
     def __str__(self):

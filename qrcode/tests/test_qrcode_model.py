@@ -1,17 +1,26 @@
 import pytest
+import uuid
+
 from django.contrib.admin.sites import AdminSite
-from django.contrib.auth import get_user_model
 from django.utils.timezone import now, timedelta
 
+from users.models import User
 from qrcode.models import QRLoginToken
 from qrcode.admin import QRLoginTokenAdmin
-
-User = get_user_model()
 
 
 @pytest.fixture
 def user(db):
-    return User.objects.create_user(username="testuser", password="test1234")
+    """테스트용 User 객체 생성"""
+    return User.objects.create(
+        velog_uuid=uuid.uuid4(),
+        access_token="encrypted-access-token",
+        refresh_token="encrypted-refresh-token",
+        group_id=1,
+        email="test@example.com",
+        is_active=True,
+    )
+
 
 
 @pytest.fixture
@@ -82,12 +91,12 @@ def test_admin_list_filter(qr_admin):
 
 @pytest.mark.django_db
 def test_admin_search_fields(qr_admin):
-    assert qr_admin.search_fields == ("token", "user__username", "ip_address")
+    assert qr_admin.search_fields == ("token", "ip_address")
 
 
 @pytest.mark.django_db
 def test_admin_ordering(qr_admin):
-    assert qr_admin.ordering == ("-created_at",)
+    assert qr_admin.ordering == ("-id",)
 
 
 @pytest.mark.django_db
