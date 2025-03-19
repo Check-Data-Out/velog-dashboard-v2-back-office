@@ -16,9 +16,24 @@ class TestUserAdmin:
             "group_id",
             "is_active",
             "created_at",
+            "get_qr_login_token",
         ]
         assert all(field in list_display for field in expected_fields)
 
+    def test_get_qr_login_token(self, user_admin, user, qr_login_token):
+        user.qr_login_token = qr_login_token
+        user.save()
+
+        result = user_admin.get_qr_login_token(user)
+        assert result == qr_login_token.token
+
+    def test_get_qr_login_token_none(self, user_admin, user):
+        user.qr_login_token = None
+        user.save()
+
+        result = user_admin.get_qr_login_token(user)
+        assert result == "-"
+        
     @patch("users.admin.logger.info")
     def test_make_inactive(
         self, mock_logger, user_admin, user, request_with_messages
