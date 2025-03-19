@@ -6,7 +6,7 @@ from django.db.models import Count, QuerySet
 from django.http import HttpRequest
 
 from scraping.main import ScraperTargetUser
-from users.models import User
+from users.models import User, QRLoginToken
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,7 @@ class UserAdmin(admin.ModelAdmin):
         "is_active",
         "created_at",
         "post_count",
+        "get_qr_login_token",
     ]
 
     empty_value_display = "-"
@@ -38,6 +39,12 @@ class UserAdmin(admin.ModelAdmin):
             "created_at": "생성일",
         }
         return list_display
+
+    def get_qr_login_token(self, obj: User):
+        """사용자의 QR 로그인 토큰을 반환"""
+        return obj.qr_login_token.token if obj.qr_login_token else "-"
+
+    get_qr_login_token.short_description = "QR 로그인 토큰"
 
     def get_queryset(self, request: HttpRequest):
         qs = super().get_queryset(request)

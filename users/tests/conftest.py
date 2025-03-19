@@ -6,9 +6,11 @@ from django.contrib.auth.models import User as DjangoUser
 from django.contrib.messages.storage.fallback import FallbackStorage
 from django.http import HttpRequest
 from django.test import Client
+from django.utils.timezone import now
+from datetime import timedelta
 
 from users.admin import UserAdmin
-from users.models import User
+from users.models import User, QRLoginToken
 
 
 @pytest.fixture
@@ -61,3 +63,13 @@ def request_with_messages(db_admin_user):
     messages_storage = FallbackStorage(request)
     setattr(request, "_messages", messages_storage)
     return request
+
+
+@pytest.fixture
+def qr_login_token(db, user):
+    return QRLoginToken.objects.create(
+        token="test_token",
+        user=user,
+        expires_at=now() + timedelta(minutes=5),
+        is_used=False
+    )
