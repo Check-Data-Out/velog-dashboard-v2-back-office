@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils.timezone import now
 
 from common.models import TimeStampedModel
 from utils.utils import generate_random_group_id
@@ -65,12 +66,6 @@ class QRLoginToken(models.Model):
         unique=True,
         verbose_name="로그인용 QR 토큰"
     )
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        null=True,
-        verbose_name="로그인 요청한 사용자"
-    )
     expires_at = models.DateTimeField(
         help_text="QR Code 유효 기간(기본값 5분 후)"
     )
@@ -99,9 +94,8 @@ class QRLoginToken(models.Model):
         ]
     
     def __str__(self):
-        return f"QR 로그인 토큰({self.token}) - {self.user.username if self.user else 'Anonymous'}"
+        return f"QR 로그인 토큰({self.token}) - {self.user.email if self.user else 'Anonymous'}"
 
     def is_valid(self):
         """QR 코드가 유효한지 확인"""
-        from django.utils.timezone import now
         return not self.is_used and self.expires_at > now()
