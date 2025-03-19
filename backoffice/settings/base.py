@@ -51,7 +51,6 @@ INSTALLED_APPS = [
     "users",
     "posts",
     "noti",  # 공지와 알림 관련 도메인
-    "qrcode",  # QR코드 관련 도메인
 ]
 
 MIDDLEWARE = [
