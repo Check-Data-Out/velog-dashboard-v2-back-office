@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 from django.utils.timezone import now
 
 from common.models import TimeStampedModel
@@ -32,14 +33,6 @@ class User(TimeStampedModel):
     is_active = models.BooleanField(
         default=True, null=False, verbose_name="활성 여부"
     )
-    qr_login_token = models.OneToOneField(
-        "users.QRLoginToken",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="user_qr_token",
-        verbose_name="QR 로그인 토큰"
-    )
 
     def __str__(self) -> str:
         return f"{self.velog_uuid}"
@@ -60,13 +53,24 @@ class User(TimeStampedModel):
 
 
 
+def default_expires_at():
+    return now() + timezone.timedelta(minutes=5)
+
 class QRLoginToken(models.Model):
     token = models.CharField(
         max_length=10,
         unique=True,
         verbose_name="로그인용 QR 토큰"
     )
+    user = models.ForeignKey(
+        "users.User",
+        on_delete=models.CASCADE,
+        related_name="qr_login_tokens",
+        verbose_name="로그인 요청한 사용자",
+        null=False,
+    )
     expires_at = models.DateTimeField(
+        default=default_expires_at,
         help_text="QR Code 유효 기간(기본값 5분 후)"
     )
     is_used = models.BooleanField(

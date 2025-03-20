@@ -66,9 +66,10 @@ def request_with_messages(db_admin_user):
 
 
 @pytest.fixture
-def qr_login_token(db):
+def qr_login_token(db, user):
     return QRLoginToken.objects.create(
         token="test_token",
+        user=user,
         expires_at=now() + timedelta(minutes=5),
         is_used=False
     )
