@@ -22,6 +22,8 @@ class UserAdmin(admin.ModelAdmin):
         "created_at",
         "post_count",
         "get_qr_login_token",
+        "get_qr_expires_at",
+        "get_qr_is_used",
     ]
 
     empty_value_display = "-"
@@ -41,10 +43,25 @@ class UserAdmin(admin.ModelAdmin):
         return list_display
 
     def get_qr_login_token(self, obj: User):
-        """사용자의 QR 로그인 토큰을 반환"""
-        return obj.qr_login_token.token if obj.qr_login_token else "-"
+        """사용자의 최신 QR 로그인 토큰 값"""
+        latest_token = obj.qr_login_tokens.order_by("-expires_at").first()
+        return latest_token.token if latest_token else "-"
 
-    get_qr_login_token.short_description = "QR 로그인 토큰"
+    get_qr_login_token.short_description = "QR 토큰"
+
+    def get_qr_expires_at(self, obj: User):
+        """사용자의 최신 QR 로그인 토큰 만료 시간"""
+        latest_token = obj.qr_login_tokens.order_by("-expires_at").first()
+        return latest_token.expires_at if latest_token else "-"
+
+    get_qr_expires_at.short_description = "QR 만료 시간"
+
+    def get_qr_is_used(self, obj: User):
+        """사용자의 최신 QR 로그인 토큰 사용 여부"""
+        latest_token = obj.qr_login_tokens.order_by("-expires_at").first()
+        return "사용" if latest_token and latest_token.is_used else "미사용"
+
+    get_qr_is_used.short_description = "QR 사용 여부"
 
     def get_queryset(self, request: HttpRequest):
         qs = super().get_queryset(request)
