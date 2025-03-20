@@ -6,7 +6,7 @@ from django.db.models import Count, QuerySet
 from django.http import HttpRequest
 
 from scraping.main import ScraperTargetUser
-from users.models import User, QRLoginToken
+from users.models import User
 
 logger = logging.getLogger(__name__)
 
