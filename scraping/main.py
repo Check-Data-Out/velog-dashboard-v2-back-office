@@ -39,7 +39,7 @@ class Scraper:
 
         if current_access_token is None or current_refresh_token is None:
             return False
-    
+
         try:
             # 복호화된 토큰과 새 토큰을 비교
             if new_user_cookies["access_token"] != current_access_token:

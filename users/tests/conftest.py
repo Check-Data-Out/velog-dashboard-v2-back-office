@@ -1,4 +1,5 @@
 import uuid
+from datetime import timedelta
 
 import pytest
 from django.contrib.admin.sites import AdminSite
@@ -7,10 +8,9 @@ from django.contrib.messages.storage.fallback import FallbackStorage
 from django.http import HttpRequest
 from django.test import Client
 from django.utils.timezone import now
-from datetime import timedelta
 
 from users.admin import UserAdmin
-from users.models import User, QRLoginToken
+from users.models import QRLoginToken, User
 
 
 @pytest.fixture
@@ -71,5 +71,5 @@ def qr_login_token(db, user):
         token="test_token",
         user=user,
         expires_at=now() + timedelta(minutes=5),
-        is_used=False
+        is_used=False,
     )

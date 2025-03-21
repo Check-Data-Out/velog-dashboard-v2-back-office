@@ -46,7 +46,7 @@ class TestUserAdmin:
         user.qr_login_tokens.add(qr_login_token)
         result = user_admin.get_qr_is_used(user)
         assert "사용" in result
-        
+
     @patch("users.admin.logger.info")
     def test_make_inactive(
         self, mock_logger, user_admin, user, request_with_messages
