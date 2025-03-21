@@ -5,15 +5,19 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('users', '0006_alter_qrlogintoken_expires_at'),
+        ("users", "0006_alter_qrlogintoken_expires_at"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='qrlogintoken',
-            name='user',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='qr_login_tokens', to='users.user', verbose_name='로그인 요청한 사용자'),
+            model_name="qrlogintoken",
+            name="user",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="qr_login_tokens",
+                to="users.user",
+                verbose_name="로그인 요청한 사용자",
+            ),
         ),
     ]

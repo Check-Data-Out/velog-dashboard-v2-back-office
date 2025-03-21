@@ -4,14 +4,13 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('users', '0003_qrlogintoken_user_qr_login_token_and_more'),
+        ("users", "0003_qrlogintoken_user_qr_login_token_and_more"),
     ]
 
     operations = [
         migrations.RemoveField(
-            model_name='qrlogintoken',
-            name='user',
+            model_name="qrlogintoken",
+            name="user",
         ),
     ]

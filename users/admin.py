@@ -6,7 +6,7 @@ from django.db.models import Count, QuerySet
 from django.http import HttpRequest
 
 from scraping.main import ScraperTargetUser
-from users.models import User
+from users.models import QRLoginToken, User
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,9 @@ class UserAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request: HttpRequest):
         qs = super().get_queryset(request)
-        return qs.annotate(post_count=Count("posts"))
+        return qs.annotate(post_count=Count("posts")).prefetch_related(
+            "qr_login_tokens"
+        )
 
     @admin.display(description="유저당 게시글 수")
     def post_count(self, obj: User):
@@ -114,3 +116,33 @@ class UserAdmin(admin.ModelAdmin):
             f"{len(user_pk_list)} 명의 사용자 통계를 실시간 업데이트 성공했습니다.",
             messages.SUCCESS,
         )
+
+
+@admin.register(QRLoginToken)
+class QRLoginTokenAdmin(admin.ModelAdmin):
+    list_display = (
+        "token",
+        "user",
+        "created_at",
+        "expires_at",
+        "is_used",
+        "ip_address",
+        "user_agent",
+    )
+    list_filter = ("is_used", "expires_at", "user")
+    search_fields = ("token", "ip_address")
+    ordering = ("-id",)
+    readonly_fields = ("token", "created_at")
+    actions = ["make_used", "make_unused"]
+
+    def make_used(self, request, queryset):
+        """선택한 QR 로그인 토큰을 '사용됨' 상태로 변경"""
+        queryset.update(is_used=True)
+
+    make_used.short_description = "선택된 QR 로그인 토큰을 사용 처리"
+
+    def make_unused(self, request, queryset):
+        """선택한 QR 로그인 토큰을 '미사용' 상태로 변경"""
+        queryset.update(is_used=False)
+
+    make_unused.short_description = "선택된 QR 로그인 토큰을 미사용 처리"

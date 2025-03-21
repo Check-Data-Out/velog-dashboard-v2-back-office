@@ -52,15 +52,13 @@ class User(TimeStampedModel):
         verbose_name_plural = "사용자 목록"
 
 
-
-def default_expires_at():
+def default_expires_at() -> timezone.datetime:
     return now() + timezone.timedelta(minutes=5)
+
 
 class QRLoginToken(models.Model):
     token = models.CharField(
-        max_length=10,
-        unique=True,
-        verbose_name="로그인용 QR 토큰"
+        max_length=10, unique=True, verbose_name="로그인용 QR 토큰"
     )
     user = models.ForeignKey(
         "users.User",
@@ -69,25 +67,24 @@ class QRLoginToken(models.Model):
         verbose_name="로그인 요청한 사용자",
         null=False,
     )
+    created_at = models.DateTimeField(
+        default=now,
+        help_text="QR Code 생성 일시",
+    )
     expires_at = models.DateTimeField(
         default=default_expires_at,
-        help_text="QR Code 유효 기간(기본값 5분 후)"
+        help_text="QR Code 유효 기간을 의미합니다. 기본값으로  5분 후 시간으로 자동 설정 됩니다.",
+        verbose_name="QR Code 유효 기간",
     )
-    is_used = models.BooleanField(
-        default=False,
-        verbose_name="사용 여부"
-    )
+    is_used = models.BooleanField(default=False, verbose_name="사용 여부")
     ip_address = models.CharField(
-        max_length=45,
-        null=True,
-        blank=True,
-        verbose_name="요청한 IP 주소"
+        max_length=45, null=True, blank=True, verbose_name="요청한 IP 주소"
     )
     user_agent = models.CharField(
         max_length=255,
         null=True,
         blank=True,
-        verbose_name="요청한 디바이스 정보"
+        verbose_name="요청한 디바이스 정보",
     )
 
     class Meta:
@@ -96,10 +93,10 @@ class QRLoginToken(models.Model):
         indexes = [
             models.Index(fields=["token"]),
         ]
-    
-    def __str__(self):
+
+    def __str__(self) -> str:
         return f"QR 로그인 토큰({self.token}) - {self.user.email if self.user else 'Anonymous'}"
 
-    def is_valid(self):
+    def is_valid(self) -> bool:
         """QR 코드가 유효한지 확인"""
         return not self.is_used and self.expires_at > now()
