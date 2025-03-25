@@ -44,21 +44,27 @@ class UserAdmin(admin.ModelAdmin):
 
     def get_qr_login_token(self, obj: User):
         """사용자의 최신 QR 로그인 토큰 값"""
-        latest_token = obj.qr_login_tokens.order_by("-expires_at").first()
+        latest_token = next(
+            (token for token in obj.qr_login_tokens.all()), None
+        )
         return latest_token.token if latest_token else "-"
 
     get_qr_login_token.short_description = "QR 토큰"
 
     def get_qr_expires_at(self, obj: User):
         """사용자의 최신 QR 로그인 토큰 만료 시간"""
-        latest_token = obj.qr_login_tokens.order_by("-expires_at").first()
+        latest_token = next(
+            (token for token in obj.qr_login_tokens.all()), None
+        )
         return latest_token.expires_at if latest_token else "-"
 
     get_qr_expires_at.short_description = "QR 만료 시간"
 
     def get_qr_is_used(self, obj: User):
         """사용자의 최신 QR 로그인 토큰 사용 여부"""
-        latest_token = obj.qr_login_tokens.order_by("-expires_at").first()
+        latest_token = next(
+            (token for token in obj.qr_login_tokens.all()), None
+        )
         return "사용" if latest_token and latest_token.is_used else "미사용"
 
     get_qr_is_used.short_description = "QR 사용 여부"

@@ -104,3 +104,24 @@ def test_admin_ordering(qr_admin):
 @pytest.mark.django_db
 def test_admin_readonly_fields(qr_admin):
     assert qr_admin.readonly_fields == ("token", "created_at")
+
+@pytest.mark.django_db
+def test_qr_login_token_n_plus_one(user, django_assert_num_queries):
+    """QRLoginToken 조회 시 N+1 문제가 없는지 테스트"""
+
+    QRLoginToken.objects.bulk_create(
+        [
+            QRLoginToken(
+                token=f"TOKEN{i}",
+                user=user,
+                expires_at=now() + timedelta(minutes=5),
+                is_used=False,
+            )
+            for i in range(5)
+        ]
+    )
+
+    with django_assert_num_queries(1):
+        tokens = list(user.qr_login_tokens.all())
+
+    assert len(tokens) == 5
