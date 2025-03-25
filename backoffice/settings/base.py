@@ -14,6 +14,12 @@ import os
 from pathlib import Path
 
 import environ
+import sentry_sdk
+
+sentry_sdk.init(
+    dsn="https://81164210a1ab6e6c0cf4c413bd425dfb@o4508435129171968.ingest.us.sentry.io/4508979153469440",
+    send_default_pii=True,
+)
 
 env = environ.Env()
 

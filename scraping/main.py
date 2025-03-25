@@ -4,6 +4,8 @@ import logging
 import aiohttp
 import async_timeout
 import environ
+import sentry_sdk
+
 from asgiref.sync import sync_to_async
 from django.db import transaction
 
@@ -68,6 +70,7 @@ class Scraper:
                 f"Failed to update tokens: {e}"
                 f"(user velog uuid: {user.velog_uuid})"
             )
+            sentry_sdk.capture_exception(e)
         return False
 
     async def bulk_insert_posts(
@@ -110,6 +113,7 @@ class Scraper:
                 f"Failed to bulk create posts. {e}"
                 f" (user velog uuid: {user.velog_uuid})"
             )
+            sentry_sdk.capture_exception(e)
             return False
 
     async def update_daily_statistics(
@@ -171,6 +175,7 @@ class Scraper:
                             )
                     except Post.DoesNotExist:
                         logger.warning(f"Post not found: {post_id}")
+                        sentry_sdk.capture_exception(e)
                         return
 
             await update_stats_in_transaction()
@@ -179,6 +184,7 @@ class Scraper:
             logger.error(
                 f"Failed to update daily statistics for post {post['id']}: {str(e)}"
             )
+            sentry_sdk.capture_exception(e)
             return
 
     async def fetch_post_stats_limited(
@@ -207,16 +213,19 @@ class Scraper:
                         f"Network error fetching post stats (attempt {attempt+1}/3): {e}, "
                         f"post_id >> {post_id}"
                     )
-                except asyncio.TimeoutError:
+                    sentry_sdk.capture_exception(e)
+                except asyncio.TimeoutError as e:
                     logger.warning(
                         f"Timeout fetching post stats (attempt {attempt+1}/3), "
                         f"post_id >> {post_id}"
                     )
+                    sentry_sdk.capture_exception(e)
                 except Exception as e:
                     logger.warning(
                         f"Unexpected error fetching post stats (attempt {attempt+1}/3): {e}, {e.__class__}, "
                         f"post_id >> {post_id}"
                     )
+                    sentry_sdk.capture_exception(e)
                 await asyncio.sleep(2)  # 재시도 전에 대기
             return None  # 최종적으로 실패한 경우
 
