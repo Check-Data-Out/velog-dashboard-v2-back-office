@@ -173,7 +173,7 @@ class Scraper:
                                     "updated_at",
                                 ]
                             )
-                    except Post.DoesNotExist:
+                    except Post.DoesNotExist as e:
                         logger.warning(f"Post not found: {post_id}")
                         sentry_sdk.capture_exception(e)
                         return
