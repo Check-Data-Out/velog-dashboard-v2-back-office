@@ -4,7 +4,7 @@ import pytest
 from django.contrib.admin.sites import AdminSite
 from django.utils.timezone import now, timedelta
 
-from users.admin import QRLoginTokenAdmin
+from users.admin import UserAdmin, QRLoginTokenAdmin
 from users.models import QRLoginToken, User
 
 
@@ -106,7 +106,7 @@ def test_admin_readonly_fields(qr_admin):
     assert qr_admin.readonly_fields == ("token", "created_at")
 
 @pytest.mark.django_db
-def test_qr_login_token_n_plus_one(user, django_assert_num_queries):
+def test_qr_login_token_n_plus_one(django_assert_num_queries, user):
     """QRLoginToken 조회 시 N+1 문제가 없는지 테스트"""
 
     QRLoginToken.objects.bulk_create(
@@ -121,7 +121,13 @@ def test_qr_login_token_n_plus_one(user, django_assert_num_queries):
         ]
     )
 
-    with django_assert_num_queries(1):
-        tokens = list(user.qr_login_tokens.all())
+    admin_site = AdminSite()
+    user_admin = UserAdmin(User, admin_site)
 
-    assert len(tokens) == 5
+    with django_assert_num_queries(2):
+        qs = user_admin.get_queryset(None)
+        users = list(qs)
+
+        assert hasattr(users[0], "prefetched_qr_tokens")
+
+    assert len(users[0].prefetched_qr_tokens) == 5

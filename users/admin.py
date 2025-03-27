@@ -2,7 +2,7 @@ import logging
 
 from asgiref.sync import async_to_sync
 from django.contrib import admin, messages
-from django.db.models import Count, QuerySet
+from django.db.models import Count, QuerySet, Prefetch
 from django.http import HttpRequest
 
 from scraping.main import ScraperTargetUser
@@ -42,11 +42,20 @@ class UserAdmin(admin.ModelAdmin):
         }
         return list_display
 
-    def _get_latest_token(self, obj: User):
-        """사용자의 최신 QR 로그인 토큰 조회"""
-        return next(
-            (token for token in obj.qr_login_tokens.all()), None
+    def get_queryset(self, request: HttpRequest):
+        qs = super().get_queryset(request).annotate(post_count=Count("posts"))
+
+        latest_qr_token_prefetch = Prefetch(
+            "qr_login_tokens",
+            queryset=QRLoginToken.objects.order_by("-created_at"),
+            to_attr="prefetched_qr_tokens"
         )
+                
+        return qs.prefetch_related(latest_qr_token_prefetch)
+    
+    def _get_latest_token(self, obj: User):
+        """사용자의 최신 QR 로그인 토큰을 prefetch 된 데이터에서 가져오기"""
+        return obj.prefetched_qr_tokens[0] if obj.prefetched_qr_tokens else None
 
     def get_qr_login_token(self, obj: User):
         """사용자의 최신 QR 로그인 토큰 값"""
@@ -68,12 +77,6 @@ class UserAdmin(admin.ModelAdmin):
         return "사용" if latest_token and latest_token.is_used else "미사용"
 
     get_qr_is_used.short_description = "QR 사용 여부"
-
-    def get_queryset(self, request: HttpRequest):
-        qs = super().get_queryset(request)
-        return qs.annotate(post_count=Count("posts")).prefetch_related(
-            "qr_login_tokens"
-        )
 
     @admin.display(description="유저당 게시글 수")
     def post_count(self, obj: User):
