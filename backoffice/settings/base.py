@@ -15,11 +15,8 @@ from pathlib import Path
 
 import environ
 import sentry_sdk
-
-sentry_sdk.init(
-    dsn="https://81164210a1ab6e6c0cf4c413bd425dfb@o4508435129171968.ingest.us.sentry.io/4508979153469440",
-    send_default_pii=True,
-)
+from sentry_sdk.integrations.django import DjangoIntegration
+# from sentry_sdk.integrations.celery import CeleryIntegration
 
 env = environ.Env()
 
@@ -27,6 +24,24 @@ env = environ.Env()
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
+
+SENTRY_DSN = env(
+    "SENTRY_DSN", default=""
+)  # 문자열이 없을 경우 기본값 빈 문자열
+SENTRY_ENVIRONMENT = env("SENTRY_ENVIRONMENT", default="prod")
+DJANGO_ENV = env("DJANGO_ENV", default="prod")
+SENTRY_TRACES_SAMPLE_RATE = env.float("SENTRY_TRACES_SAMPLE_RATE", default=1.0)
+
+sentry_sdk.init(
+    dsn=SENTRY_DSN,
+    integrations=[
+        DjangoIntegration(),
+        # CeleryIntegration(),
+    ],
+    send_default_pii=True,
+    environment=SENTRY_ENVIRONMENT,
+    traces_sample_rate=SENTRY_TRACES_SAMPLE_RATE,
+)
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
