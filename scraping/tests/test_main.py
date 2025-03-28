@@ -192,10 +192,19 @@ class TestScraper:
 
     @pytest.mark.asyncio
     @pytest.mark.django_db
-    async def test_upsert_batch_creates_and_updates(scraper, user):
+    async def test_upsert_batch_creates_and_updates(self, scraper):
         """
         _upsert_batch 메서드가 기존 게시물을 업데이트하고, 신규 게시물을 생성하는지 검증합니다.
         """
+        test_user = await sync_to_async(User.objects.create)(
+            velog_uuid=uuid.uuid4(),
+            access_token="test-access-token",
+            refresh_token="test-refresh-token",
+            group_id=1,
+            email="test@example.com",
+            is_active=True,
+        )
+
         # 기존 게시물 생성 (sync_to_async로 감싸줌)
         existing_post_uuid = str(uuid.uuid4())
         original_title = "Original Title"
@@ -204,7 +213,7 @@ class TestScraper:
         await sync_to_async(Post.objects.create)(
             post_uuid=existing_post_uuid,
             title=original_title,
-            user=user,
+            user=test_user,
             slug=original_slug,
             released_at=original_time,
         )
@@ -235,7 +244,7 @@ class TestScraper:
         ]
 
         # _upsert_batch 호출
-        await scraper._upsert_batch(user, batch_posts)
+        await scraper._upsert_batch(test_user, batch_posts)
 
         # 기존 게시물 업데이트 확인 (sync_to_async 사용)
         updated_post = await sync_to_async(Post.objects.get)(
@@ -252,7 +261,10 @@ class TestScraper:
         assert new_post.title == new_title
         assert new_post.slug == new_slug
         assert new_post.released_at == new_time
-        assert new_post.user == user
+
+        # user 관계 필드를 직접 비교하지 말고 ID로 비교
+        new_post_user_id = await sync_to_async(lambda: new_post.user_id)()
+        assert new_post_user_id == test_user.id
 
     @pytest.mark.asyncio
     async def test_update_daily_statistics_success(self, scraper):
