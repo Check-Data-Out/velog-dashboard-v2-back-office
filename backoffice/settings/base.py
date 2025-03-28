@@ -16,7 +16,6 @@ from pathlib import Path
 import environ
 import sentry_sdk
 from sentry_sdk.integrations.django import DjangoIntegration
-# from sentry_sdk.integrations.celery import CeleryIntegration
 
 env = environ.Env()
 
@@ -27,7 +26,7 @@ environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
 
 SENTRY_DSN = env(
     "SENTRY_DSN", default=""
-)  # 문자열이 없을 경우 기본값 빈 문자열
+)
 SENTRY_ENVIRONMENT = env("SENTRY_ENVIRONMENT", default="prod")
 DJANGO_ENV = env("DJANGO_ENV", default="prod")
 SENTRY_TRACES_SAMPLE_RATE = env.float("SENTRY_TRACES_SAMPLE_RATE", default=1.0)
@@ -36,7 +35,6 @@ sentry_sdk.init(
     dsn=SENTRY_DSN,
     integrations=[
         DjangoIntegration(),
-        # CeleryIntegration(),
     ],
     send_default_pii=True,
     environment=SENTRY_ENVIRONMENT,
