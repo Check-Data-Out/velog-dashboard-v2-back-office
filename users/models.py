@@ -56,7 +56,7 @@ def default_expires_at() -> timezone.datetime:
     return now() + timezone.timedelta(minutes=5)
 
 
-class QRLoginToken(models.Model):
+class QRLoginToken(models.Model):  # type: ignore
     token = models.CharField(
         max_length=10, unique=True, verbose_name="로그인용 QR 토큰"
     )

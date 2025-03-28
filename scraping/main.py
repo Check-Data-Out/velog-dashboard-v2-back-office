@@ -70,47 +70,72 @@ class Scraper:
             )
         return False
 
-    async def bulk_insert_posts(
+    async def bulk_upsert_posts(
         self,
         user: User,
         fetched_posts: list[dict[str, str]],
         batch_size: int = 200,
     ) -> bool:
-        """Post 객체를 일정 크기의 배치로 나눠서 삽입"""
+        """Post 객체를 일정 크기의 배치로 나눠서 삽입 또는 업데이트"""
         try:
             for i in range(0, len(fetched_posts), batch_size):
-                batch = [
-                    Post(
-                        post_uuid=post["id"],
-                        title=post["title"],
-                        user=user,
-                        slug=post["url_slug"],
-                        released_at=post["released_at"],
-                    )
-                    for post in fetched_posts[i : i + batch_size]
-                ]
-
-                # 트랜잭션으로 감싸서 원자적으로 처리
-                @sync_to_async(thread_sensitive=True)  # type: ignore
-                def create_in_transaction(
-                    batch_posts: list[Post],
-                ) -> list[Post]:
-                    with transaction.atomic():
-                        return Post.objects.bulk_create(  # type: ignore
-                            batch_posts, ignore_conflicts=True
-                        )
-
-                await create_in_transaction(batch)
-
-                # 큰 배치 작업 사이에 짧은 대기 시간 추가
+                batch_posts = fetched_posts[i : i + batch_size]
+                await self._upsert_batch(user, batch_posts)
+                # 배치 작업 사이 강제 대기 시간
                 await asyncio.sleep(0.2)
             return True
         except Exception as e:
             logger.error(
-                f"Failed to bulk create posts. {e}"
+                f"Failed to bulk upsert posts. {e}"
                 f" (user velog uuid: {user.velog_uuid})"
             )
             return False
+
+    async def _upsert_batch(
+        self, user: User, batch_posts: list[dict[str, str]]
+    ) -> None:
+        """단일 배치 처리, bulk_upsert_posts 에서 호출됨"""
+
+        @sync_to_async(thread_sensitive=True)  # type: ignore
+        def _execute_transaction() -> None:
+            with transaction.atomic():
+                post_uuids = [post["id"] for post in batch_posts]
+                existing_posts = {
+                    str(post.post_uuid): post
+                    for post in Post.objects.filter(post_uuid__in=post_uuids)
+                }
+
+                posts_to_create = []
+                posts_to_update = []
+
+                for post_data in batch_posts:
+                    post_uuid = post_data["id"]
+                    if post_uuid in existing_posts:
+                        post = existing_posts[post_uuid]
+                        post.title = post_data["title"]
+                        post.slug = post_data["url_slug"]
+                        post.released_at = post_data["released_at"]
+                        posts_to_update.append(post)
+                    else:
+                        posts_to_create.append(
+                            Post(
+                                post_uuid=post_uuid,
+                                title=post_data["title"],
+                                user=user,
+                                slug=post_data["url_slug"],
+                                released_at=post_data["released_at"],
+                            )
+                        )
+
+                if posts_to_update:
+                    Post.objects.bulk_update(
+                        posts_to_update, ["title", "slug", "released_at"]
+                    )
+
+                if posts_to_create:
+                    Post.objects.bulk_create(posts_to_create)
+
+        await _execute_transaction()
 
     async def update_daily_statistics(
         self, post: dict[str, str], stats: dict[str, str]
@@ -257,7 +282,7 @@ class Scraper:
             session, username, origin_access_token, origin_refresh_token
         )
 
-        await self.bulk_insert_posts(user, fetched_posts)
+        await self.bulk_upsert_posts(user, fetched_posts)
 
         # 게시물을 적절한 크기의 청크로 나누어 처리
         chunk_size = 20

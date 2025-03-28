@@ -12,6 +12,23 @@ jobs:
   test-ci:
     runs-on: ubuntu-latest
 
+    # TimescaleDB 서비스 추가
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg15
+        env:
+          POSTGRES_USER: vd2
+          POSTGRES_PASSWORD: vd2
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        # 서비스 상태 확인 설정
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -44,7 +61,12 @@ jobs:
         run: |
           echo "SECRET_KEY=adsfgdsftrgdfsvdf" >> .env
           echo "DEBUG=True" >> .env
-          echo "DATABASE_URL=sqlite:///db.sqlite3" >> .env
+          echo "DATABASE_ENGINE=timescale.db.backends.postgresql" >> .env
+          echo "DATABASE_NAME=postgres" >> .env
+          echo "POSTGRES_USER=vd2" >> .env
+          echo "POSTGRES_PASSWORD=vd2" >> .env
+          echo "POSTGRES_HOST=localhost" >> .env
+          echo "POSTGRES_PORT=5432" >> .env
           echo "AES_KEY_0=${{ secrets.AES_KEY_0 }}" >> .env
           echo "AES_KEY_1=${{ secrets.AES_KEY_1 }}" >> .env
           echo "AES_KEY_2=${{ secrets.AES_KEY_2 }}" >> .env
@@ -56,6 +78,11 @@ jobs:
           echo "AES_KEY_8=${{ secrets.AES_KEY_8 }}" >> .env
           echo "AES_KEY_9=${{ secrets.AES_KEY_9 }}" >> .env
 
+      # TimescaleDB 확장 생성 확인
+      - name: Verify TimescaleDB extension
+        run: |
+          PGPASSWORD=vd2 psql -h localhost -U vd2 -d postgres -c "SELECT extname, extversion FROM pg_extension WHERE extname = 'timescaledb';"
+
       - name: Run migrations
         run: poetry run python manage.py migrate
 
@@ -63,6 +90,4 @@ jobs:
         run: poetry run python manage.py check
 
       - name: Run tests
-        env:
-          DJANGO_SETTINGS_MODULE: backoffice.settings.test
         run: poetry run pytest -v --full-trace --showlocals --tb=long --capture=no

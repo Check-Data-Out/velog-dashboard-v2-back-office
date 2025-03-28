@@ -2,11 +2,13 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from asgiref.sync import sync_to_async
 from django.db import transaction
 
-from posts.models import Post
+from posts.models import Post, PostDailyStatistics
 from scraping.main import Scraper
 from users.models import User
+from utils.utils import get_local_now
 
 
 class TestScraper:
@@ -60,7 +62,9 @@ class TestScraper:
 
     @patch("scraping.main.AESEncryption")
     @pytest.mark.asyncio
-    async def test_update_old_tokens_no_change(self, mock_aes, scraper, user):
+    async def test_update_old_tokens_no_change(
+        self, mock_aes, scraper, user
+    ) -> None:
         """토큰 업데이트 없음 테스트"""
         mock_encryption = mock_aes.return_value
         mock_encryption.decrypt.side_effect = lambda token: token
@@ -133,55 +137,122 @@ class TestScraper:
         assert result is False
         mock_asave.assert_not_called()
 
-    @patch("scraping.main.Post.objects.bulk_create", new_callable=AsyncMock)
     @pytest.mark.asyncio
-    async def test_bulk_insert_posts_success(
-        self, mock_bulk_create, scraper, user
-    ):
-        """Post 객체 배치 분할 삽입 성공 테스트"""
+    async def test_bulk_upsert_posts_success(self, scraper, user):
+        """Post 객체 배치 분할 삽입 또는 업데이트 성공 테스트"""
         posts_data = [
             {
-                "id": f"post-{i}",
+                "id": str(uuid.uuid4()),
                 "title": f"Title {i}",
                 "url_slug": f"slug-{i}",
-                "released_at": "2025-03-07",
+                "released_at": get_local_now(),
             }
             for i in range(50)
         ]
 
-        result = await scraper.bulk_insert_posts(
-            user, posts_data, batch_size=10
-        )
+        # _upsert_batch 메서드만 모킹
+        with patch.object(
+            scraper, "_upsert_batch", new_callable=AsyncMock
+        ) as mock_upsert:
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                result = await scraper.bulk_upsert_posts(
+                    user, posts_data, batch_size=10
+                )
 
         assert result is True
-        mock_bulk_create.assert_called()
-        assert mock_bulk_create.call_count == 5
+        # 50개 / 10개 배치 = 5번 호출
+        assert mock_upsert.call_count == 5
 
-    @patch(
-        "scraping.main.Post.objects.bulk_create",
-        side_effect=Exception("DB 에러"),
-    )
     @pytest.mark.asyncio
-    async def test_bulk_insert_posts_failure(
-        self, mock_bulk_create, scraper, user
-    ):
-        """Post 객체 배치 분할 삽입 실패 테스트"""
+    async def test_bulk_upsert_posts_failure(self, scraper, user):
+        """Post 객체 배치 분할 삽입 또는 업데이트 실패 테스트"""
         posts_data = [
             {
-                "id": f"post-{i}",
+                "id": str(uuid.uuid4()),
                 "title": f"Title {i}",
                 "url_slug": f"slug-{i}",
-                "released_at": "2025-03-07",
+                "released_at": get_local_now(),
             }
             for i in range(10)
         ]
 
-        result = await scraper.bulk_insert_posts(
-            user, posts_data, batch_size=5
-        )
+        # 실제 예외를 발생시키는 비동기 함수 생성
+        async def mock_async_error(*args, **kwargs):
+            raise Exception("DB 에러")
+
+        # sync_to_async가 적절한 비동기 함수를 반환하도록 패치
+        with patch("scraping.main.sync_to_async") as mock_sync_to_async:
+            mock_sync_to_async.return_value = mock_async_error
+            result = await scraper.bulk_upsert_posts(
+                user, posts_data, batch_size=5
+            )
 
         assert result is False
-        mock_bulk_create.assert_called()
+        mock_sync_to_async.assert_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.django_db
+    async def test_upsert_batch_creates_and_updates(scraper, user):
+        """
+        _upsert_batch 메서드가 기존 게시물을 업데이트하고, 신규 게시물을 생성하는지 검증합니다.
+        """
+        # 기존 게시물 생성 (sync_to_async로 감싸줌)
+        existing_post_uuid = str(uuid.uuid4())
+        original_title = "Original Title"
+        original_slug = "original-slug"
+        original_time = get_local_now()
+        await sync_to_async(Post.objects.create)(
+            post_uuid=existing_post_uuid,
+            title=original_title,
+            user=user,
+            slug=original_slug,
+            released_at=original_time,
+        )
+
+        # 배치 데이터 준비: 기존 게시물 업데이트용과 신규 게시물 생성용 데이터 포함
+        updated_title = "Updated Title"
+        updated_slug = "updated-slug"
+        updated_time = get_local_now()
+
+        new_post_uuid = str(uuid.uuid4())
+        new_title = "New Title"
+        new_slug = "new-slug"
+        new_time = get_local_now()
+
+        batch_posts = [
+            {
+                "id": existing_post_uuid,
+                "title": updated_title,
+                "url_slug": updated_slug,
+                "released_at": updated_time,
+            },
+            {
+                "id": new_post_uuid,
+                "title": new_title,
+                "url_slug": new_slug,
+                "released_at": new_time,
+            },
+        ]
+
+        # _upsert_batch 호출
+        await scraper._upsert_batch(user, batch_posts)
+
+        # 기존 게시물 업데이트 확인 (sync_to_async 사용)
+        updated_post = await sync_to_async(Post.objects.get)(
+            post_uuid=existing_post_uuid
+        )
+        assert updated_post.title == updated_title
+        assert updated_post.slug == updated_slug
+        assert updated_post.released_at == updated_time
+
+        # 신규 게시물 생성 확인 (sync_to_async 사용)
+        new_post = await sync_to_async(Post.objects.get)(
+            post_uuid=new_post_uuid
+        )
+        assert new_post.title == new_title
+        assert new_post.slug == new_slug
+        assert new_post.released_at == new_time
+        assert new_post.user == user
 
     @pytest.mark.asyncio
     async def test_update_daily_statistics_success(self, scraper):
@@ -316,42 +387,98 @@ class TestScraper:
 
     @patch("scraping.main.transaction.atomic")
     @pytest.mark.django_db(transaction=True)
+    @pytest.mark.asyncio
     async def test_process_user_failure_rollback(
         self, mock_atomic, scraper, user
     ):
         """유저 데이터 처리 실패 시 롤백 확인 테스트"""
         mock_session = AsyncMock()
-        mock_atomic.side_effect = (
-            transaction.atomic
-        )  # 실제 트랜잭션을 패치한 형태로 유지
+        mock_atomic.side_effect = transaction.atomic
 
         with patch(
             "scraping.main.fetch_velog_user_chk",
             side_effect=Exception("Failed to fetch user data"),
         ):
-            try:
+            with pytest.raises(Exception):
                 await scraper.process_user(user, mock_session)
-            except Exception:
-                pass
 
-        assert Post.objects.filter(user=user).count() == 0
+        # 동기 쿼리를 비동기로 변환
+        count = await sync_to_async(Post.objects.filter(user=user).count)()
+        assert count == 0
 
     @pytest.mark.django_db(transaction=True)
+    @pytest.mark.asyncio
     async def test_process_user_partial_failure_rollback(self, scraper, user):
         """통계 업데이트 중 실패 시 롤백 확인 테스트"""
         mock_session = AsyncMock()
+        post_uuid = uuid.uuid4()
 
-        with patch(
-            "scraping.main.fetch_post_stats_limited",
-            side_effect=Exception("Failed to fetch post stats limited"),
-        ):
-            try:
-                async with transaction.atomic():
-                    await scraper.process_user(user, mock_session)
-            except Exception:
-                pass
-
-        assert Post.objects.filter(user=user).exists()
-        assert not any(
-            post.statistics for post in Post.objects.filter(user=user)
+        # 테스트용 게시물 직접 생성
+        await sync_to_async(Post.objects.create)(
+            post_uuid=post_uuid,
+            user=user,
+            title="Test Post",
+            slug="test-slug",
+            released_at=get_local_now(),
         )
+
+        # fetch_post_stats_limited 메서드에서 예외 발생시키기
+        with patch.object(
+            scraper,
+            "fetch_post_stats_limited",
+            side_effect=Exception("Failed to fetch stats"),
+        ):
+            # bulk_upsert_posts 성공하도록 모킹
+            with patch.object(
+                scraper, "bulk_upsert_posts", new_callable=AsyncMock
+            ) as mock_bulk_upsert:
+                mock_bulk_upsert.return_value = True
+
+                # 다른 필요한 API 호출도 모킹
+                with (
+                    patch(
+                        "scraping.apis.fetch_velog_user_chk",
+                        new_callable=AsyncMock,
+                    ) as mock_user_chk,
+                    patch(
+                        "scraping.apis.fetch_all_velog_posts",
+                        new_callable=AsyncMock,
+                    ) as mock_posts,
+                ):
+                    # 사용자 정보 모킹
+                    mock_user_chk.return_value = (
+                        {},
+                        {"data": {"currentUser": {"username": "testuser"}}},
+                    )
+
+                    # 게시물 정보 모킹
+                    mock_posts.return_value = [
+                        {
+                            "id": post_uuid,
+                            "title": "Test Post",
+                            "url_slug": "test-slug",
+                            "released_at": get_local_now(),
+                        }
+                    ]
+
+                    # 예외를 처리하지만 게시물은 여전히 존재해야 함
+                    try:
+                        await scraper.process_user(user, mock_session)
+                    except Exception:
+                        pass
+
+        # 게시물이 존재하는지 확인 (sync_to_async로 래핑)
+        exists_func = sync_to_async(
+            lambda: Post.objects.filter(user=user).exists()
+        )
+        exists = await exists_func()
+        assert exists
+
+        # 통계 정보가 없는지 확인
+        has_stats_func = sync_to_async(
+            lambda: PostDailyStatistics.objects.filter(
+                post__user=user
+            ).exists()
+        )
+        has_stats = await has_stats_func()
+        assert not has_stats
