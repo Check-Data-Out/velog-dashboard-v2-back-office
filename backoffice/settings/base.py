@@ -24,9 +24,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
 
-SENTRY_DSN = env(
-    "SENTRY_DSN", default=""
-)
+SENTRY_DSN = env("SENTRY_DSN", default="")
 SENTRY_ENVIRONMENT = env("SENTRY_ENVIRONMENT", default="prod")
 SENTRY_TRACES_SAMPLE_RATE = env.float("SENTRY_TRACES_SAMPLE_RATE", default=1.0)
 

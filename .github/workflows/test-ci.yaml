@@ -67,6 +67,9 @@ jobs:
           echo "POSTGRES_PASSWORD=vd2" >> .env
           echo "POSTGRES_HOST=localhost" >> .env
           echo "POSTGRES_PORT=5432" >> .env
+          echo "SENTRY_DSN=${{ secrets.SENTRY_DSN }}" >> .env
+          echo "SENTRY_ENVIRONMENT=gitaction" >> .env
+          echo "SENTRY_TRACES_SAMPLE_RATE=0.2" >> .env
           echo "AES_KEY_0=${{ secrets.AES_KEY_0 }}" >> .env
           echo "AES_KEY_1=${{ secrets.AES_KEY_1 }}" >> .env
           echo "AES_KEY_2=${{ secrets.AES_KEY_2 }}" >> .env
