@@ -28,7 +28,6 @@ SENTRY_DSN = env(
     "SENTRY_DSN", default=""
 )
 SENTRY_ENVIRONMENT = env("SENTRY_ENVIRONMENT", default="prod")
-DJANGO_ENV = env("DJANGO_ENV", default="prod")
 SENTRY_TRACES_SAMPLE_RATE = env.float("SENTRY_TRACES_SAMPLE_RATE", default=1.0)
 
 sentry_sdk.init(
