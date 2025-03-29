@@ -35,3 +35,9 @@ pytest-asyncio = "^0.25.0"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "backoffice.settings.local"
+python_files = ["test_*.py"]
+filterwarnings = ["ignore::pytest.PytestDeprecationWarning"]
+asyncio_mode = "strict"
