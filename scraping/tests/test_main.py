@@ -267,6 +267,126 @@ class TestScraper:
         assert new_post_user_id == test_user.id
 
     @pytest.mark.asyncio
+    @pytest.mark.django_db
+    async def test_upsert_batch_deactivates_old_posts(self, scraper):
+        """
+        _upsert_batch 메서드가 더 이상 API에서 반환되지 않는 게시물을 비활성화하는지 검증합니다.
+        """
+        test_user = await sync_to_async(User.objects.create)(
+            velog_uuid=uuid.uuid4(),
+            access_token="test-access-token",
+            refresh_token="test-refresh-token",
+            group_id=1,
+            email="test@example.com",
+            is_active=True,
+        )
+
+        # 기존 활성화 상태의 게시물 3개 생성
+        post_uuid1 = str(uuid.uuid4())
+        post_uuid2 = str(uuid.uuid4())
+        post_uuid3 = str(uuid.uuid4())
+
+        await sync_to_async(Post.objects.create)(
+            post_uuid=post_uuid1,
+            title="Post 1",
+            user=test_user,
+            slug="post-1",
+            released_at=get_local_now(),
+            is_active=True,
+        )
+
+        await sync_to_async(Post.objects.create)(
+            post_uuid=post_uuid2,
+            title="Post 2",
+            user=test_user,
+            slug="post-2",
+            released_at=get_local_now(),
+            is_active=True,
+        )
+
+        await sync_to_async(Post.objects.create)(
+            post_uuid=post_uuid3,
+            title="Post 3",
+            user=test_user,
+            slug="post-3",
+            released_at=get_local_now(),
+            is_active=True,
+        )
+
+        # 새로운 배치 데이터에는 post_uuid1만 포함 (나머지는 비활성화되어야 함)
+        batch_posts = [
+            {
+                "id": post_uuid1,
+                "title": "Updated Post 1",
+                "url_slug": "updated-post-1",
+                "released_at": get_local_now(),
+            }
+        ]
+
+        # _upsert_batch 호출
+        await scraper._upsert_batch(test_user, batch_posts)
+
+        # 게시물 상태 확인
+        # post_uuid1은 여전히 활성 상태여야 함
+        post1 = await sync_to_async(Post.objects.get)(post_uuid=post_uuid1)
+        assert post1.is_active is True
+        assert post1.title == "Updated Post 1"
+
+        # post_uuid2와 post_uuid3는 비활성 상태로 변경되어야 함
+        post2 = await sync_to_async(Post.objects.get)(post_uuid=post_uuid2)
+        assert post2.is_active is False
+
+        post3 = await sync_to_async(Post.objects.get)(post_uuid=post_uuid3)
+        assert post3.is_active is False
+
+    @pytest.mark.asyncio
+    @pytest.mark.django_db
+    async def test_upsert_batch_reactivates_inactive_posts(self, scraper):
+        """
+        _upsert_batch 메서드가 비활성화된 게시물이 다시 API 결과에 포함될 경우 재활성화하는지 검증합니다.
+        """
+        test_user = await sync_to_async(User.objects.create)(
+            velog_uuid=uuid.uuid4(),
+            access_token="test-access-token",
+            refresh_token="test-refresh-token",
+            group_id=1,
+            email="test@example.com",
+            is_active=True,
+        )
+
+        # 비활성화된 게시물 생성
+        inactive_post_uuid = str(uuid.uuid4())
+        await sync_to_async(Post.objects.create)(
+            post_uuid=inactive_post_uuid,
+            title="Inactive Post",
+            user=test_user,
+            slug="inactive-post",
+            released_at=get_local_now(),
+            is_active=False,
+        )
+
+        # 배치 데이터에 비활성화된 게시물 포함
+        batch_posts = [
+            {
+                "id": inactive_post_uuid,
+                "title": "Reactivated Post",
+                "url_slug": "reactivated-post",
+                "released_at": get_local_now(),
+            }
+        ]
+
+        # _upsert_batch 호출
+        await scraper._upsert_batch(test_user, batch_posts)
+
+        # 게시물 상태 확인 - 재활성화되어야 함
+        post = await sync_to_async(Post.objects.get)(
+            post_uuid=inactive_post_uuid
+        )
+        assert post.is_active is True
+        assert post.title == "Reactivated Post"
+        assert post.slug == "reactivated-post"
+
+    @pytest.mark.asyncio
     async def test_update_daily_statistics_success(self, scraper):
         """데일리 통계 업데이트 또는 생성 성공 테스트"""
         post_data = {"id": "post-123"}

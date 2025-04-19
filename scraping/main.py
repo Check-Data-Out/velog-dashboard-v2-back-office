@@ -5,7 +5,6 @@ import aiohttp
 import async_timeout
 import environ
 import sentry_sdk
-
 from asgiref.sync import sync_to_async
 from django.db import transaction
 
@@ -104,23 +103,51 @@ class Scraper:
         def _execute_transaction() -> None:
             with transaction.atomic():
                 post_uuids = [post["id"] for post in batch_posts]
-                existing_posts = {
+
+                # 현재 유저의 모든 게시글 가져오기 (active와 inactive 모두)
+                all_user_posts = {
                     str(post.post_uuid): post
-                    for post in Post.objects.filter(post_uuid__in=post_uuids)
+                    for post in Post.objects.filter(user=user)
+                }
+
+                # 현재 활성화된 게시글만 가져오기
+                existing_active_posts = {
+                    uuid: post
+                    for uuid, post in all_user_posts.items()
+                    if post.is_active and uuid in post_uuids
+                }
+
+                # 비활성화된 게시글 가져오기 (재활성화 여부 확인용)
+                inactive_posts = {
+                    uuid: post
+                    for uuid, post in all_user_posts.items()
+                    if not post.is_active and uuid in post_uuids
                 }
 
                 posts_to_create = []
                 posts_to_update = []
+                posts_to_reactivate = []
 
+                # 현재 데이터의 각 게시글에 대해 처리
                 for post_data in batch_posts:
                     post_uuid = post_data["id"]
-                    if post_uuid in existing_posts:
-                        post = existing_posts[post_uuid]
+                    if post_uuid in existing_active_posts:
+                        # 이미 활성화된 게시글 업데이트
+                        post = existing_active_posts[post_uuid]
                         post.title = post_data["title"]
                         post.slug = post_data["url_slug"]
                         post.released_at = post_data["released_at"]
                         posts_to_update.append(post)
+                    elif post_uuid in inactive_posts:
+                        # 비활성화된 게시글 재활성화
+                        post = inactive_posts[post_uuid]
+                        post.title = post_data["title"]
+                        post.slug = post_data["url_slug"]
+                        post.released_at = post_data["released_at"]
+                        post.is_active = True
+                        posts_to_reactivate.append(post)
                     else:
+                        # 새 게시글 생성
                         posts_to_create.append(
                             Post(
                                 post_uuid=post_uuid,
@@ -128,16 +155,45 @@ class Scraper:
                                 user=user,
                                 slug=post_data["url_slug"],
                                 released_at=post_data["released_at"],
+                                is_active=True,
                             )
                         )
 
+                # 과거 활성화 게시글 중 현재 데이터에 없는 게시글은 비활성화
+                active_posts_to_deactivate = []
+                current_post_uuids = set(
+                    post_data["id"] for post_data in batch_posts
+                )
+
+                for post_uuid, post in all_user_posts.items():
+                    if post.is_active and post_uuid not in current_post_uuids:
+                        post.is_active = False
+                        active_posts_to_deactivate.append(post)
+
+                # 일괄 업데이트 및 생성 수행
                 if posts_to_update:
                     Post.objects.bulk_update(
-                        posts_to_update, ["title", "slug", "released_at"]
+                        posts_to_update,
+                        ["title", "slug", "released_at"],
+                        batch_size=200,
+                    )
+
+                if posts_to_reactivate:
+                    Post.objects.bulk_update(
+                        posts_to_reactivate,
+                        ["title", "slug", "released_at", "is_active"],
+                        batch_size=200,
+                    )
+
+                if active_posts_to_deactivate:
+                    Post.objects.bulk_update(
+                        active_posts_to_deactivate,
+                        ["is_active"],
+                        batch_size=200,
                     )
 
                 if posts_to_create:
-                    Post.objects.bulk_create(posts_to_create)
+                    Post.objects.bulk_create(posts_to_create, batch_size=200)
 
         await _execute_transaction()
 
