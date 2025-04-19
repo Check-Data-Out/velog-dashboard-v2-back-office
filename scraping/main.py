@@ -103,51 +103,23 @@ class Scraper:
         def _execute_transaction() -> None:
             with transaction.atomic():
                 post_uuids = [post["id"] for post in batch_posts]
-
-                # 현재 유저의 모든 게시글 가져오기 (active와 inactive 모두)
-                all_user_posts = {
+                existing_posts = {
                     str(post.post_uuid): post
-                    for post in Post.objects.filter(user=user)
-                }
-
-                # 현재 활성화된 게시글만 가져오기
-                existing_active_posts = {
-                    uuid: post
-                    for uuid, post in all_user_posts.items()
-                    if post.is_active and uuid in post_uuids
-                }
-
-                # 비활성화된 게시글 가져오기 (재활성화 여부 확인용)
-                inactive_posts = {
-                    uuid: post
-                    for uuid, post in all_user_posts.items()
-                    if not post.is_active and uuid in post_uuids
+                    for post in Post.objects.filter(post_uuid__in=post_uuids)
                 }
 
                 posts_to_create = []
                 posts_to_update = []
-                posts_to_reactivate = []
 
-                # 현재 데이터의 각 게시글에 대해 처리
                 for post_data in batch_posts:
                     post_uuid = post_data["id"]
-                    if post_uuid in existing_active_posts:
-                        # 이미 활성화된 게시글 업데이트
-                        post = existing_active_posts[post_uuid]
+                    if post_uuid in existing_posts:
+                        post = existing_posts[post_uuid]
                         post.title = post_data["title"]
                         post.slug = post_data["url_slug"]
                         post.released_at = post_data["released_at"]
                         posts_to_update.append(post)
-                    elif post_uuid in inactive_posts:
-                        # 비활성화된 게시글 재활성화
-                        post = inactive_posts[post_uuid]
-                        post.title = post_data["title"]
-                        post.slug = post_data["url_slug"]
-                        post.released_at = post_data["released_at"]
-                        post.is_active = True
-                        posts_to_reactivate.append(post)
                     else:
-                        # 새 게시글 생성
                         posts_to_create.append(
                             Post(
                                 post_uuid=post_uuid,
@@ -155,47 +127,86 @@ class Scraper:
                                 user=user,
                                 slug=post_data["url_slug"],
                                 released_at=post_data["released_at"],
-                                is_active=True,
                             )
                         )
 
-                # 과거 활성화 게시글 중 현재 데이터에 없는 게시글은 비활성화
-                active_posts_to_deactivate = []
-                current_post_uuids = set(
-                    post_data["id"] for post_data in batch_posts
-                )
-
-                for post_uuid, post in all_user_posts.items():
-                    if post.is_active and post_uuid not in current_post_uuids:
-                        post.is_active = False
-                        active_posts_to_deactivate.append(post)
-
-                # 일괄 업데이트 및 생성 수행
                 if posts_to_update:
                     Post.objects.bulk_update(
-                        posts_to_update,
-                        ["title", "slug", "released_at"],
-                        batch_size=200,
-                    )
-
-                if posts_to_reactivate:
-                    Post.objects.bulk_update(
-                        posts_to_reactivate,
-                        ["title", "slug", "released_at", "is_active"],
-                        batch_size=200,
-                    )
-
-                if active_posts_to_deactivate:
-                    Post.objects.bulk_update(
-                        active_posts_to_deactivate,
-                        ["is_active"],
-                        batch_size=200,
+                        posts_to_update, ["title", "slug", "released_at"]
                     )
 
                 if posts_to_create:
-                    Post.objects.bulk_create(posts_to_create, batch_size=200)
+                    Post.objects.bulk_create(posts_to_create)
 
         await _execute_transaction()
+
+    async def sync_post_active_status(
+        self,
+        user: User,
+        current_post_ids: set[str],
+        min_posts_threshold: int = 1,
+    ) -> None:
+        """현재 API에서 가져온 게시글 목록을 기준으로 활성/비활성 상태 동기화
+
+        Args:
+            user: 대상 사용자
+            current_post_ids: 현재 API에서 가져온 게시글 ID 집합
+            min_posts_threshold: API 응답에 최소 이 개수 이상의 게시글이 있어야 상태변경을 실행
+        """
+
+        # API 응답이 너무 적으면 상태변경 하지 않음 (API 오류 가능성)
+        if len(current_post_ids) < min_posts_threshold:
+            logger.warning(
+                f"Skipping post status sync for user {user.velog_uuid} - Too few posts returned ({len(current_post_ids)})"
+            )
+            return
+
+        @sync_to_async(thread_sensitive=True)  # type: ignore
+        def _execute_sync() -> None:
+            # 1. 비활성화 로직: 현재 목록에 없는 활성화된 게시글 찾기
+            posts_to_deactivate = Post.objects.filter(
+                user=user, is_active=True
+            ).exclude(post_uuid__in=current_post_ids)
+
+            deactivation_count = posts_to_deactivate.count()
+
+            # 너무 많은 게시글이 비활성화되는 경우 방어 로직
+            active_posts_count = Post.objects.filter(
+                user=user, is_active=True
+            ).count()
+
+            if (
+                active_posts_count > 0
+                and deactivation_count / active_posts_count > 0.5
+            ):
+                logger.warning(
+                    f"Suspicious deactivation detected for user {user.velog_uuid}: "
+                    f"Would deactivate {deactivation_count} out of {active_posts_count} posts. "
+                    f"Skipping post status sync as a safety measure."
+                )
+                return
+
+            # 2. 재활성화 로직: 현재 목록에 있지만 비활성화된 게시글 찾기
+            posts_to_reactivate = Post.objects.filter(
+                user=user, is_active=False, post_uuid__in=current_post_ids
+            )
+
+            reactivation_count = posts_to_reactivate.count()
+
+            # 상태 업데이트 실행
+            if deactivation_count > 0:
+                logger.info(
+                    f"Deactivating {deactivation_count} posts for user {user.velog_uuid}"
+                )
+                posts_to_deactivate.update(is_active=False)
+
+            if reactivation_count > 0:
+                logger.info(
+                    f"Reactivating {reactivation_count} posts for user {user.velog_uuid}"
+                )
+                posts_to_reactivate.update(is_active=True)
+
+        await _execute_sync()
 
     async def update_daily_statistics(
         self, post: dict[str, str], stats: dict[str, str]
@@ -346,8 +357,18 @@ class Scraper:
         fetched_posts = await fetch_all_velog_posts(
             session, username, origin_access_token, origin_refresh_token
         )
+        all_post_ids = {post["id"] for post in fetched_posts}
+        logger.info(
+            f"Fetched {len(all_post_ids)} posts for user {user.velog_uuid}"
+        )
 
+        # 게시물이 새로 생겼으면 추가, 아니면 업데이트
         await self.bulk_upsert_posts(user, fetched_posts)
+
+        # 게시글 활성/비활성 상태 동기화
+        await self.sync_post_active_status(
+            user, all_post_ids, min_posts_threshold=1
+        )
 
         # 게시물을 적절한 크기의 청크로 나누어 처리
         chunk_size = 20

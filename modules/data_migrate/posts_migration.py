@@ -74,7 +74,6 @@ try:
                     print(f"UUID {post[3]}의 새 게시글을 생성합니다.")
                     # 새 게시글 생성
                     Post.objects.create(
-                        id=post[0],
                         created_at=post[1],
                         updated_at=post[2],
                         post_uuid=post[3],

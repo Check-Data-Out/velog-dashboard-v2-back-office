@@ -60,7 +60,6 @@ try:
                     print(f"UUID {user[3]}의 새 사용자를 생성합니다.")
                     # 새 사용자 생성
                     User.objects.create(
-                        id=user[0],
                         created_at=user[1],
                         updated_at=user[2],
                         velog_uuid=user[3],
