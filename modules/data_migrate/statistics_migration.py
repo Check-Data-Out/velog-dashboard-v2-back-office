@@ -29,6 +29,7 @@ try:
                        pds.daily_view_count, pds.daily_like_count, p.post_uuid
                 FROM posts_postdailystatistics pds
                 JOIN posts_post p ON pds.post_id = p.id
+                WHERE pds.date >= CURRENT_DATE - INTERVAL '7 days'
                 ORDER BY pds.id
                 LIMIT {chunk_size} OFFSET {offset}
             """
