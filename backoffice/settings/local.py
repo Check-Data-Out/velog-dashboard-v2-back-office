@@ -9,4 +9,4 @@ INTERNAL_IPS = [
 
 CORS_ALLOW_ALL_ORIGINS = True
 
-DATABASES["prod"] = env.db()  # noqa: F405
+# DATABASES["prod"] = env.db()  # noqa: F405
