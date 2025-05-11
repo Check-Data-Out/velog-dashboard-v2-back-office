@@ -6,12 +6,11 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${DATABASE_NAME}
+      PGDATA: /home/postgres/pgdata
+      TZ: 'UTC'
     ports:
       - "${POSTGRES_PORT}:${POSTGRES_PORT}"
     platform: linux/arm64
     volumes:
-      - timescale_data:/var/lib/postgresql/data
+      - ./timescale_data:/home/postgres/pgdata
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-
-volumes:
-  timescale_data:

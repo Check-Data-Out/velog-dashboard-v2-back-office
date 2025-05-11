@@ -1,3 +1,4 @@
+-- 기본 user 생성
 DO
 $do$
 BEGIN
@@ -7,3 +8,10 @@ BEGIN
    END IF;
 END
 $do$;
+
+-- 시스템 설정 변경
+ALTER SYSTEM SET timezone TO 'UTC';
+-- 설정 즉시 적용
+SELECT pg_reload_conf();
+-- 현재 세션에도 적용
+SET timezone TO 'UTC';

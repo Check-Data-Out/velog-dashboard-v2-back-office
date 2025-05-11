@@ -1,5 +1,5 @@
 # CUSTOM
-timesacle_data/*
+**/timescale_data/**
 
 
 # Created by https://www.toptal.com/developers/gitignore/api/macos,python,pycharm,django
