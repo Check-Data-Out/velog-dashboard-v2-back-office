@@ -84,17 +84,18 @@ class VelogService:
 
         headers = self._get_headers()
         try:
-            response = await self.session.post(
+            # await 제거하고 async with 사용
+            async with self.session.post(
                 url, json=payload, headers=headers
-            )
+            ) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    raise VelogApiError(response.status, error_text)
 
-            if response["status"] != 200:
-                error_text = await response.text()
-                raise VelogApiError(response["status"], error_text)
+                result = await response.json()
+                data = result.get("data")
+                return data if isinstance(data, dict) else {}
 
-            result = await response.json()
-            data = result.get("data")
-            return data if isinstance(data, dict) else {}
         except (VelogApiError, VelogResponseError):
             # 이미 정의된 예외는 그대로 전파
             raise
