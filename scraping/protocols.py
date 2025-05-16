@@ -1,17 +1,17 @@
-from typing import Any, Protocol
+from typing import Any, AsyncContextManager, Protocol
 
 
 class HttpSession(Protocol):
-    """HTTP 세션을 위한 프로토콜."""
+    """HTTP 비동기 세션을 위한 프로토콜."""
 
-    async def post(
+    def post(
         self,
         url: str,
         *,
         json: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
         cookies: dict[str, str] | None = None,
-    ) -> Any:
+    ) -> AsyncContextManager[Any]:
         """
         HTTP POST 요청을 수행합니다.
 
@@ -22,6 +22,6 @@ class HttpSession(Protocol):
             cookies: 요청 쿠키
 
         Returns:
-            HTTP 응답 객체
+            비동기 컨텍스트 관리자 (async with에서 사용 가능)
         """
         ...
