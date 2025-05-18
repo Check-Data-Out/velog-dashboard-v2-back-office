@@ -78,8 +78,8 @@ def call_llm(posts):
 
 # 비동기 함수 실행
 async def main():
-    access_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiYzc1MDcyNDAtMDkzYi0xMWVhLTlhYWUtYTU4YTg2YmIwNTIwIiwiaWF0IjoxNzQ3NTc3ODU2LCJleHAiOjE3NDc2NjQyNTYsImlzcyI6InZlbG9nLmlvIiwic3ViIjoiYWNjZXNzX3Rva2VuIn0.ymvwSUvGbd_uBKO7oDLrupKoTx14_cAwxa_4rf6p1pQ"
-    refresh_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiYzc1MDcyNDAtMDkzYi0xMWVhLTlhYWUtYTU4YTg2YmIwNTIwIiwidG9rZW5faWQiOiJmZjVmYTdlYi1jYzE4LTQ5YTUtYjM0Yi05ZWFiN2EwNWZjMzUiLCJpYXQiOjE3NDY5NzMzNzUsImV4cCI6MTc0OTU2NTM3NSwiaXNzIjoidmVsb2cuaW8iLCJzdWIiOiJyZWZyZXNoX3Rva2VuIn0.yxRwfkhYuNFqCsN6B53ZZJF_SSEneYpM1QoHRbLy3dQ"
+    access_token = ""
+    refresh_token = ""
     user_posts = list()
     trand_posts = list()
 
