@@ -11,6 +11,7 @@ class LLMClient(ABC):
     _client: Any = None
 
     @classmethod
+    @abstractmethod
     def get_client(cls, api_key: str) -> Any:
         """
         LLM 클라이언트를 가져오거나 초기화합니다.
@@ -21,11 +22,13 @@ class LLMClient(ABC):
         반환값:
             초기화된 클라이언트 인스턴스
         """
-        if cls._client is None:
-            if not api_key:
-                raise ValueError("API 키가 필요합니다.")
-            cls._client = cls._initialize_client(api_key)
-        return cls
+        pass
+        # 구현에 필요한 예시
+        # if cls._client is None:
+        #     if not api_key:
+        #         raise ValueError("API 키가 필요합니다.")
+        #     cls._client = cls._initialize_client(api_key)
+        # return LLMClient()
 
     @classmethod
     @abstractmethod
