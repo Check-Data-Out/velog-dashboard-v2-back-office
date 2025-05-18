@@ -25,7 +25,7 @@ class LLMClient(ABC):
             if not api_key:
                 raise ValueError("API 키가 필요합니다.")
             cls._client = cls._initialize_client(api_key)
-        return cls._client
+        return cls
 
     @classmethod
     @abstractmethod

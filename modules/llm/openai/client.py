@@ -12,8 +12,21 @@ class OpenAIClient(LLMClient):
     _client: OpenAI
 
     @classmethod
-    def get_client(cls, api_key: str) -> "OpenAI":
-        return super().get_client(api_key)
+    def get_client(cls, api_key: str) -> "OpenAIClient":
+        """
+        LLM 클라이언트를 가져오거나 초기화합니다.
+
+        매개변수:
+            api_key: API 키 (필수)
+
+        반환값:
+            초기화된 클라이언트 인스턴스
+        """
+        if cls._client is None:
+            if not api_key:
+                raise ValueError("API 키가 필요합니다.")
+            cls._client = cls._initialize_client(api_key)
+        return OpenAIClient()
 
     @classmethod
     def _initialize_client(cls, api_key: str) -> "OpenAI":
@@ -24,8 +37,8 @@ class OpenAIClient(LLMClient):
     def generate_text(
         self,
         prompt: str,
-        model: str = "gpt-4o",
         system_prompt: str = "",
+        model: str = "gpt-4o",
         **kwargs: Any,
     ) -> str:
         """
