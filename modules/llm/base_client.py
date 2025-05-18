@@ -8,10 +8,10 @@ class LLMClient(ABC):
     모든 LLM 서비스 구현을 위한 템플릿을 제공합니다.
     """
 
-    _instance: Any = None
+    _client: Any = None
 
     @classmethod
-    def get_client(cls, api_key: str) -> "LLMClient":
+    def get_client(cls, api_key: str) -> Any:
         """
         LLM 클라이언트를 가져오거나 초기화합니다.
 
@@ -21,17 +21,15 @@ class LLMClient(ABC):
         반환값:
             초기화된 클라이언트 인스턴스
         """
-        if cls._instance is None:
+        if cls._client is None:
             if not api_key:
                 raise ValueError("API 키가 필요합니다.")
-            cls._instance = cls._initialize_client(api_key)
-
-        result: "LLMClient" = cls._instance
-        return result
+            cls._client = cls._initialize_client(api_key)
+        return cls._client
 
     @classmethod
     @abstractmethod
-    def _initialize_client(cls, api_key: str) -> "LLMClient":
+    def _initialize_client(cls, api_key: str) -> Any:
         """
         특정 LLM 클라이언트를 초기화하는 추상 메서드.
         각 구체적인 하위 클래스에서 구현되어야 합니다.
@@ -63,4 +61,4 @@ class LLMClient(ABC):
         """
         클라이언트 인스턴스를 재설정합니다(테스트나 설정 변경 시 사용하기 위함)
         """
-        cls._instance = None
+        cls._client = None

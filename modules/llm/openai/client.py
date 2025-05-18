@@ -9,27 +9,17 @@ class OpenAIClient(LLMClient):
     """OpenAI를 위한 LLMClient 구현"""
 
     api_key: str
-    _client: Any = None
+    _client: OpenAI
 
     @classmethod
-    def _initialize_client(cls, api_key: str) -> "OpenAIClient":
+    def get_client(cls, api_key: str) -> "OpenAI":
+        return super().get_client(api_key)
+
+    @classmethod
+    def _initialize_client(cls, api_key: str) -> "OpenAI":
         """OpenAI 클라이언트 초기화"""
-        instance = cls()
-        instance.api_key = api_key
-        instance._client = OpenAI(api_key=api_key)
-        return instance
-
-    # OpenAI 클라이언트 객체에 접근하기 위한 인스턴스 메서드
-    def get_openai_client(self) -> OpenAI:
-        """
-        OpenAI 클라이언트 인스턴스를 반환합니다.
-
-        반환값:
-            OpenAI 클라이언트 인스턴스
-        """
-        if self._client is None:
-            raise ValueError("OpenAI 클라이언트가 초기화되지 않았습니다.")
-        return self._client
+        cls.api_key = api_key
+        return OpenAI(api_key=api_key)
 
     def generate_text(
         self,
@@ -50,7 +40,9 @@ class OpenAIClient(LLMClient):
         반환값:
             생성된 텍스트
         """
-        client = self.get_openai_client()
+        client = self._client
+        if not client:
+            raise ValueError("client 가 존재하지 않씁니다.")
 
         # 메시지 구성
         messages = []
@@ -79,7 +71,10 @@ class OpenAIClient(LLMClient):
         반환값:
             벡터 임베딩
         """
-        client = self.get_openai_client()
+        client = self._client
+        if not client:
+            raise ValueError("client 가 존재하지 않씁니다.")
+
         response = client.embeddings.create(model=model, input=text)
         result: list[float] = response.data[0].embedding
         return result
