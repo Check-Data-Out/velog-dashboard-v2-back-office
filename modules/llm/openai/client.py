@@ -1,5 +1,5 @@
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from openai import (
     APIConnectionError,
@@ -27,7 +27,13 @@ class OpenAIClient(LLMClient[OpenAI]):
     """OpenAI를 위한 LLMClient 구현"""
 
     # 클래스 변수
-    _instance: "OpenAIClient" | None = None
+    if TYPE_CHECKING:
+        # 타입 체커만 확인하는 코드 (IDE level 이라고 보면 됨)
+        _instance: "OpenAIClient" | None = None
+    else:
+        # 런타임에 실행되는 코드
+        _instance = None
+
     _client: OpenAI | None = None
 
     def __init__(self, client: OpenAI):

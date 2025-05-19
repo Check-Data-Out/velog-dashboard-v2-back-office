@@ -90,7 +90,7 @@ class LLMClient(ABC, Generic[T]):
             model: 사용할 임베딩 모델 (선택적)
 
         Returns:
-            벡터 임베딩, 여
+            벡터 임베딩 리스트(단일 텍스트 입력의 경우) 또는 벡터 임베딩 리스트의 리스트(다중 텍스트 입력의 경우)
 
         Raises:
             ClientNotInitializedError: 클라이언트가 초기화되지 않은 경우

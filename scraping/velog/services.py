@@ -183,7 +183,11 @@ class VelogService:
                 url_slug=post.get("url_slug"),
                 released_at=post.get("released_at"),
                 updated_at=post.get("updated_at"),
-                user=post.get("user"),
+                user=User(
+                    id=post.get("user", {}).get("id", ""),
+                    username=post.get("user", {}).get("username", ""),
+                    email=post.get("user", {}).get("email", ""),
+                ),
             )
             for post in response["posts"]
         ]
@@ -338,7 +342,11 @@ class VelogService:
             released_at=post_data.get("released_at"),
             created_at=post_data.get("created_at"),
             updated_at=post_data.get("updated_at"),
-            user=post_data.get("user"),
+            user=User(
+                id=post_data.get("user", {}).get("id", ""),
+                username=post_data.get("user", {}).get("username", ""),
+                email=post_data.get("user", {}).get("email", ""),
+            ),
             tags=post_data.get("tags", []),
             comments_count=post_data.get("comments_count", 0),
             liked=post_data.get("liked", False),
@@ -384,7 +392,11 @@ class VelogService:
                 likes=post.get("likes", 0),
                 is_private=post.get("is_private", False),
                 comments_count=post.get("comments_count", 0),
-                user=post.get("user"),
+                user=User(
+                    id=post.get("user", {}).get("id", ""),
+                    username=post.get("user", {}).get("username", ""),
+                    email=post.get("user", {}).get("email", ""),
+                ),
             )
             for post in response["trendingPosts"]
         ]
