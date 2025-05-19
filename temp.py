@@ -1,4 +1,5 @@
 """
+[ https://www.notion.so/nuung/LLM-velog-back-office-1f76299fd66680b6a854c58845686490?pvs=4 ]
 - 해당 파일은 django 에 의존성 없어요. django 없이 stand alone 으로 실행가능하게 테스트용으로 만들어 둠
 - 고로 OPENAI_API_KEY 값은 환경 변수 없이 그냥 직접 넣어서 테스트 해주세요!!
 """
@@ -7,10 +8,13 @@ import asyncio
 
 import aiohttp
 
+from modules.llm.base_client import LLMClient
 from modules.llm.openai.client import OpenAIClient
 from scraping.velog.exceptions import VelogError
 from scraping.velog.services import VelogService
 
+ACCESS_TOKEN = ""  # 여러분 벨로그 토큰 (개별 게시글 분석용)
+REFRESH_TOKEN = ""  # 여러분 벨로그 토큰 (개별 게시글 분석용)
 OPENAI_API_KEY = "sk-proj"  # "여기에 제가 공유한 토큰 써주세요!"
 
 SYS_PROM = (
@@ -65,9 +69,8 @@ USER_PROM = """
 """
 
 
-def call_llm(posts):
-    openai_client = OpenAIClient.get_client(OPENAI_API_KEY)
-    creative_response = openai_client.generate_text(
+def call_llm(client: LLMClient, posts):
+    creative_response = client.generate_text(
         prompt=USER_PROM.format(posts=posts),
         system_prompt=SYS_PROM,
         temperature=0.1,
@@ -78,15 +81,14 @@ def call_llm(posts):
 
 # 비동기 함수 실행
 async def main():
-    access_token = ""
-    refresh_token = ""
     user_posts = list()
     trand_posts = list()
+    openai_client = OpenAIClient.get_client(OPENAI_API_KEY)
 
     # HTTP 세션 생성
     async with aiohttp.ClientSession() as session:
         # Velog 서비스 생성
-        velog_service = VelogService(session, access_token, refresh_token)
+        velog_service = VelogService(session, ACCESS_TOKEN, REFRESH_TOKEN)
 
         try:
             print(
@@ -105,6 +107,7 @@ async def main():
             print(f"로그인 사용자: {user.username}")
 
             # 사용자의 게시물 가져오기
+            # 이게 우리쪽 DBMS 에서 가져올지, api call 통해서 가져올지 애매함
             try:
                 all_user_posts = await velog_service.get_all_posts(
                     user.username
@@ -133,7 +136,7 @@ async def main():
             except VelogError as e:
                 print(f"게시물 가져오기 실패: {e}")
 
-            user_result = call_llm(user_posts)
+            user_result = call_llm(openai_client, user_posts)
             print(user_result)
 
             print(
@@ -164,7 +167,7 @@ async def main():
             except VelogError as e:
                 print(f"인기 게시물 가져오기 실패: {e}")
 
-            trand_result = call_llm(trand_posts)
+            trand_result = call_llm(openai_client, trand_posts)
             print(trand_result)
         except VelogError as e:
             print(f"Velog API 오류: {e}")
@@ -174,5 +177,4 @@ async def main():
 
 if __name__ == "__main__":
     # 이벤트 루프 실행
-    # 07df3e14-b899-49ce-a252-4a6c30d03233
     asyncio.run(main())
