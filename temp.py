@@ -10,11 +10,11 @@ import aiohttp
 
 from modules.llm.base_client import LLMClient
 from modules.llm.openai.client import OpenAIClient
+from scraping.velog.client import VelogClient
 from scraping.velog.exceptions import VelogError
-from scraping.velog.services import VelogService
 
-ACCESS_TOKEN = ""  # 여러분 벨로그 토큰 (개별 게시글 분석용)
-REFRESH_TOKEN = ""  # 여러분 벨로그 토큰 (개별 게시글 분석용)
+ACCESS_TOKEN = "ey"  # 여러분 벨로그 토큰 (개별 게시글 분석용)
+REFRESH_TOKEN = "ey"  # 여러분 벨로그 토큰 (개별 게시글 분석용)
 OPENAI_API_KEY = "sk-proj"  # "여기에 제가 공유한 토큰 써주세요!"
 
 SYS_PROM = (
@@ -87,9 +87,12 @@ async def main():
 
     # HTTP 세션 생성
     async with aiohttp.ClientSession() as session:
-        # Velog 서비스 생성
-        velog_service = VelogService(session, ACCESS_TOKEN, REFRESH_TOKEN)
-
+        # 파사드 패턴 + 레이지 싱글톤 패턴, 어짜피 한 번 생성된 인스턴스는 재사용 (단일 프로세스 내에서)
+        velog_client = VelogClient.get_client(
+            session=session,
+            access_token=ACCESS_TOKEN,  # 이게 계속 바뀌어도 같은 객체를 사용함
+            refresh_token=REFRESH_TOKEN,  # 이게 계속 바뀌어도 같은 객체를 사용함
+        )
         try:
             print(
                 "==================================================================="
@@ -99,7 +102,7 @@ async def main():
                 "==================================================================="
             )
 
-            user = await velog_service.get_current_user()
+            user = await velog_client.get_current_user()
             if not user:
                 print("사용자 인증 실패")
                 return
@@ -109,7 +112,7 @@ async def main():
             # 사용자의 게시물 가져오기
             # 이게 우리쪽 DBMS 에서 가져올지, api call 통해서 가져올지 애매함
             try:
-                all_user_posts = await velog_service.get_all_posts(
+                all_user_posts = await velog_client.get_all_posts(
                     user.username
                 )
                 print(f"게시물 수: {len(all_user_posts)}")
@@ -120,7 +123,7 @@ async def main():
                 # 특정 게시물 상세 정보 가져오기, 테스트 전용, 20개로 제한
                 # 여기서 "최근 일주일 간 작성된 게시글을 가져오는 로직" 이 추가됨이 필요 할 듯
                 for post in all_user_posts[:20]:
-                    post_detail = await velog_service.get_post(post.id)
+                    post_detail = await velog_client.get_post(post.id)
 
                     if not post_detail:
                         continue
@@ -149,13 +152,13 @@ async def main():
 
             # 인기 게시물 가져오기
             try:
-                trending_posts = await velog_service.get_trending_posts(
+                trending_posts = await velog_client.get_trending_posts(
                     limit=10
                 )
                 print(f"인기 게시물 수: {len(trending_posts)}")
                 for post in trending_posts:
                     print(f"- {post.title} (좋아요: {post.likes})")
-                    post_detail = await velog_service.get_post(post.id)
+                    post_detail = await velog_client.get_post(post.id)
                     trand_posts.append(
                         {
                             "제목": post_detail.title,
