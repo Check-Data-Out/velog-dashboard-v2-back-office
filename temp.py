@@ -13,8 +13,8 @@ from modules.llm.openai.client import OpenAIClient
 from scraping.velog.client import VelogClient
 from scraping.velog.exceptions import VelogError
 
-ACCESS_TOKEN = "ey"  # 여러분 벨로그 토큰 (개별 게시글 분석용)
-REFRESH_TOKEN = "ey"  # 여러분 벨로그 토큰 (개별 게시글 분석용)
+ACCESS_TOKEN = ""  # 여러분 벨로그 토큰 (개별 게시글 분석용)
+REFRESH_TOKEN = ""  # 여러분 벨로그 토큰 (개별 게시글 분석용)
 OPENAI_API_KEY = "sk-proj"  # "여기에 제가 공유한 토큰 써주세요!"
 
 SYS_PROM = (

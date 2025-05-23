@@ -1,4 +1,4 @@
-from typing import Any, AsyncContextManager, Protocol
+from typing import Any, Awaitable, Protocol
 
 
 class HttpSession(Protocol):
@@ -11,7 +11,7 @@ class HttpSession(Protocol):
         json: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
         cookies: dict[str, str] | None = None,
-    ) -> AsyncContextManager[Any]:
+    ) -> Awaitable[Any]:
         """
         HTTP POST 요청을 수행합니다.
 

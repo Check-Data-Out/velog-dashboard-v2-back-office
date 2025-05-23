@@ -1,8 +1,6 @@
 from typing import TYPE_CHECKING, Any
 
 from scraping.protocols import HttpSession
-from scraping.velog.constants import V2_CDN_URL, V2_URL, V3_URL
-from scraping.velog.exceptions import VelogApiError, VelogError
 from scraping.velog.schemas import Post, PostStats, User
 
 
@@ -40,11 +38,6 @@ class VelogClient:
         self._session = session
         self._access_token = access_token
         self._refresh_token = refresh_token
-
-        # API URLs
-        self.v3_url = V3_URL
-        self.v2_url = V2_URL
-        self.v2_cdn_url = V2_CDN_URL
 
         # Service 도 lazy initialization
         self._service = None
@@ -86,8 +79,9 @@ class VelogClient:
         else:
             if access_token and refresh_token:
                 cls._instance.update_tokens(access_token, refresh_token)
-            cls._instance._session = session
             cls._session = session
+            if cls._service:
+                cls._service.session = session
 
         return cls._instance
 
@@ -102,83 +96,11 @@ class VelogClient:
         Returns:
             None
         """
-        self._access_token = access_token
-        self._refresh_token = refresh_token
         VelogClient._access_token = access_token
         VelogClient._refresh_token = refresh_token
-
-    def get_headers(self) -> dict[str, str]:
-        """
-        API 요청에 필요한 헤더를 생성합니다.
-
-        Args:
-            None
-
-        Returns:
-            dict[str, str]: API 요청 헤더 딕셔너리
-
-        Raises:
-            VelogError: 토큰이 설정되지 않은 경우
-        """
-        if not self._access_token or not self._refresh_token:
-            raise VelogError("토큰이 설정되지 않았습니다.")
-
-        return {
-            "authority": "v3.velog.io",
-            "origin": "https://velog.io",
-            "content-type": "application/json",
-            "cookie": f"access_token={self._access_token}; refresh_token={self._refresh_token}",
-        }
-
-    async def execute_query(
-        self,
-        url: str,
-        query: str,
-        variables: dict[str, Any] | None = None,
-        operation_name: str | None = None,
-    ) -> dict[str, Any]:
-        """
-        GraphQL 쿼리를 실행합니다.
-
-        Args:
-            url: GraphQL 엔드포인트 URL
-            query: GraphQL 쿼리 문자열
-            variables: 쿼리 변수 딕셔너리 (선택적)
-            operation_name: GraphQL 작업 이름 (선택적)
-
-        Returns:
-            dict[str, Any]: GraphQL 응답의 data 필드
-
-        Raises:
-            VelogError: HTTP 세션이 초기화되지 않은 경우
-            VelogApiError: API 요청이 실패한 경우 (non-200 status)
-        """
-        if not self._session:
-            raise VelogError("HTTP 세션이 초기화되지 않았습니다.")
-
-        payload: dict[str, Any] = {"query": query}
-        if variables:
-            payload["variables"] = variables
-        if operation_name:
-            payload["operationName"] = operation_name
-
-        headers = self.get_headers()
-        try:
-            async with self._session.post(
-                url, json=payload, headers=headers
-            ) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    raise VelogApiError(response.status, error_text)
-
-                result = await response.json()
-                data = result.get("data")
-                return data if isinstance(data, dict) else {}
-
-        except (VelogApiError,):
-            raise
-        except Exception as e:
-            raise VelogError(f"API 요청 중 예외 발생: {str(e)}") from e
+        if self._service:
+            self._service.access_token = access_token
+            self._service.refresh_token = refresh_token
 
     @property
     def service(self) -> "VelogService":
@@ -189,12 +111,22 @@ class VelogClient:
             VelogService: 서비스 인스턴스
         """
         if self._service is None:
+            if (
+                not self._session
+                or not self._access_token
+                or not self._refresh_token
+            ):
+                raise ValueError(
+                    "서비스를 사용하기 전에 세션과 토큰을 설정해야 합니다."
+                )
+
             from scraping.velog.service import VelogService
 
-            self._service = VelogService(self)
+            self._service = VelogService(
+                self._session, self._access_token, self._refresh_token
+            )
         return self._service
 
-    # Facade methods - Service 메서드들을 Client에서 직접 호출 가능
     async def validate_user(self) -> bool:
         """
         현재 사용자의 토큰 유효성을 검증합니다.

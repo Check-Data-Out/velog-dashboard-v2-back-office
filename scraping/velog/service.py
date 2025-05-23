@@ -1,14 +1,21 @@
 from typing import Any
 
-from scraping.velog.client import VelogClient
+from scraping.protocols import HttpSession
 from scraping.velog.constants import (
     CURRENT_USER_QUERY,
     GET_POST_QUERY,
     POSTS_QUERY,
     POSTS_STATS_QUERY,
     TRENDING_POSTS_QUERY,
+    V2_CDN_URL,
+    V2_URL,
+    V3_URL,
 )
-from scraping.velog.exceptions import VelogError
+from scraping.velog.exceptions import (
+    VelogApiError,
+    VelogError,
+    VelogResponseError,
+)
 from scraping.velog.schemas import Post, PostStats, User
 
 
@@ -18,8 +25,94 @@ class VelogService:
     VelogClient를 사용하여 도메인 로직 구현
     """
 
-    def __init__(self, client: VelogClient):
-        self.client = client
+    def __init__(
+        self,
+        session: HttpSession,
+        access_token: str,
+        refresh_token: str,
+    ):
+        self.session = session
+        self.access_token = access_token
+        self.refresh_token = refresh_token
+
+        # API URLs
+        self.v3_url = V3_URL
+        self.v2_url = V2_URL
+        self.v2_cdn_url = V2_CDN_URL
+
+    def _get_headers(self) -> dict[str, str]:
+        """
+        API 요청에 필요한 헤더를 생성합니다.
+
+        Args:
+            None
+
+        Returns:
+            dict[str, str]: API 요청 헤더 딕셔너리
+
+        Raises:
+            VelogError: 토큰이 설정되지 않은 경우
+        """
+        if not self.access_token or not self.refresh_token:
+            raise VelogError("토큰이 설정되지 않았습니다.")
+
+        return {
+            "authority": "v3.velog.io",
+            "origin": "https://velog.io",
+            "content-type": "application/json",
+            "cookie": f"access_token={self.access_token}; refresh_token={self.refresh_token}",
+        }
+
+    async def _execute_query(
+        self,
+        url: str,
+        query: str,
+        variables: dict[str, Any] | None = None,
+        operation_name: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        GraphQL 쿼리를 실행합니다.
+        Args:
+            url: GraphQL 엔드포인트 URL
+            query: GraphQL 쿼리 문자열
+            variables: 쿼리 변수 딕셔너리
+            operation_name: 작업 이름
+        Returns:
+            GraphQL 응답 데이터 딕셔너리
+        Raises:
+            VelogApiError: API 요청이 실패했을 때 발생합니다
+            VelogResponseError: 응답 처리 중 오류가 발생했을 때 발생합니다
+        """
+        payload: dict[str, Any] = {"query": query}
+        if variables:
+            payload["variables"] = variables
+        if operation_name:
+            payload["operationName"] = operation_name
+
+        headers = self._get_headers()
+        try:
+            response = await self.session.post(
+                url, json=payload, headers=headers
+            )
+            res_http_status = (
+                response.status
+                if hasattr(response, "status")
+                else response.status_code
+            )
+
+            if res_http_status != 200:
+                error_text = await response.text()
+                raise VelogApiError(res_http_status, error_text)
+
+            result = await response.json()
+            data = result.get("data")
+            return data if isinstance(data, dict) else {}
+        except (VelogApiError, VelogResponseError):
+            # 이미 정의된 예외는 그대로 전파
+            raise
+        except Exception as e:
+            # 기타 예외는 VelogError로 래핑하여 전파
+            raise VelogError(f"API 요청 중 예외 발생: {str(e)}") from e
 
     async def validate_user(self) -> bool:
         """
@@ -50,9 +143,7 @@ class VelogService:
         Raises:
             VelogError: API 요청 중 오류가 발생한 경우
         """
-        response = await self.client.execute_query(
-            self.client.v3_url, CURRENT_USER_QUERY
-        )
+        response = await self._execute_query(self.v3_url, CURRENT_USER_QUERY)
         if not response or "currentUser" not in response:
             return None
 
@@ -90,10 +181,9 @@ class VelogService:
             }
         }
 
-        response = await self.client.execute_query(
-            self.client.v3_url, POSTS_QUERY, variables
+        response = await self._execute_query(
+            self.v3_url, POSTS_QUERY, variables
         )
-
         if not response or "posts" not in response:
             return []
 
@@ -131,9 +221,14 @@ class VelogService:
         """
         cursor = ""
         all_posts = []
+        max_iterations = 100  # 안전장치, 누가 게시글 5000개를 쓰겠어?!
 
         while True:
+            if max_iterations <= 0:
+                break
+
             posts = await self.get_posts(username, cursor)
+            max_iterations -= 1
             if not posts:
                 break
 
@@ -161,8 +256,8 @@ class VelogService:
         """
         variables = {"post_id": post_id}
 
-        response = await self.client.execute_query(
-            self.client.v2_cdn_url, POSTS_STATS_QUERY, variables, "GetStats"
+        response = await self._execute_query(
+            self.v2_cdn_url, POSTS_STATS_QUERY, variables, "GetStats"
         )
 
         if not response or "getStats" not in response:
@@ -190,8 +285,8 @@ class VelogService:
         """
         variables = {"id": post_uuid}
 
-        response = await self.client.execute_query(
-            self.client.v2_url, GET_POST_QUERY, variables
+        response = await self._execute_query(
+            self.v2_url, GET_POST_QUERY, variables
         )
 
         if not response or "post" not in response:
@@ -245,8 +340,8 @@ class VelogService:
             "input": {"limit": limit, "offset": offset, "timeframe": timeframe}
         }
 
-        response = await self.client.execute_query(
-            self.client.v3_url, TRENDING_POSTS_QUERY, variables
+        response = await self._execute_query(
+            self.v3_url, TRENDING_POSTS_QUERY, variables
         )
 
         if not response or "trendingPosts" not in response:
