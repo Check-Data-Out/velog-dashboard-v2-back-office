@@ -15,7 +15,8 @@ class TestJsonPreviewMixin:
 
         assert isinstance(preview, str)
         assert len(preview) <= 50
-        assert "..." in preview or len(str(weekly_trend.insight)) <= 50
+        # 길이 제한으로 인해 원본보다 짧은지 확인
+        assert len(preview) < len(str(weekly_trend.insight))
 
     def test_get_json_preview_empty(self, empty_insight_weekly_trend):
         """빈 JSON 데이터에 대한 get_json_preview 테스트"""

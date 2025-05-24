@@ -89,7 +89,7 @@ class JsonPreviewMixin:
                     html += "</div>"
 
         html += "</div>"
-        return format_html(html)
+        return format_html("{}", html)
 
 
 class UserFilter(admin.SimpleListFilter):
@@ -180,10 +180,10 @@ class WeeklyTrendAdmin(admin.ModelAdmin, JsonPreviewMixin):
         """처리 상태를 색상으로 표시"""
         if obj.is_processed:
             return format_html(
-                '<span style="color: green; font-weight: bold;">✓</span>'
+                "{}", '<span style="color: green; font-weight: bold;">✓</span>'
             )
         return format_html(
-            '<span style="color: red; font-weight: bold;">✗</span>'
+            "{}", '<span style="color: red; font-weight: bold;">✗</span>'
         )
 
     @admin.display(description="처리 완료 시간")
@@ -282,10 +282,10 @@ class UserWeeklyTrendAdmin(admin.ModelAdmin, JsonPreviewMixin):
         """처리 상태를 색상으로 표시"""
         if obj.is_processed:
             return format_html(
-                '<span style="color: green; font-weight: bold;">✓</span>'
+                "{}", '<span style="color: green; font-weight: bold;">✓</span>'
             )
         return format_html(
-            '<span style="color: red; font-weight: bold;">✗</span>'
+            "{}", '<span style="color: red; font-weight: bold;">✗</span>'
         )
 
     @admin.display(description="처리 완료 시간")
