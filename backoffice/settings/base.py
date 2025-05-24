@@ -67,6 +67,7 @@ INSTALLED_APPS = [
     "users",
     "posts",
     "noti",  # 공지와 알림 관련 도메인
+    "insight",  # 게시글, 트랜드 인사이트 관련 도메인
 ]
 
 MIDDLEWARE = [
