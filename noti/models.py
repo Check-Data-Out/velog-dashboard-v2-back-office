@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from django.db import models
 
 from common.models import TimeStampedModel
+from users.models import User as VelogUser
 
 User = get_user_model()
 
@@ -43,3 +44,32 @@ class NotiPost(TimeStampedModel):
         """공지글을 활성화하는 메서드"""
         self.is_active = True
         self.save()
+
+
+class NotiMailLog(TimeStampedModel):
+    """
+    메일 발송 로그
+    """
+
+    user = models.ForeignKey(
+        VelogUser,
+        on_delete=models.CASCADE,
+        related_name="email_logs",
+        verbose_name="수신자",
+    )
+    subject = models.CharField(max_length=255, verbose_name="메일 제목")
+    body = models.TextField(verbose_name="메일 내용")
+    sent_at = models.DateTimeField(auto_now_add=True, verbose_name="발송 시간")
+    is_success = models.BooleanField(
+        default=False, verbose_name="발송 성공 여부"
+    )
+    error_message = models.TextField(
+        blank=True, null=True, verbose_name="오류 메시지"
+    )
+
+    class Meta:
+        verbose_name = "메일 발송 로그"
+        verbose_name_plural = "메일 발송 로그 목록"
+
+    def __str__(self):
+        return f"{self.user.email} 메일 발송 ({self.sent_at})"
