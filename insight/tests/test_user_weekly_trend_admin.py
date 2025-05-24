@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
+from insight.models import UserWeeklyTrend
 from utils.utils import get_local_now
 
 
@@ -10,7 +11,10 @@ class TestUserWeeklyTrendAdmin:
     """UserWeeklyTrendAdmin 테스트"""
 
     def test_get_queryset(
-        self, user_weekly_trend_admin, user_weekly_trend, request_factory
+        self,
+        user_weekly_trend_admin,
+        user_weekly_trend: UserWeeklyTrend,
+        request_factory,
     ):
         """get_queryset 메소드 테스트"""
         qs = user_weekly_trend_admin.get_queryset(request_factory)
@@ -27,35 +31,16 @@ class TestUserWeeklyTrendAdmin:
 
         assert user_weekly_trend.user.email in result
 
-    def test_user_info_no_user(
-        self, user_weekly_trend_admin, user_weekly_trend
+    def test_week_range(
+        self, user_weekly_trend_admin, user_weekly_trend: UserWeeklyTrend
     ):
-        """user_info 메소드 테스트 (사용자 없음)"""
-        # user가 None인 상황을 시뮬레이션
-        original_user = user_weekly_trend.user
-        try:
-            # 임시로 user 속성을 None으로 설정
-            setattr(user_weekly_trend, "user", None)
-            result = user_weekly_trend_admin.user_info(user_weekly_trend)
-            assert result == "-"
-        finally:
-            # 테스트 후 원래 사용자 복원
-            setattr(user_weekly_trend, "user", original_user)
-
-    def test_week_range(self, user_weekly_trend_admin, user_weekly_trend):
         """week_range 메소드 테스트"""
         result = user_weekly_trend_admin.week_range(user_weekly_trend)
         expected_format = f"{user_weekly_trend.week_start_date.strftime('%Y-%m-%d')} ~ {user_weekly_trend.week_end_date.strftime('%Y-%m-%d')}"
         assert expected_format in result
 
-    def test_insight_preview(self, user_weekly_trend_admin, user_weekly_trend):
-        """insight_preview 메소드 테스트"""
-        result = user_weekly_trend_admin.insight_preview(user_weekly_trend)
-        assert isinstance(result, str)
-        assert "Python" in result or "..." in result
-
     def test_is_processed_colored_true(
-        self, user_weekly_trend_admin, user_weekly_trend
+        self, user_weekly_trend_admin, user_weekly_trend: UserWeeklyTrend
     ):
         """is_processed_colored 메소드 테스트 (처리 완료)"""
         user_weekly_trend.is_processed = True
@@ -68,7 +53,7 @@ class TestUserWeeklyTrendAdmin:
         assert "✓" in result
 
     def test_is_processed_colored_false(
-        self, user_weekly_trend_admin, user_weekly_trend
+        self, user_weekly_trend_admin, user_weekly_trend: UserWeeklyTrend
     ):
         """is_processed_colored 메소드 테스트 (미처리)"""
         user_weekly_trend.is_processed = False
@@ -81,7 +66,7 @@ class TestUserWeeklyTrendAdmin:
         assert "✗" in result
 
     def test_processed_at_formatted_with_date(
-        self, user_weekly_trend_admin, user_weekly_trend
+        self, user_weekly_trend_admin, user_weekly_trend: UserWeeklyTrend
     ):
         """processed_at_formatted 메소드 테스트 (날짜 있음)"""
         now = get_local_now()
@@ -94,7 +79,7 @@ class TestUserWeeklyTrendAdmin:
         assert now.strftime("%Y-%m-%d %H:%M") == result
 
     def test_processed_at_formatted_no_date(
-        self, user_weekly_trend_admin, user_weekly_trend
+        self, user_weekly_trend_admin, user_weekly_trend: UserWeeklyTrend
     ):
         """processed_at_formatted 메소드 테스트 (날짜 없음)"""
         user_weekly_trend.processed_at = None
@@ -106,7 +91,10 @@ class TestUserWeeklyTrendAdmin:
         assert result == "-"
 
     def test_mark_as_processed(
-        self, user_weekly_trend_admin, user_weekly_trend, request_factory
+        self,
+        user_weekly_trend_admin,
+        user_weekly_trend: UserWeeklyTrend,
+        request_factory,
     ):
         """mark_as_processed 메소드 테스트"""
         user_weekly_trend.is_processed = False

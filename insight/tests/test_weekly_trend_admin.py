@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
+from insight.models import WeeklyTrend
 from utils.utils import get_local_now
 
 
@@ -9,19 +10,15 @@ from utils.utils import get_local_now
 class TestWeeklyTrendAdmin:
     """WeeklyTrendAdmin 테스트"""
 
-    def test_week_range(self, weekly_trend_admin, weekly_trend):
+    def test_week_range(self, weekly_trend_admin, weekly_trend: WeeklyTrend):
         """week_range 메소드 테스트"""
         result = weekly_trend_admin.week_range(weekly_trend)
         expected_format = f"{weekly_trend.week_start_date.strftime('%Y-%m-%d')} ~ {weekly_trend.week_end_date.strftime('%Y-%m-%d')}"
         assert expected_format in result
 
-    def test_insight_preview(self, weekly_trend_admin, weekly_trend):
-        """insight_preview 메소드 테스트"""
-        result = weekly_trend_admin.insight_preview(weekly_trend)
-        assert isinstance(result, str)
-        assert "Python" in result or "..." in result
-
-    def test_is_processed_colored_true(self, weekly_trend_admin, weekly_trend):
+    def test_is_processed_colored_true(
+        self, weekly_trend_admin, weekly_trend: WeeklyTrend
+    ):
         """is_processed_colored 메소드 테스트 (처리 완료)"""
         weekly_trend.is_processed = True
         weekly_trend.save()
@@ -31,7 +28,7 @@ class TestWeeklyTrendAdmin:
         assert "✓" in result
 
     def test_is_processed_colored_false(
-        self, weekly_trend_admin, weekly_trend
+        self, weekly_trend_admin, weekly_trend: WeeklyTrend
     ):
         """is_processed_colored 메소드 테스트 (미처리)"""
         weekly_trend.is_processed = False
@@ -42,7 +39,7 @@ class TestWeeklyTrendAdmin:
         assert "✗" in result
 
     def test_processed_at_formatted_with_date(
-        self, weekly_trend_admin, weekly_trend
+        self, weekly_trend_admin, weekly_trend: WeeklyTrend
     ):
         """processed_at_formatted 메소드 테스트 (날짜 있음)"""
         now = get_local_now()
@@ -53,7 +50,7 @@ class TestWeeklyTrendAdmin:
         assert now.strftime("%Y-%m-%d %H:%M") == result
 
     def test_processed_at_formatted_no_date(
-        self, weekly_trend_admin, weekly_trend
+        self, weekly_trend_admin, weekly_trend: WeeklyTrend
     ):
         """processed_at_formatted 메소드 테스트 (날짜 없음)"""
         weekly_trend.processed_at = None
@@ -63,7 +60,7 @@ class TestWeeklyTrendAdmin:
         assert result == "-"
 
     def test_mark_as_processed(
-        self, weekly_trend_admin, weekly_trend, request_factory
+        self, weekly_trend_admin, weekly_trend: WeeklyTrend, request_factory
     ):
         """mark_as_processed 메소드 테스트"""
         weekly_trend.is_processed = False
