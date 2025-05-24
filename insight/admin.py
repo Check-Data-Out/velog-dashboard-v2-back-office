@@ -1,7 +1,6 @@
 import json
 
 from django.contrib import admin
-from django.db.models import Q
 from django.http import HttpRequest
 from django.template.defaultfilters import truncatechars
 from django.urls import reverse
@@ -90,38 +89,6 @@ class JsonPreviewMixin:
 
         html += "</div>"
         return format_html("{}", html)
-
-
-class UserFilter(admin.SimpleListFilter):
-    """사용자별 필터링을 위한 커스텀 필터"""
-
-    title = "사용자"
-    parameter_name = "user_group"
-
-    def lookups(self, request, model_admin):
-        return [
-            ("has_posts", "분석된 게시글이 있는 사용자"),
-            ("no_posts", "분석된 게시글이 없는 사용자"),
-            ("high_keywords", "분석된 키워드가 있는 사용자"),
-        ]
-
-    def queryset(self, request, queryset):
-        if self.value() == "has_posts":
-            return queryset.filter(
-                insight__has_key="trending_summary",
-                insight__trending_summary__isnull=False,
-            )
-        elif self.value() == "no_posts":
-            return queryset.filter(
-                ~Q(insight__has_key="trending_summary")
-                | Q(insight__trending_summary=[])
-            )
-        elif self.value() == "high_keywords":
-            return queryset.filter(
-                insight__has_key="trend_analysis",
-                insight__trend_analysis__has_key="hot_keywords",
-            )
-        return queryset
 
 
 @admin.register(WeeklyTrend)
@@ -214,7 +181,7 @@ class UserWeeklyTrendAdmin(admin.ModelAdmin, JsonPreviewMixin):
         "processed_at_formatted",
         "created_at",
     )
-    list_filter = ("is_processed", "week_start_date", UserFilter)
+    list_filter = ("is_processed", "week_start_date")
     search_fields = ("user__email", "insight")
     readonly_fields = (
         "processed_at",
