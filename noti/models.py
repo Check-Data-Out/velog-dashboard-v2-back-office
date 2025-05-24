@@ -49,6 +49,7 @@ class NotiPost(TimeStampedModel):
 class NotiMailLog(TimeStampedModel):
     """
     메일 발송 로그
+    TODO: [25.05.24] 추후 3개월 이전 로그는 자동으로 삭제되는 로직 추가 필요
     """
 
     user = models.ForeignKey(

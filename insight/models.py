@@ -1,4 +1,3 @@
-# insights/models.py
 from django.db import models
 
 from common.models import TimeStampedModel
@@ -19,9 +18,6 @@ class WeeklyTrend(TimeStampedModel):
         help_text="주간 트렌드에 대한 핵심 키워드 및 인사이트 데이터, schema 변동에 유연하게 대응하기 위해 JSONField 사용",
         default=dict,
     )
-    # content_summary = models.TextField(verbose_name="세부 내용 요약")
-    # title_trends = models.JSONField(verbose_name="제목 트렌드", default=dict)
-    # overall_trend_analysis = models.TextField(verbose_name="전체 트렌드 분석")
 
     # 상태 필드
     is_processed = models.BooleanField(
@@ -38,14 +34,13 @@ class WeeklyTrend(TimeStampedModel):
         indexes = [
             models.Index(fields=["week_start_date"]),
             models.Index(fields=["is_processed"]),
-            models.Index(fields=["is_sent"]),
         ]
 
     def __str__(self):
         return f"주간 트렌드 ({self.week_start_date} ~ {self.week_end_date})"
 
 
-class UserWeeklyInsight(TimeStampedModel):
+class UserWeeklyTrend(TimeStampedModel):
     """
     사용자별 주간 게시글 인사이트
     """
@@ -65,10 +60,6 @@ class UserWeeklyInsight(TimeStampedModel):
         help_text="주간 트렌드에 대한 핵심 키워드 및 인사이트 데이터, schema 변동에 유연하게 대응하기 위해 JSONField 사용",
         default=dict,
     )
-    # view_count_changes = models.JSONField(verbose_name="조회수 변동", default=dict)
-    # key_keywords = models.JSONField(verbose_name="핵심 키워드", default=dict)
-    # content_summary = models.TextField(verbose_name="세부 내용 요약")
-    # overall_trend_analysis = models.TextField(verbose_name="전체 트렌드 분석")
 
     # 상태 필드
     is_processed = models.BooleanField(
