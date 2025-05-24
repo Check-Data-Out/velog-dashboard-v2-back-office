@@ -1,24 +1,9 @@
-import uuid
-
 import pytest
 from django.contrib.admin.sites import AdminSite
 from django.utils.timezone import now, timedelta
 
-from users.admin import UserAdmin, QRLoginTokenAdmin
+from users.admin import QRLoginTokenAdmin, UserAdmin
 from users.models import QRLoginToken, User
-
-
-@pytest.fixture
-def user(db):
-    """테스트용 User 객체 생성"""
-    return User.objects.create(
-        velog_uuid=uuid.uuid4(),
-        access_token="encrypted-access-token",
-        refresh_token="encrypted-refresh-token",
-        group_id=1,
-        email="test@example.com",
-        is_active=True,
-    )
 
 
 @pytest.fixture
@@ -43,11 +28,6 @@ def qr_token_used(user, db):
         ip_address="192.168.1.2",
         user_agent="Mozilla/5.0",
     )
-
-
-@pytest.fixture
-def admin_site():
-    return AdminSite()
 
 
 @pytest.fixture
@@ -77,7 +57,7 @@ def test_make_unused(qr_admin, qr_token_used):
 def test_admin_list_display(qr_admin):
     assert qr_admin.list_display == (
         "token",
-        "user",
+        "user_link",
         "created_at",
         "expires_at",
         "is_used",
@@ -88,7 +68,7 @@ def test_admin_list_display(qr_admin):
 
 @pytest.mark.django_db
 def test_admin_list_filter(qr_admin):
-    assert qr_admin.list_filter == ("is_used", "expires_at", "user")
+    assert qr_admin.list_filter == ("is_used", "expires_at")
 
 
 @pytest.mark.django_db
@@ -104,6 +84,7 @@ def test_admin_ordering(qr_admin):
 @pytest.mark.django_db
 def test_admin_readonly_fields(qr_admin):
     assert qr_admin.readonly_fields == ("token", "created_at")
+
 
 @pytest.mark.django_db
 def test_qr_login_token_n_plus_one(django_assert_num_queries, user):

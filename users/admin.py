@@ -139,7 +139,7 @@ class QRLoginTokenAdmin(admin.ModelAdmin):
         "ip_address",
         "user_agent",
     )
-    list_filter = ("is_used", "expires_at", "user")
+    list_filter = ("is_used", "expires_at")
     search_fields = ("token", "ip_address")
     ordering = ("-id",)
     readonly_fields = ("token", "created_at")
