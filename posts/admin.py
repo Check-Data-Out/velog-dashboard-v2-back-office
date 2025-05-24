@@ -59,7 +59,7 @@ class PostAdmin(admin.ModelAdmin):
         return format_html(
             '<a target="_blank" href="{}" style="min-width: 80px; display: block;">{}</a>',
             url,
-            obj.user.velog_uuid,
+            obj.user.email,
         )
 
 
