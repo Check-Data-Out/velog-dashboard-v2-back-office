@@ -1,7 +1,11 @@
 import random
+from dataclasses import fields, is_dataclass
 from datetime import datetime
+from typing import Any, Type, TypeVar, get_args, get_origin
 
 from django.utils import timezone
+
+T = TypeVar("T")
 
 
 def generate_random_group_id() -> int:
@@ -39,3 +43,45 @@ def split_list(lst: list[int], n_splits: int) -> list[list[int]]:
         lst[i * k + min(i, m) : (i + 1) * k + min(i + 1, m)]
         for i in range(n_splits)
     ]
+
+
+def to_dict(obj: Any) -> Any:
+    """재귀적으로 dataclass를 dict로 변환"""
+    if is_dataclass(obj):
+        return {f.name: to_dict(getattr(obj, f.name)) for f in fields(obj)}
+    elif isinstance(obj, (list, tuple)):
+        return [to_dict(v) for v in obj]
+    elif isinstance(obj, dict):
+        return {k: to_dict(v) for k, v in obj.items()}
+    else:
+        return obj
+
+
+def from_dict(cls: Type[T], data: dict) -> T:
+    """dict에서 dataclass로 복원"""
+    if not is_dataclass(cls):
+        return data
+
+    kwargs = {}
+    for f in fields(cls):
+        if f.name not in data:
+            continue
+
+        value = data[f.name]
+        field_type = f.type
+
+        # dataclass 타입 체크
+        if is_dataclass(field_type):
+            kwargs[f.name] = from_dict(field_type, value)
+        # List[dataclass] 처리
+        elif (
+            get_origin(field_type) in (list, tuple)
+            and len(get_args(field_type)) > 0
+            and is_dataclass(get_args(field_type)[0])
+        ):
+            item_type = get_args(field_type)[0]
+            kwargs[f.name] = [from_dict(item_type, item) for item in value]
+        else:
+            kwargs[f.name] = value
+
+    return cls(**kwargs)

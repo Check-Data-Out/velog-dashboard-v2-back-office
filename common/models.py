@@ -1,4 +1,10 @@
+import json
+from dataclasses import dataclass
+from typing import Type, TypeVar
+
 from django.db import models
+
+from utils.utils import from_dict, to_dict
 
 
 class TimeStampedModel(models.Model):  # type: ignore
@@ -17,3 +23,21 @@ class TimeStampedModel(models.Model):  # type: ignore
 
     class Meta:
         abstract = True
+
+
+T = TypeVar("T")
+
+
+# dataclass 베이스 mixin
+@dataclass
+class SerializableMixin:
+    def to_dict(self) -> dict:
+        return to_dict(self)
+
+    def to_json_dict(self) -> dict:
+        """Django Model의 JSON 필드 저장용"""
+        return json.loads(json.dumps(self.to_dict()))
+
+    @classmethod
+    def from_dict(cls: Type[T], data: dict) -> T:
+        return from_dict(cls, data)

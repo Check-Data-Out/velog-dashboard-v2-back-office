@@ -1,7 +1,30 @@
+from dataclasses import dataclass, field
+
 from django.db import models
 
-from common.models import TimeStampedModel
+from common.models import SerializableMixin, TimeStampedModel
 from users.models import User
+
+
+@dataclass
+class TrendingItem(SerializableMixin):
+    title: str
+    summary: str
+    key_points: list[str]
+
+
+@dataclass
+class TrendAnalysis(SerializableMixin):
+    hot_keywords: list[str]
+    title_trends: str
+    content_trends: str
+    insights: str
+
+
+@dataclass
+class WeeklyTrendInsight(SerializableMixin):
+    trending_summary: list[TrendingItem] = field(default_factory=list)
+    trend_analysis: TrendAnalysis = None
 
 
 class WeeklyTrend(TimeStampedModel):
