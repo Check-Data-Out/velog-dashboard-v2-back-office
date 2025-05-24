@@ -1,6 +1,7 @@
 import json
 
 from django.contrib import admin
+from django.db.models import QuerySet
 from django.http import HttpRequest
 from django.template.defaultfilters import truncatechars
 from django.urls import reverse
@@ -162,7 +163,9 @@ class WeeklyTrendAdmin(admin.ModelAdmin, JsonPreviewMixin):
         return "-"
 
     @admin.action(description="선택된 항목을 처리 완료로 표시하기")
-    def mark_as_processed(self, request: HttpRequest, queryset: WeeklyTrend):
+    def mark_as_processed(
+        self, request: HttpRequest, queryset: QuerySet[WeeklyTrend]
+    ):
         """선택된 항목을 처리 완료로 표시"""
         queryset.update(is_processed=True, processed_at=get_local_now())
         self.message_user(
@@ -264,7 +267,9 @@ class UserWeeklyTrendAdmin(admin.ModelAdmin, JsonPreviewMixin):
         return "-"
 
     @admin.action(description="선택된 항목을 처리 완료로 표시하기")
-    def mark_as_processed(self, request, queryset):
+    def mark_as_processed(
+        self, request: HttpRequest, queryset: QuerySet[UserWeeklyTrend]
+    ):
         """선택된 항목을 처리 완료로 표시"""
         queryset.update(is_processed=True, processed_at=get_local_now())
         self.message_user(
