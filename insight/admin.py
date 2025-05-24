@@ -246,6 +246,10 @@ class UserWeeklyTrendAdmin(admin.ModelAdmin, JsonPreviewMixin):
 
     actions = ["mark_as_processed"]
 
+    def get_queryset(self, request: HttpRequest):
+        queryset = super().get_queryset(request)
+        return queryset.select_related("user")
+
     @admin.display(description="사용자")
     def user_info(self, obj: UserWeeklyTrend):
         """사용자 정보를 표시"""
