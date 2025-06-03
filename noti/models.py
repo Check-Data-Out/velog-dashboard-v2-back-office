@@ -74,4 +74,5 @@ class NotiMailLog(TimeStampedModel):
         verbose_name_plural = "메일 발송 로그 목록"
 
     def __str__(self):
-        return f"{self.user.email} 메일 발송 ({self.sent_at})"
+        user_email = self.user.email if self.user else "삭제된 사용자"
+        return f"{user_email} 메일 발송 ({self.sent_at})"
