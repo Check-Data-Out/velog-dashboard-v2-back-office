@@ -55,6 +55,7 @@ class NotiMailLog(TimeStampedModel):
     user = models.ForeignKey(
         VelogUser,
         on_delete=models.SET_NULL,
+        null=True,
         related_name="email_logs",
         verbose_name="수신자",
     )
