@@ -3,7 +3,7 @@ name: Test CI
 on:
   workflow_dispatch:
   push:
-    branches: ["main"]
+    branches: ['main']
   pull_request:
     branches:
       - main
@@ -71,6 +71,9 @@ jobs:
           echo "SENTRY_ENVIRONMENT=gitaction" >> .env
           echo "SENTRY_TRACES_SAMPLE_RATE=0.2" >> .env
           echo "OPENAI_API_KEY= sk-proj" >> .env
+          echo "AWS_ACCESS_KEY_ID=ID" >> .env
+          echo "AWS_SECRET_ACCESS_KEY=AccEssKeY" >> .env
+          echo "AWS_REGION=ap-northeast-2" >> .env
           echo "AES_KEY_0=${{ secrets.AES_KEY_0 }}" >> .env
           echo "AES_KEY_1=${{ secrets.AES_KEY_1 }}" >> .env
           echo "AES_KEY_2=${{ secrets.AES_KEY_2 }}" >> .env
