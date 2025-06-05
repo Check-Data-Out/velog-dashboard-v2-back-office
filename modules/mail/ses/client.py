@@ -35,12 +35,12 @@ class SESClient(MailClient):
         self._client = client
 
     @classmethod
-    def get_client(cls, credentials: dict[str, str]) -> "SESClient":
+    def get_client(cls, credentials: dict[str, Any]) -> "SESClient":
         """
         SES 클라이언트를 가져오거나 초기화합니다.
 
         Args:
-            credentials: AWS 인증 정보 (access_key_id, secret_access_key, region_name)
+            credentials: AWS 인증 정보 (aws_access_key_id, aws_secret_access_key, aws_region_name)
 
         Returns:
             초기화된 SESClient 인스턴스
@@ -52,18 +52,12 @@ class SESClient(MailClient):
             ValidationError: 입력이 유효하지 않은 경우
             ConnectionError: AWS 서비스 연결에 실패한 경우
         """
-        access_key_id = credentials.get("access_key_id")
-        secret_access_key = credentials.get("secret_access_key")
-        region_name = credentials.get("region_name")
-
-        if not access_key_id or not secret_access_key or not region_name:
+        if not credentials.get("aws_access_key_id") or not credentials.get("aws_secret_access_key") or not credentials.get("aws_region_name"):
             raise ValueError("AWS 인증 정보가 필요합니다.")
 
         if cls._instance is None:
             try:
-                client = cls._initialize_client(
-                    access_key_id, secret_access_key, region_name
-                )
+                client = cls._initialize_client(credentials)
                 cls._instance = cls(client)
             except Exception as e:
                 logger.error(f"AWS SES 클라이언트 초기화 실패: {str(e)}")
@@ -72,14 +66,12 @@ class SESClient(MailClient):
         return cls._instance
 
     @classmethod
-    def _initialize_client(
-        cls, access_key_id: str, secret_access_key: str, region_name: str
-    ) -> Any:
+    def _initialize_client(cls, credentials: dict[str, Any]) -> Any:
         """
         AWS SES 클라이언트를 초기화합니다.
 
         Args:
-            credentials: AWS 인증 정보
+            credentials: AWS 인증 정보 (aws_access_key_id, aws_secret_access_key, aws_region_name)
 
         Returns:
             초기화된 boto3 SES 클라이언트
@@ -93,9 +85,9 @@ class SESClient(MailClient):
         try:
             client = boto3.client(
                 service_name="ses",
-                aws_access_key_id=access_key_id,
-                aws_secret_access_key=secret_access_key,
-                region_name=region_name,
+                aws_access_key_id=credentials["aws_access_key_id"],
+                aws_secret_access_key=credentials["aws_secret_access_key"],
+                region_name=credentials["aws_region_name"],
             )
             # API 키 검증을 위한 간단한 호출
             client.get_account_sending_enabled()

@@ -117,7 +117,7 @@ class MailClient(ABC, Generic[T]):
 
     @abstractmethod
     def create_template(
-        self, template_name: str, subject: str, html: str, text: str
+        self, template_name: str, subject: str, html: str = "", text: str = ""
     ) -> None:
         """
         이메일 템플릿을 생성합니다.
@@ -125,8 +125,9 @@ class MailClient(ABC, Generic[T]):
         Args:
             template_name: 템플릿 이름
             subject: 이메일 제목
-            html: HTML 형식의 이메일 본문
-            text: 텍스트 형식의 이메일 본문
+            html: HTML 형식의 이메일 본문 (선택)
+            text: 텍스트 형식의 이메일 본문 (선택)
+            둘 중 하나는 필수로 입력 받도록 내부에서 제어
 
         Raises:
             ClientNotInitializedError: 클라이언트가 초기화되지 않은 경우
