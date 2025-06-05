@@ -27,9 +27,7 @@ logger = logging.getLogger(__name__)
 
 class SESClient(MailClient):
     """AWS SES를 사용하는 메일 클라이언트 구현체"""
-
     _instance: ClassVar[Optional["SESClient"]] = None
-    _client: Any = None
 
     def __init__(self, client: Any):
         self._client = client
@@ -432,4 +430,3 @@ class SESClient(MailClient):
         클라이언트 인스턴스를 재설정합니다.
         """
         cls._instance = None
-        cls._client = None
