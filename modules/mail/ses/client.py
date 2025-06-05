@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 class SESClient(MailClient):
     """AWS SES를 사용하는 메일 클라이언트 구현체"""
+
     _instance: ClassVar[Optional["SESClient"]] = None
 
     def __init__(self, client: Any):
@@ -50,7 +51,11 @@ class SESClient(MailClient):
             ValidationError: 입력이 유효하지 않은 경우
             ConnectionError: AWS 서비스 연결에 실패한 경우
         """
-        if not credentials.get("aws_access_key_id") or not credentials.get("aws_secret_access_key") or not credentials.get("aws_region_name"):
+        if (
+            not credentials.get("aws_access_key_id")
+            or not credentials.get("aws_secret_access_key")
+            or not credentials.get("aws_region_name")
+        ):
             raise ValueError("AWS 인증 정보가 필요합니다.")
 
         if cls._instance is None:
@@ -91,22 +96,7 @@ class SESClient(MailClient):
             client.get_account_sending_enabled()
             return client
         except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code in AWS_AUTH_ERROR_CODES:
-                logger.error(f"AWS 인증 실패: {str(e)}")
-                raise AuthenticationError(f"AWS 인증 실패: {str(e)}") from e
-            elif error_code in AWS_LIMIT_ERROR_CODES:
-                logger.error(f"AWS API 호출 제한 초과: {str(e)}")
-                raise LimitExceededException(
-                    f"AWS API 호출 제한 초과: {str(e)}"
-                ) from e
-            elif error_code in AWS_VALUE_ERROR_CODES:
-                logger.error(f"AWS 값 오류: {str(e)}")
-                raise ValidationError(f"AWS 값 오류: {str(e)}") from e
-            elif error_code in AWS_SERVICE_ERROR_CODES:
-                logger.error(f"AWS 서비스 오류: {str(e)}")
-                raise ConnectionError(f"AWS 서비스 오류: {str(e)}") from e
-            else:
+            if not cls._handle_aws_common_error(e):
                 logger.error(f"AWS SES 클라이언트 초기화 실패: {str(e)}")
                 raise ConnectionError(
                     f"AWS SES 클라이언트 초기화 실패: {str(e)}"
@@ -180,32 +170,23 @@ class SESClient(MailClient):
             return response["MessageId"]
 
         except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            # AWS Common 예외
-            if error_code in AWS_AUTH_ERROR_CODES:
-                logger.error(f"AWS 인증 실패: {str(e)}")
-                raise AuthenticationError(f"AWS 인증 실패: {str(e)}") from e
-            elif error_code in AWS_LIMIT_ERROR_CODES:
-                logger.error(f"AWS API 호출 제한 초과: {str(e)}")
-                raise LimitExceededException(
-                    f"AWS API 호출 제한 초과: {str(e)}"
-                ) from e
-            elif error_code in AWS_VALUE_ERROR_CODES:
-                logger.error(f"AWS 값 오류: {str(e)}")
-                raise ValidationError(f"AWS 값 오류: {str(e)}") from e
-            elif error_code in AWS_SERVICE_ERROR_CODES:
-                logger.error(f"AWS 서비스 오류: {str(e)}")
-                raise ConnectionError(f"AWS 서비스 오류: {str(e)}") from e
-            # send_email 예외
-            elif error_code == "MessageRejected":
-                raise SendError("이메일이 거부되었습니다.") from e
-            elif error_code == "AccountSendingPausedException":
-                raise SendError(
-                    "계정의 이메일 발송이 일시 중지되었습니다."
-                ) from e
-            else:
-                logger.error(f"이메일 발송 실패: {str(e)}")
-                raise SendError(f"이메일 발송 실패: {str(e)}") from e
+            if not self._handle_aws_common_error(e):
+                error_code = e.response.get("Error", {}).get("Code", "")
+                if error_code == "MessageRejected":
+                    logger.error(f"이메일이 거부되었습니다. {str(e)}")
+                    raise SendError(
+                        f"이메일이 거부되었습니다. {str(e)}"
+                    ) from e
+                elif error_code == "AccountSendingPausedException":
+                    logger.error(
+                        f"계정의 이메일 발송이 일시 중지되었습니다. {str(e)}"
+                    )
+                    raise SendError(
+                        f"계정의 이메일 발송이 일시 중지되었습니다. {str(e)}"
+                    ) from e
+                else:
+                    logger.error(f"이메일 발송 실패: {str(e)}")
+                    raise SendError(f"이메일 발송 실패: {str(e)}") from e
         except Exception as e:
             logger.error(f"이메일 발송 실패: {str(e)}")
             raise SendError(f"이메일 발송 실패: {str(e)}") from e
@@ -258,33 +239,20 @@ class SESClient(MailClient):
             return response["MessageId"]
 
         except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            # AWS Common 예외
-            if error_code in AWS_AUTH_ERROR_CODES:
-                logger.error(f"AWS 인증 실패: {str(e)}")
-                raise AuthenticationError(f"AWS 인증 실패: {str(e)}") from e
-            elif error_code in AWS_LIMIT_ERROR_CODES:
-                logger.error(f"AWS API 호출 제한 초과: {str(e)}")
-                raise LimitExceededException(
-                    f"AWS API 호출 제한 초과: {str(e)}"
-                ) from e
-            elif error_code in AWS_VALUE_ERROR_CODES:
-                logger.error(f"AWS 값 오류: {str(e)}")
-                raise ValidationError(f"AWS 값 오류: {str(e)}") from e
-            elif error_code in AWS_SERVICE_ERROR_CODES:
-                logger.error(f"AWS 서비스 오류: {str(e)}")
-                raise ConnectionError(f"AWS 서비스 오류: {str(e)}") from e
-            # send_templated_email 예외
-            elif error_code == "TemplateDoesNotExistException":
-                logger.error(
-                    f"템플릿 '{message.template_name}'이(가) 존재하지 않습니다."
-                )
-                raise TemplateError(
-                    f"템플릿 '{message.template_name}'이(가) 존재하지 않습니다."
-                ) from e
-            else:
-                logger.error(f"템플릿 이메일 발송 실패: {str(e)}")
-                raise SendError(f"템플릿 이메일 발송 실패: {str(e)}") from e
+            if not self._handle_aws_common_error(e):
+                error_code = e.response.get("Error", {}).get("Code", "")
+                if error_code == "TemplateDoesNotExistException":
+                    logger.error(
+                        f"템플릿 '{message.template_name}'이(가) 존재하지 않습니다."
+                    )
+                    raise TemplateError(
+                        f"템플릿 '{message.template_name}'이(가) 존재하지 않습니다."
+                    ) from e
+                else:
+                    logger.error(f"템플릿 이메일 발송 실패: {str(e)}")
+                    raise SendError(
+                        f"템플릿 이메일 발송 실패: {str(e)}"
+                    ) from e
         except Exception as e:
             logger.error(f"템플릿 이메일 발송 실패: {str(e)}")
             raise SendError(f"템플릿 이메일 발송 실패: {str(e)}") from e
@@ -334,33 +302,18 @@ class SESClient(MailClient):
             self._client.create_template(Template=template_data)
             logger.info(f"템플릿 '{template_name}' 생성 완료")
         except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            # AWS Common 예외
-            if error_code in AWS_AUTH_ERROR_CODES:
-                logger.error(f"AWS 인증 실패: {str(e)}")
-                raise AuthenticationError(f"AWS 인증 실패: {str(e)}") from e
-            elif error_code in AWS_LIMIT_ERROR_CODES:
-                logger.error(f"AWS API 호출 제한 초과: {str(e)}")
-                raise LimitExceededException(
-                    f"AWS API 호출 제한 초과: {str(e)}"
-                ) from e
-            elif error_code in AWS_VALUE_ERROR_CODES:
-                logger.error(f"AWS 값 오류: {str(e)}")
-                raise ValidationError(f"AWS 값 오류: {str(e)}") from e
-            elif error_code in AWS_SERVICE_ERROR_CODES:
-                logger.error(f"AWS 서비스 오류: {str(e)}")
-                raise ConnectionError(f"AWS 서비스 오류: {str(e)}") from e
-            # create_template 예외
-            elif error_code == "AlreadyExistsException":
-                logger.error(
-                    f"템플릿 '{template_name}'이(가) 이미 존재합니다."
-                )
-                raise TemplateError(
-                    f"템플릿 '{template_name}'이(가) 이미 존재합니다."
-                ) from e
-            else:
-                logger.error(f"템플릿 생성 실패: {str(e)}")
-                raise TemplateError(f"템플릿 생성 실패: {str(e)}") from e
+            if not self._handle_aws_common_error(e):
+                error_code = e.response.get("Error", {}).get("Code", "")
+                if error_code == "AlreadyExistsException":
+                    logger.error(
+                        f"템플릿 '{template_name}'이(가) 이미 존재합니다."
+                    )
+                    raise TemplateError(
+                        f"템플릿 '{template_name}'이(가) 이미 존재합니다."
+                    ) from e
+                else:
+                    logger.error(f"템플릿 생성 실패: {str(e)}")
+                    raise TemplateError(f"템플릿 생성 실패: {str(e)}") from e
         except Exception as e:
             logger.error(f"템플릿 생성 실패: {str(e)}")
             raise TemplateError(f"템플릿 생성 실패: {str(e)}") from e
@@ -393,33 +346,18 @@ class SESClient(MailClient):
             logger.info(f"템플릿 '{template_name}' 삭제 완료")
 
         except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            # AWS Common 예외
-            if error_code in AWS_AUTH_ERROR_CODES:
-                logger.error(f"AWS 인증 실패: {str(e)}")
-                raise AuthenticationError(f"AWS 인증 실패: {str(e)}") from e
-            elif error_code in AWS_LIMIT_ERROR_CODES:
-                logger.error(f"AWS API 호출 제한 초과: {str(e)}")
-                raise LimitExceededException(
-                    f"AWS API 호출 제한 초과: {str(e)}"
-                ) from e
-            elif error_code in AWS_VALUE_ERROR_CODES:
-                logger.error(f"AWS 값 오류: {str(e)}")
-                raise ValidationError(f"AWS 값 오류: {str(e)}") from e
-            elif error_code in AWS_SERVICE_ERROR_CODES:
-                logger.error(f"AWS 서비스 오류: {str(e)}")
-                raise ConnectionError(f"AWS 서비스 오류: {str(e)}") from e
-            # delete_template 예외
-            elif error_code == "NotFoundException":
-                logger.error(
-                    f"템플릿 '{template_name}'을(를) 찾을 수 없습니다."
-                )
-                raise TemplateError(
-                    f"템플릿 '{template_name}'을(를) 찾을 수 없습니다."
-                ) from e
-            else:
-                logger.error(f"템플릿 삭제 실패: {str(e)}")
-                raise TemplateError(f"템플릿 삭제 실패: {str(e)}") from e
+            if not self._handle_aws_common_error(e):
+                error_code = e.response.get("Error", {}).get("Code", "")
+                if error_code == "NotFoundException":
+                    logger.error(
+                        f"템플릿 '{template_name}'을(를) 찾을 수 없습니다."
+                    )
+                    raise TemplateError(
+                        f"템플릿 '{template_name}'을(를) 찾을 수 없습니다."
+                    ) from e
+                else:
+                    logger.error(f"템플릿 삭제 실패: {str(e)}")
+                    raise TemplateError(f"템플릿 삭제 실패: {str(e)}") from e
         except Exception as e:
             logger.error(f"템플릿 삭제 실패: {str(e)}")
             raise TemplateError(f"템플릿 삭제 실패: {str(e)}") from e
@@ -430,3 +368,39 @@ class SESClient(MailClient):
         클라이언트 인스턴스를 재설정합니다.
         """
         cls._instance = None
+
+    @staticmethod
+    def _handle_aws_common_error(e: ClientError) -> bool:
+        """
+        AWS Common ClientError를 처리하고 적절한 예외를 발생시킵니다.
+
+        Args:
+            e: ClientError 객체
+
+        Returns:
+            bool: Common ClientError 처리 여부
+
+        Raises:
+            AuthenticationError: AWS 인증 실패
+            LimitExceededException: AWS API 호출 제한 초과
+            ValidationError: AWS 값 오류
+            ConnectionError: AWS 서비스 오류
+        """
+        error_code = e.response.get("Error", {}).get("Code", "")
+
+        if error_code in AWS_AUTH_ERROR_CODES:
+            logger.error(f"AWS 인증 실패: {str(e)}")
+            raise AuthenticationError(f"AWS 인증 실패: {str(e)}") from e
+        elif error_code in AWS_LIMIT_ERROR_CODES:
+            logger.error(f"AWS API 호출 제한 초과: {str(e)}")
+            raise LimitExceededException(
+                f"AWS API 호출 제한 초과: {str(e)}"
+            ) from e
+        elif error_code in AWS_VALUE_ERROR_CODES:
+            logger.error(f"AWS 값 오류: {str(e)}")
+            raise ValidationError(f"AWS 값 오류: {str(e)}") from e
+        elif error_code in AWS_SERVICE_ERROR_CODES:
+            logger.error(f"AWS 서비스 오류: {str(e)}")
+            raise ConnectionError(f"AWS 서비스 오류: {str(e)}") from e
+        else:
+            return False
