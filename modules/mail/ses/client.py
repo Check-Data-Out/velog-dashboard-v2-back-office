@@ -177,16 +177,15 @@ class SESClient(MailClient):
                     raise SendError(
                         f"이메일이 거부되었습니다. {str(e)}"
                     ) from e
-                elif error_code == "AccountSendingPausedException":
+                if error_code == "AccountSendingPausedException":
                     logger.error(
                         f"계정의 이메일 발송이 일시 중지되었습니다. {str(e)}"
                     )
                     raise SendError(
                         f"계정의 이메일 발송이 일시 중지되었습니다. {str(e)}"
                     ) from e
-                else:
-                    logger.error(f"이메일 발송 실패: {str(e)}")
-                    raise SendError(f"이메일 발송 실패: {str(e)}") from e
+                logger.error(f"이메일 발송 실패: {str(e)}")
+                raise SendError(f"이메일 발송 실패: {str(e)}") from e
         except Exception as e:
             logger.error(f"이메일 발송 실패: {str(e)}")
             raise SendError(f"이메일 발송 실패: {str(e)}") from e
@@ -248,11 +247,8 @@ class SESClient(MailClient):
                     raise TemplateError(
                         f"템플릿 '{message.template_name}'이(가) 존재하지 않습니다."
                     ) from e
-                else:
-                    logger.error(f"템플릿 이메일 발송 실패: {str(e)}")
-                    raise SendError(
-                        f"템플릿 이메일 발송 실패: {str(e)}"
-                    ) from e
+                logger.error(f"템플릿 이메일 발송 실패: {str(e)}")
+                raise SendError(f"템플릿 이메일 발송 실패: {str(e)}") from e
         except Exception as e:
             logger.error(f"템플릿 이메일 발송 실패: {str(e)}")
             raise SendError(f"템플릿 이메일 발송 실패: {str(e)}") from e
@@ -311,9 +307,8 @@ class SESClient(MailClient):
                     raise TemplateError(
                         f"템플릿 '{template_name}'이(가) 이미 존재합니다."
                     ) from e
-                else:
-                    logger.error(f"템플릿 생성 실패: {str(e)}")
-                    raise TemplateError(f"템플릿 생성 실패: {str(e)}") from e
+                logger.error(f"템플릿 생성 실패: {str(e)}")
+                raise TemplateError(f"템플릿 생성 실패: {str(e)}") from e
         except Exception as e:
             logger.error(f"템플릿 생성 실패: {str(e)}")
             raise TemplateError(f"템플릿 생성 실패: {str(e)}") from e
@@ -355,9 +350,8 @@ class SESClient(MailClient):
                     raise TemplateError(
                         f"템플릿 '{template_name}'을(를) 찾을 수 없습니다."
                     ) from e
-                else:
-                    logger.error(f"템플릿 삭제 실패: {str(e)}")
-                    raise TemplateError(f"템플릿 삭제 실패: {str(e)}") from e
+                logger.error(f"템플릿 삭제 실패: {str(e)}")
+                raise TemplateError(f"템플릿 삭제 실패: {str(e)}") from e
         except Exception as e:
             logger.error(f"템플릿 삭제 실패: {str(e)}")
             raise TemplateError(f"템플릿 삭제 실패: {str(e)}") from e
@@ -391,16 +385,16 @@ class SESClient(MailClient):
         if error_code in AWS_AUTH_ERROR_CODES:
             logger.error(f"AWS 인증 실패: {str(e)}")
             raise AuthenticationError(f"AWS 인증 실패: {str(e)}") from e
-        elif error_code in AWS_LIMIT_ERROR_CODES:
+        if error_code in AWS_LIMIT_ERROR_CODES:
             logger.error(f"AWS API 호출 제한 초과: {str(e)}")
             raise LimitExceededException(
                 f"AWS API 호출 제한 초과: {str(e)}"
             ) from e
-        elif error_code in AWS_VALUE_ERROR_CODES:
+        if error_code in AWS_VALUE_ERROR_CODES:
             logger.error(f"AWS 값 오류: {str(e)}")
             raise ValidationError(f"AWS 값 오류: {str(e)}") from e
-        elif error_code in AWS_SERVICE_ERROR_CODES:
+        if error_code in AWS_SERVICE_ERROR_CODES:
             logger.error(f"AWS 서비스 오류: {str(e)}")
             raise ConnectionError(f"AWS 서비스 오류: {str(e)}") from e
-        else:
-            return False
+        
+        return False # Common ClientError가 아닌 경우
