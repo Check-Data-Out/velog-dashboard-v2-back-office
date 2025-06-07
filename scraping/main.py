@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from typing import Any
 
 import aiohttp
 import async_timeout
@@ -72,10 +73,45 @@ class Scraper:
             sentry_sdk.capture_exception(e)
         return False
 
+    async def update_old_user_info(
+        self, user: User, user_data: dict[str, Any]
+    ) -> bool:
+        """사용자 프로필 정보 업데이트"""
+        updated_fields = []
+        try:
+            current_user = user_data.get("data", {}).get("currentUser")
+            if not current_user:
+                logger.warning(
+                    f"Invalid user data structure for user {user.velog_uuid}"
+                )
+                return False
+
+            if not user.email or user.email != user_data["email"]:
+                user.email = user_data["email"]
+                updated_fields.append("email")
+
+            if not user.username or user.username != user_data["username"]:
+                user.username = user_data["username"]
+                updated_fields.append("username")
+
+            if updated_fields:
+                await user.asave(update_fields=updated_fields)
+                logger.info(
+                    f"Updated user profile fields {updated_fields} for {user.velog_uuid}"
+                )
+                return True
+        except Exception as e:
+            logger.error(
+                f"Failed to update user info: {e}"
+                f"(user velog uuid: {user.velog_uuid})"
+            )
+            sentry_sdk.capture_exception(e)
+        return False
+
     async def bulk_upsert_posts(
         self,
         user: User,
-        fetched_posts: list[dict[str, str]],
+        fetched_posts: list[dict[str, Any]],
         batch_size: int = 200,
     ) -> bool:
         """Post 객체를 일정 크기의 배치로 나눠서 삽입 또는 업데이트"""
@@ -95,7 +131,7 @@ class Scraper:
             return False
 
     async def _upsert_batch(
-        self, user: User, batch_posts: list[dict[str, str]]
+        self, user: User, batch_posts: list[dict[str, Any]]
     ) -> None:
         """단일 배치 처리, bulk_upsert_posts 에서 호출됨"""
 
@@ -209,7 +245,7 @@ class Scraper:
         await _execute_sync()
 
     async def update_daily_statistics(
-        self, post: dict[str, str], stats: dict[str, str]
+        self, post: dict[str, Any], stats: dict[str, Any]
     ) -> None:
         """PostDailyStatistics를 업데이트 또는 생성 (upsert)"""
         if not stats or not isinstance(stats, dict):
@@ -222,9 +258,9 @@ class Scraper:
             today = get_local_now().date()
             post_id = post["id"]
 
-            stats_data = stats.get("data", {})  # type: ignore
+            stats_data = stats.get("data", {})
             if not stats_data or not isinstance(
-                stats_data.get("getStats"),  # type: ignore
+                stats_data.get("getStats"),
                 dict,
             ):
                 logger.warning(
@@ -232,7 +268,7 @@ class Scraper:
                 )
                 return
 
-            view_count = stats_data["getStats"].get("total", 0)  # type: ignore
+            view_count = stats_data["getStats"].get("total", 0)
             like_count = post.get("likes", 0)
 
             # 트랜잭션 내에서 실행
@@ -331,29 +367,49 @@ class Scraper:
         origin_access_token = aes_encryption.decrypt(user.access_token)
         origin_refresh_token = aes_encryption.decrypt(user.refresh_token)
 
+        # ========================================================== #
+        # STEP1: 토큰이 유효성 체크 및 업데이트. 이후 사용자 정보 업데이트
+        # ========================================================== #
+
         # 토큰 유효성 검증
         new_user_cookies, user_data = await fetch_velog_user_chk(
             session,
             origin_access_token,
             origin_refresh_token,
         )
-        if not (user_data or new_user_cookies):
-            return
 
-        if user_data["data"]["currentUser"] is None:  # type: ignore
+        if (
+            not (user_data or new_user_cookies)
+            or user_data.get("data", {}).get("currentUser") is None
+        ):
             logger.warning(
                 f"Failed to fetch user data because of wrong tokens. (user velog uuid: {user.velog_uuid})"
             )
             return
 
         if new_user_cookies:
-            await self.update_old_tokens(
+            user_token_result = await self.update_old_tokens(
                 user,
                 aes_encryption,
                 new_user_cookies,
             )
+            if not user_token_result:
+                raise Exception("Failed to update tokens, Check the logs")
+            origin_access_token = new_user_cookies["access_token"]
+            origin_refresh_token = new_user_cookies["refresh_token"]
 
-        username = user_data["data"]["currentUser"]["username"]  # type: ignore
+        # velog 응답과 기존 저장된 사용자 정보 비교 및 업데이트
+        user_info_result = await self.update_old_user_info(
+            user,
+            user_data["data"]["currentUser"],
+        )
+        if not user_info_result:
+            raise Exception("Failed to update user_info, Check the logs")
+
+        # ========================================================== #
+        # STEP2: 게시물 전체 목록을 가져와서 upsert 와 상태 동기화 (비활성, 활성)
+        # ========================================================== #
+        username = user_data["data"]["currentUser"]["username"]
         fetched_posts = await fetch_all_velog_posts(
             session, username, origin_access_token, origin_refresh_token
         )
@@ -370,6 +426,9 @@ class Scraper:
             user, all_post_ids, min_posts_threshold=1
         )
 
+        # ========================================================== #
+        # STEP3: 게시물 전체 목록을 기반으로 세부 통계 가져와서 upsert
+        # ========================================================== #
         # 게시물을 적절한 크기의 청크로 나누어 처리
         chunk_size = 20
         for i in range(0, len(fetched_posts), chunk_size):

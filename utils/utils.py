@@ -1,7 +1,7 @@
 import random
 from dataclasses import fields, is_dataclass
 from datetime import datetime
-from typing import Any, Type, TypeVar, get_args, get_origin
+from typing import Any, Type, TypeVar, get_args, get_origin, no_type_check
 
 from django.utils import timezone
 
@@ -45,6 +45,7 @@ def split_list(lst: list[int], n_splits: int) -> list[list[int]]:
     ]
 
 
+@no_type_check
 def to_dict(obj: Any) -> Any:
     """재귀적으로 dataclass를 dict로 변환"""
     if is_dataclass(obj):
@@ -57,7 +58,8 @@ def to_dict(obj: Any) -> Any:
         return obj
 
 
-def from_dict(cls: Type[T], data: dict) -> T:
+@no_type_check
+def from_dict(cls: Type[T], data: dict[str, Any]) -> T:
     """dict에서 dataclass로 복원"""
     if not is_dataclass(cls):
         return data

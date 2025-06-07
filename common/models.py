@@ -1,6 +1,6 @@
 import json
 from dataclasses import dataclass
-from typing import Type, TypeVar
+from typing import Any, Type, TypeVar, no_type_check
 
 from django.db import models
 
@@ -31,13 +31,16 @@ T = TypeVar("T")
 # dataclass 베이스 mixin
 @dataclass
 class SerializableMixin:
-    def to_dict(self) -> dict:
+    @no_type_check
+    def to_dict(self) -> dict[str, Any]:
         return to_dict(self)
 
-    def to_json_dict(self) -> dict:
+    @no_type_check
+    def to_json_dict(self) -> dict[str, Any]:
         """Django Model의 JSON 필드 저장용"""
         return json.loads(json.dumps(self.to_dict()))
 
     @classmethod
-    def from_dict(cls: Type[T], data: dict) -> T:
+    @no_type_check
+    def from_dict(cls: Type[T], data: dict[str, Any]) -> T:
         return from_dict(cls, data)
