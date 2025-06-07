@@ -77,34 +77,49 @@ class Scraper:
         self, user: User, user_data: dict[str, Any]
     ) -> bool:
         """사용자 프로필 정보 업데이트"""
-        updated_fields = []
-        try:
-            if not user.email or user.email != user_data["email"]:
-                user.email = user_data["email"]
-                updated_fields.append("email")
 
-            if not user.username or user.username != user_data["username"]:
-                user.username = user_data["username"]
-                updated_fields.append("username")
+        field_updates = {}
 
-            if (
-                not user.thumbnail
-                or user.thumbnail != user_data["profile"]["thumbnail"]
-            ):
-                user.thumbnail = user_data["profile"]["thumbnail"]
-                updated_fields.append("thumbnail")
+        # 각 필드별 업데이트 체크 및 적용
+        if (new_email := user_data.get("email")) and (
+            not user.email or user.email != new_email
+        ):
+            field_updates["email"] = new_email
 
-            if updated_fields:
-                await user.asave(update_fields=updated_fields)
-                logger.info(
-                    f"Updated user profile fields {updated_fields} for {user.velog_uuid}"
-                )
+        if (new_username := user_data.get("username")) and (
+            not user.username or user.username != new_username
+        ):
+            field_updates["username"] = new_username
 
+        if (profile := user_data.get("profile")) and (
+            new_thumbnail := profile.get("thumbnail")
+        ):
+            if not user.thumbnail or user.thumbnail != new_thumbnail:
+                field_updates["thumbnail"] = new_thumbnail
+
+        # 업데이트할 필드가 없으면 조기 반환
+        if not field_updates:
             return True
+
+        try:
+            # 필드 일괄 업데이트
+            for field, value in field_updates.items():
+                setattr(user, field, value)
+
+            await user.asave(update_fields=list(field_updates.keys()))
+
+            logger.info(
+                "Updated user profile fields %s for %s",
+                list(field_updates.keys()),
+                user.velog_uuid,
+            )
+            return True
+
         except Exception as e:
             logger.error(
-                f"Failed to update user info: {e}"
-                f"(user velog uuid: {user.velog_uuid})"
+                "Failed to update user info: %s (user velog uuid: %s)",
+                e,
+                user.velog_uuid,
             )
             sentry_sdk.capture_exception(e)
         return False

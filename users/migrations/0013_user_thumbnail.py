@@ -14,7 +14,7 @@ class Migration(migrations.Migration):
             name="thumbnail",
             field=models.CharField(
                 blank=True,
-                help_text="velog 에서 사용자가 지정한 thumbnail url 값입다.",
+                help_text="velog 에서 사용자가 지정한 thumbnail url 값입니다.",
                 max_length=255,
                 null=True,
                 verbose_name="사용자 썸네일",
