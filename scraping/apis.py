@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from aiohttp.client import ClientSession
 from aiohttp_retry import ExponentialRetry, RetryClient
@@ -27,7 +28,7 @@ async def fetch_velog_user_chk(
     session: ClientSession,
     access_token: str,
     refresh_token: str,
-) -> tuple[dict[str, str], dict[str, str]]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     # 토큰 유효성 검증
     payload = {"query": CURRENT_USER_QUERY}
     headers = get_header(access_token, refresh_token)

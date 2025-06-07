@@ -30,6 +30,20 @@ class User(TimeStampedModel):
     email = models.EmailField(
         blank=True, null=True, unique=False, verbose_name="이메일"
     )
+    username = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="velog 에서 사용자가 지정한 이름입니다.",
+        verbose_name="사용자 이름",
+    )
+    thumbnail = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="velog 에서 사용자가 지정한 thumbnail url 값입니다.",
+        verbose_name="사용자 썸네일",
+    )
     is_active = models.BooleanField(
         default=True, null=False, verbose_name="활성 여부"
     )

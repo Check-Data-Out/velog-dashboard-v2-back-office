@@ -5,29 +5,11 @@ import pytest
 from asgiref.sync import sync_to_async
 
 from posts.models import Post
-from scraping.main import Scraper
 from users.models import User
 from utils.utils import get_local_now
 
 
 class TestScraperPosts:
-    @pytest.fixture
-    def scraper(self):
-        """Scraper 인스턴스 생성"""
-        return Scraper(group_range=range(1, 10), max_connections=10)
-
-    @pytest.fixture
-    def user(self, db):
-        """테스트용 User 객체 생성"""
-        return User.objects.create(
-            velog_uuid=uuid.uuid4(),
-            access_token="encrypted-access-token",
-            refresh_token="encrypted-refresh-token",
-            group_id=1,
-            email="test@example.com",
-            is_active=True,
-        )
-
     @pytest.mark.asyncio
     async def test_bulk_upsert_posts_success(self, scraper, user):
         """Post 객체 배치 분할 삽입 또는 업데이트 성공 테스트"""
