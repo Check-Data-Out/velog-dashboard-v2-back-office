@@ -21,6 +21,9 @@ CURRENT_USER_QUERY: Final[str] = """
             id
             username
             email
+            profile {
+                thumbnail
+            }
         }
     }
     """

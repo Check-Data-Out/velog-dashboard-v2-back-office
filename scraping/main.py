@@ -79,13 +79,6 @@ class Scraper:
         """사용자 프로필 정보 업데이트"""
         updated_fields = []
         try:
-            current_user = user_data.get("data", {}).get("currentUser")
-            if not current_user:
-                logger.warning(
-                    f"Invalid user data structure for user {user.velog_uuid}"
-                )
-                return False
-
             if not user.email or user.email != user_data["email"]:
                 user.email = user_data["email"]
                 updated_fields.append("email")
@@ -94,12 +87,20 @@ class Scraper:
                 user.username = user_data["username"]
                 updated_fields.append("username")
 
+            if (
+                not user.thumbnail
+                or user.thumbnail != user_data["profile"]["thumbnail"]
+            ):
+                user.thumbnail = user_data["profile"]["thumbnail"]
+                updated_fields.append("thumbnail")
+
             if updated_fields:
                 await user.asave(update_fields=updated_fields)
                 logger.info(
                     f"Updated user profile fields {updated_fields} for {user.velog_uuid}"
                 )
-                return True
+
+            return True
         except Exception as e:
             logger.error(
                 f"Failed to update user info: {e}"
@@ -399,6 +400,7 @@ class Scraper:
             origin_refresh_token = new_user_cookies["refresh_token"]
 
         # velog 응답과 기존 저장된 사용자 정보 비교 및 업데이트
+        # user_data -> currentUser 에는 id / username / email / profile { thumbnail } 존재
         user_info_result = await self.update_old_user_info(
             user,
             user_data["data"]["currentUser"],
