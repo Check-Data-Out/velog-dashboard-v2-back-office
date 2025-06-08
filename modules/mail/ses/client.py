@@ -93,11 +93,12 @@ class SESClient(MailClient):
             client.get_account_sending_enabled()
             return client
         except ClientError as e:
-            if not cls._handle_aws_common_error(e):
-                logger.error(f"AWS SES 클라이언트 초기화 실패: {str(e)}")
-                raise ConnectionError(
-                    f"AWS SES 클라이언트 초기화 실패: {str(e)}"
-                ) from e
+            # 공통 에러 처리
+            cls._handle_aws_common_errors(e)
+            logger.error(f"AWS SES 클라이언트 초기화 실패: {str(e)}")
+            raise ConnectionError(
+                f"AWS SES 클라이언트 초기화 실패: {str(e)}"
+            ) from e
         except Exception as e:
             logger.error(f"AWS SES 클라이언트 초기화 실패: {str(e)}")
             raise ConnectionError(
@@ -159,22 +160,24 @@ class SESClient(MailClient):
             return response["MessageId"]
 
         except ClientError as e:
-            if not self._handle_aws_common_error(e):
-                error_code = e.response.get("Error", {}).get("Code", "")
-                if error_code == "MessageRejected":
-                    logger.error(f"이메일이 거부되었습니다. {str(e)}")
-                    raise SendError(
-                        f"이메일이 거부되었습니다. {str(e)}"
-                    ) from e
-                if error_code == "AccountSendingPausedException":
-                    logger.error(
-                        f"계정의 이메일 발송이 일시 중지되었습니다. {str(e)}"
-                    )
-                    raise SendError(
-                        f"계정의 이메일 발송이 일시 중지되었습니다. {str(e)}"
-                    ) from e
-                logger.error(f"이메일 발송 실패: {str(e)}")
-                raise SendError(f"이메일 발송 실패: {str(e)}") from e
+            # 공통 에러 처리
+            self._handle_aws_common_errors(e)
+            # 특정 에러 처리
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "MessageRejected":
+                logger.error(f"이메일이 거부되었습니다. {str(e)}")
+                raise SendError(
+                    f"이메일이 거부되었습니다. {str(e)}"
+                ) from e
+            if error_code == "AccountSendingPausedException":
+                logger.error(
+                    f"계정의 이메일 발송이 일시 중지되었습니다. {str(e)}"
+                )
+                raise SendError(
+                    f"계정의 이메일 발송이 일시 중지되었습니다. {str(e)}"
+                ) from e
+            logger.error(f"이메일 발송 실패: {str(e)}")
+            raise SendError(f"이메일 발송 실패: {str(e)}") from e
         except Exception as e:
             logger.error(f"이메일 발송 실패: {str(e)}")
             raise SendError(f"이메일 발송 실패: {str(e)}") from e
@@ -234,17 +237,19 @@ class SESClient(MailClient):
             return response["MessageId"]
 
         except ClientError as e:
-            if not self._handle_aws_common_error(e):
-                error_code = e.response.get("Error", {}).get("Code", "")
-                if error_code == "TemplateDoesNotExistException":
-                    logger.error(
-                        f"템플릿 '{message.template_name}'이(가) 존재하지 않습니다."
-                    )
-                    raise TemplateError(
-                        f"템플릿 '{message.template_name}'이(가) 존재하지 않습니다."
-                    ) from e
-                logger.error(f"템플릿 이메일 발송 실패: {str(e)}")
-                raise SendError(f"템플릿 이메일 발송 실패: {str(e)}") from e
+            # 공통 에러 처리
+            self._handle_aws_common_errors(e)
+            # 특정 에러 처리
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "TemplateDoesNotExistException":
+                logger.error(
+                    f"템플릿 '{message.template_name}'이(가) 존재하지 않습니다."
+                )
+                raise TemplateError(
+                    f"템플릿 '{message.template_name}'이(가) 존재하지 않습니다."
+                ) from e
+            logger.error(f"템플릿 이메일 발송 실패: {str(e)}")
+            raise SendError(f"템플릿 이메일 발송 실패: {str(e)}") from e
         except Exception as e:
             logger.error(f"템플릿 이메일 발송 실패: {str(e)}")
             raise SendError(f"템플릿 이메일 발송 실패: {str(e)}") from e
@@ -294,17 +299,19 @@ class SESClient(MailClient):
             self._client.create_template(Template=template_data)
             logger.info(f"템플릿 '{template_name}' 생성 완료")
         except ClientError as e:
-            if not self._handle_aws_common_error(e):
-                error_code = e.response.get("Error", {}).get("Code", "")
-                if error_code == "AlreadyExistsException":
-                    logger.error(
-                        f"템플릿 '{template_name}'이(가) 이미 존재합니다."
-                    )
-                    raise TemplateError(
-                        f"템플릿 '{template_name}'이(가) 이미 존재합니다."
-                    ) from e
-                logger.error(f"템플릿 생성 실패: {str(e)}")
-                raise TemplateError(f"템플릿 생성 실패: {str(e)}") from e
+            # 공통 에러 처리
+            self._handle_aws_common_errors(e)
+            # 특정 에러 처리
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "AlreadyExistsException":
+                logger.error(
+                    f"템플릿 '{template_name}'이(가) 이미 존재합니다."
+                )
+                raise TemplateError(
+                    f"템플릿 '{template_name}'이(가) 이미 존재합니다."
+                ) from e
+            logger.error(f"템플릿 생성 실패: {str(e)}")
+            raise TemplateError(f"템플릿 생성 실패: {str(e)}") from e
         except Exception as e:
             logger.error(f"템플릿 생성 실패: {str(e)}")
             raise TemplateError(f"템플릿 생성 실패: {str(e)}") from e
@@ -337,17 +344,19 @@ class SESClient(MailClient):
             logger.info(f"템플릿 '{template_name}' 삭제 완료")
 
         except ClientError as e:
-            if not self._handle_aws_common_error(e):
-                error_code = e.response.get("Error", {}).get("Code", "")
-                if error_code == "NotFoundException":
-                    logger.error(
-                        f"템플릿 '{template_name}'을(를) 찾을 수 없습니다."
-                    )
-                    raise TemplateError(
-                        f"템플릿 '{template_name}'을(를) 찾을 수 없습니다."
-                    ) from e
-                logger.error(f"템플릿 삭제 실패: {str(e)}")
-                raise TemplateError(f"템플릿 삭제 실패: {str(e)}") from e
+            # 공통 에러 처리
+            self._handle_aws_common_errors(e)
+            # 특정 에러 처리
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "NotFoundException":
+                logger.error(
+                    f"템플릿 '{template_name}'을(를) 찾을 수 없습니다."
+                )
+                raise TemplateError(
+                    f"템플릿 '{template_name}'을(를) 찾을 수 없습니다."
+                ) from e
+            logger.error(f"템플릿 삭제 실패: {str(e)}")
+            raise TemplateError(f"템플릿 삭제 실패: {str(e)}") from e
         except Exception as e:
             logger.error(f"템플릿 삭제 실패: {str(e)}")
             raise TemplateError(f"템플릿 삭제 실패: {str(e)}") from e
@@ -360,15 +369,12 @@ class SESClient(MailClient):
         cls._instance = None
 
     @staticmethod
-    def _handle_aws_common_error(e: ClientError) -> bool:
+    def _handle_aws_common_errors(e: ClientError) -> None:
         """
         AWS Common ClientError를 처리하고 적절한 예외를 발생시킵니다.
 
         Args:
             e: ClientError 객체
-
-        Returns:
-            bool: Common ClientError 처리 여부
 
         Raises:
             AuthenticationError: AWS 인증 실패
@@ -392,5 +398,3 @@ class SESClient(MailClient):
         if error_code in AWS_SERVICE_ERROR_CODES:
             logger.error(f"AWS 서비스 오류: {str(e)}")
             raise ConnectionError(f"AWS 서비스 오류: {str(e)}") from e
-        
-        return False # Common ClientError가 아닌 경우
