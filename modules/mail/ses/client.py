@@ -219,13 +219,20 @@ class SESClient(MailClient):
             raise ValueError("발송할 템플릿 정보가 필요합니다.")
 
         try:
+            # 템플릿 데이터 JSON 직렬화
+            try:
+                template_data_json = json.dumps(message.template_data or {})
+            except (TypeError, ValueError) as json_error:
+                logger.error(f"템플릿 데이터 JSON 직렬화 실패: {str(json_error)}")
+                raise ValueError(f"템플릿 데이터 JSON 직렬화 실패: {str(json_error)}") from json_error
+
             email_args = {
                 "Source": message.from_email,
                 "Destination": {
                     "ToAddresses": message.to,
                 },
                 "Template": message.template_name,
-                "TemplateData": json.dumps(message.template_data or {}),
+                "TemplateData": template_data_json,
             }
 
             # CC, BCC 추가
