@@ -1,18 +1,18 @@
 import json
 import logging
-from typing import Any, ClassVar, Optional
+from typing import Any, ClassVar
 
 import boto3
 from botocore.exceptions import ClientError
 
-from ..base_client import EmailMessage, MailClient
-from ..constants import (
+from modules.mail.base_client import EmailMessage, MailClient
+from modules.mail.constants import (
     AWS_AUTH_ERROR_CODES,
     AWS_LIMIT_ERROR_CODES,
     AWS_SERVICE_ERROR_CODES,
     AWS_VALUE_ERROR_CODES,
 )
-from ..exceptions import (
+from modules.mail.exceptions import (
     AuthenticationError,
     ClientNotInitializedError,
     ConnectionError,
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 class SESClient(MailClient):
     """AWS SES를 사용하는 메일 클라이언트 구현체"""
 
-    _instance: ClassVar[Optional["SESClient"]] = None
+    _instance: ClassVar["SESClient | None"] = None
 
     def __init__(self, client: Any):
         self._client = client

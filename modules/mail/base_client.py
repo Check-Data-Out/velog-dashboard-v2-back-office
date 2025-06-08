@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, Generic, List, Optional, TypeVar
+from typing import Any, Generic, TypeVar
 
 # 클라이언트 타입을 위한 제네릭 타입 변수
 T = TypeVar("T")
@@ -17,16 +17,16 @@ class EmailAttachment:
 @dataclass
 class EmailMessage:
     """이메일 메시지를 위한 데이터 클래스"""
-    to: List[str]
-    subject: Optional[str] = None
-    body: Optional[str] = None
-    html_body: Optional[str] = None
-    from_email: Optional[str] = None
-    cc: Optional[List[str]] = None
-    bcc: Optional[List[str]] = None
-    attachments: Optional[List[EmailAttachment]] = None
-    template_name: Optional[str] = None
-    template_data: Optional[Dict[str, Any]] = None
+    to: list[str]
+    subject: str | None = None
+    body: str | None = None
+    html_body: str | None = None
+    from_email: str | None = None
+    cc: list[str] | None = None
+    bcc: list[str] | None = None
+    attachments: list[EmailAttachment] | None = None
+    template_name: str | None = None
+    template_data: dict[str, Any] | None = None
 
 
 class MailClient(ABC, Generic[T]):
