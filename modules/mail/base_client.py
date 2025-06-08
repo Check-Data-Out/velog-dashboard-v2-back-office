@@ -92,48 +92,6 @@ class MailClient(ABC, Generic[T]):
         """
         pass
 
-    @abstractmethod
-    def create_template(
-        self, template_name: str, subject: str, html: str = "", text: str = ""
-    ) -> None:
-        """
-        이메일 템플릿을 생성합니다.
-
-        Args:
-            template_name: 템플릿 이름
-            subject: 이메일 제목
-            html: HTML 형식의 이메일 본문 (선택)
-            text: 텍스트 형식의 이메일 본문 (선택)
-            둘 중 하나는 필수로 입력 받도록 내부에서 제어
-
-        Raises:
-            ClientNotInitializedError: 클라이언트가 초기화되지 않은 경우
-            AuthenticationError: 인증 정보가 유효하지 않은 경우
-            ValidationError: 입력이 유효하지 않은 경우
-            LimitExceededException: API 호출 한도를 초과한 경우
-            TemplateError: 템플릿 생성 과정에서 오류 발생
-            ConnectionError: API 연결 실패
-        """
-        pass
-
-    @abstractmethod
-    def delete_template(self, template_name: str) -> None:
-        """
-        이메일 템플릿을 삭제합니다.
-
-        Args:
-            template_name: 삭제할 템플릿 이름
-
-        Raises:
-            ClientNotInitializedError: 클라이언트가 초기화되지 않은 경우
-            AuthenticationError: 인증 정보가 유효하지 않은 경우
-            ValidationError: 입력이 유효하지 않은 경우
-            LimitExceededException: API 호출 한도를 초과한 경우
-            TemplateError: 템플릿 삭제 과정에서 오류 발생
-            ConnectionError: API 연결 실패
-        """
-        pass
-
     @classmethod
     @abstractmethod
     def reset_client(cls) -> None:
