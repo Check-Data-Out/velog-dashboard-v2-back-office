@@ -5,7 +5,7 @@ from typing import Any, ClassVar
 import boto3
 from botocore.exceptions import ClientError
 
-from modules.mail.base_client import EmailMessage, MailClient
+from modules.mail.base_client import MailClient
 from modules.mail.constants import (
     AWS_AUTH_ERROR_CODES,
     AWS_LIMIT_ERROR_CODES,
@@ -21,6 +21,11 @@ from modules.mail.exceptions import (
     TemplateError,
     ValidationError,
 )
+from modules.mail.schemas import (
+    AWSSESCredentials,
+    EmailMessage,
+    TemplatedEmailMessage,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,30 +39,22 @@ class SESClient(MailClient):
         self._client = client
 
     @classmethod
-    def get_client(cls, credentials: dict[str, Any]) -> "SESClient":
+    def get_client(cls, credentials: AWSSESCredentials) -> "SESClient":
         """
         SES 클라이언트를 가져오거나 초기화합니다.
 
         Args:
-            credentials: AWS 인증 정보 (aws_access_key_id, aws_secret_access_key, aws_region_name)
+            credentials: AWS 인증 정보 (AWSSESCredentials)
 
         Returns:
             초기화된 SESClient 인스턴스
 
         Raises:
-            ValueError: AWS 인증 정보가 입력되지 않은 경우
             AuthenticationError: AWS 인증 정보가 유효하지 않은 경우
             LimitExceededException: AWS API 호출 제한을 초과한 경우
             ValidationError: 입력이 유효하지 않은 경우
             ConnectionError: AWS 서비스 연결에 실패한 경우
         """
-        if (
-            not credentials.get("aws_access_key_id")
-            or not credentials.get("aws_secret_access_key")
-            or not credentials.get("aws_region_name")
-        ):
-            raise ValueError("AWS 인증 정보가 필요합니다.")
-
         if cls._instance is None:
             try:
                 client = cls._initialize_client(credentials)
@@ -69,12 +66,12 @@ class SESClient(MailClient):
         return cls._instance
 
     @classmethod
-    def _initialize_client(cls, credentials: dict[str, Any]) -> Any:
+    def _initialize_client(cls, credentials: AWSSESCredentials) -> Any:
         """
         AWS SES 클라이언트를 초기화합니다.
 
         Args:
-            credentials: AWS 인증 정보 (aws_access_key_id, aws_secret_access_key, aws_region_name)
+            credentials: AWS 인증 정보 (AWSSESCredentials)
 
         Returns:
             초기화된 boto3 SES 클라이언트
@@ -88,9 +85,9 @@ class SESClient(MailClient):
         try:
             client = boto3.client(
                 service_name="ses",
-                aws_access_key_id=credentials["aws_access_key_id"],
-                aws_secret_access_key=credentials["aws_secret_access_key"],
-                region_name=credentials["aws_region_name"],
+                aws_access_key_id=credentials.aws_access_key_id,
+                aws_secret_access_key=credentials.aws_secret_access_key,
+                region_name=credentials.aws_region_name,
             )
             # API 키 검증을 위한 간단한 호출
             client.get_account_sending_enabled()
@@ -112,7 +109,7 @@ class SESClient(MailClient):
         기본 이메일을 발송합니다.
 
         Args:
-            message: 발송할 메일 메시지 객체
+            message: 발송할 이메일 메시지 객체
 
         Returns:
             발송한 메일 ID
@@ -131,14 +128,6 @@ class SESClient(MailClient):
                 "SES 클라이언트가 초기화되지 않았습니다. get_client()를 먼저 호출하세요."
             )
 
-        if (
-            not message.from_email
-            or not message.to
-            or not message.subject
-            or not message.body
-        ):
-            raise ValueError("발송할 메일 정보가 필요합니다.")
-
         try:
             email_args = {
                 "Source": message.from_email,
@@ -148,7 +137,7 @@ class SESClient(MailClient):
                 "Message": {
                     "Subject": {"Data": message.subject, "Charset": "UTF-8"},
                     "Body": {
-                        "Text": {"Data": message.body, "Charset": "UTF-8"}
+                        "Text": {"Data": message.text_body, "Charset": "UTF-8"}
                     },
                 },
             }
@@ -190,12 +179,12 @@ class SESClient(MailClient):
             logger.error(f"이메일 발송 실패: {str(e)}")
             raise SendError(f"이메일 발송 실패: {str(e)}") from e
 
-    def send_templated_email(self, message: EmailMessage) -> str:
+    def send_templated_email(self, message: TemplatedEmailMessage) -> str:
         """
         템플릿을 사용하여 이메일을 발송합니다.
 
         Args:
-            message: 발송할 이메일 메시지 (template_name과 template_data가 필수)
+            message: 발송할 템플릿 이메일 메시지 객체
 
         Returns:
             메시지 ID

@@ -1,33 +1,10 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
+
+from modules.mail.schemas import EmailMessage, TemplatedEmailMessage
 
 # 클라이언트 타입을 위한 제네릭 타입 변수
 T = TypeVar("T")
-
-
-@dataclass
-class EmailAttachment:
-    """이메일 첨부파일을 위한 데이터 클래스"""
-    filename: str
-    content: bytes
-    content_type: str
-
-
-@dataclass
-class EmailMessage:
-    """이메일 메시지를 위한 데이터 클래스"""
-    to: list[str]
-    subject: str | None = None
-    body: str | None = None
-    html_body: str | None = None
-    from_email: str | None = None
-    cc: list[str] | None = None
-    bcc: list[str] | None = None
-    attachments: list[EmailAttachment] | None = None
-    template_name: str | None = None
-    template_data: dict[str, Any] | None = None
-
 
 class MailClient(ABC, Generic[T]):
     """
@@ -94,12 +71,12 @@ class MailClient(ABC, Generic[T]):
         pass
 
     @abstractmethod
-    def send_templated_email(self, message: EmailMessage) -> str:
+    def send_templated_email(self, message: TemplatedEmailMessage) -> str:
         """
         템플릿을 사용하여 이메일을 발송합니다.
 
         Args:
-            message: 발송할 이메일 메시지 객체
+            message: 발송할 템플릿 이메일 메시지 객체
 
         Returns:
             발송한 메시지 ID
