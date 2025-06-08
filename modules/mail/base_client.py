@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar
 
-from modules.mail.schemas import EmailMessage, TemplatedEmailMessage
+from modules.mail.schemas import EmailMessage
 
 # 클라이언트 타입을 위한 제네릭 타입 변수
 T = TypeVar("T")
@@ -66,28 +66,6 @@ class MailClient(ABC, Generic[T]):
             ValidationError: 입력이 유효하지 않은 경우
             LimitExceededException: 발송 한도를 초과한 경우
             SendError: 이메일 발송 과정에서 오류 발생
-            ConnectionError: API 연결 실패
-        """
-        pass
-
-    @abstractmethod
-    def send_templated_email(self, message: TemplatedEmailMessage) -> str:
-        """
-        템플릿을 사용하여 이메일을 발송합니다.
-
-        Args:
-            message: 발송할 템플릿 이메일 메시지 객체
-
-        Returns:
-            발송한 메시지 ID
-
-        Raises:
-            ClientNotInitializedError: 클라이언트가 초기화되지 않은 경우
-            AuthenticationError: 인증 정보가 유효하지 않은 경우
-            ValidationError: 입력이 유효하지 않은 경우
-            LimitExceededException: 발송 한도를 초과한 경우
-            SendError: 이메일 발송 과정에서 오류 발생
-            TemplateError: 템플릿 관련 오류
             ConnectionError: API 연결 실패
         """
         pass

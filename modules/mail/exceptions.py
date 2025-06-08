@@ -27,13 +27,6 @@ class SendError(MailError):
 
     pass
 
-
-class TemplateError(MailError):
-    """템플릿 관련 오류"""
-
-    pass
-
-
 class LimitExceededException(MailError):
     """메일 서비스 할당량 초과 오류"""
 

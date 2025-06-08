@@ -20,18 +20,6 @@ class EmailMessage:
     bcc: list[str] | None = None
     attachments: list[EmailAttachment] | None = None
 
-
-@dataclass
-class TemplatedEmailMessage:
-    to: list[str]
-    from_email: str
-    template_name: str
-    template_data: dict[str, Any]
-    cc: list[str] | None = None
-    bcc: list[str] | None = None
-    attachments: list[EmailAttachment] | None = None
-
-
 @dataclass
 class AWSSESCredentials:
     aws_access_key_id: str

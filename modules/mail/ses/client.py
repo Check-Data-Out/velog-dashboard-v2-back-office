@@ -18,13 +18,11 @@ from modules.mail.exceptions import (
     ConnectionError,
     LimitExceededException,
     SendError,
-    TemplateError,
     ValidationError,
 )
 from modules.mail.schemas import (
     AWSSESCredentials,
     EmailMessage,
-    TemplatedEmailMessage,
 )
 
 logger = logging.getLogger(__name__)
@@ -181,78 +179,6 @@ class SESClient(MailClient):
         except Exception as e:
             logger.error(f"이메일 발송 실패: {str(e)}")
             raise SendError(f"이메일 발송 실패: {str(e)}") from e
-
-    def send_templated_email(self, message: TemplatedEmailMessage) -> str:
-        """
-        템플릿을 사용하여 이메일을 발송합니다.
-
-        Args:
-            message: 발송할 템플릿 이메일 메시지 객체
-
-        Returns:
-            메시지 ID
-
-        Raises:
-            ClientNotInitializedError: 클라이언트가 초기화되지 않은 경우
-            ValueError: 템플릿 이름이 입력되지 않은 경우
-            AuthenticationError: AWS 인증 정보가 유효하지 않은 경우
-            LimitExceededException: AWS API 호출 제한을 초과한 경우
-            ValidationError: 입력이 유효하지 않은 경우
-            ConnectionError: AWS 서비스 연결에 실패한 경우
-            TemplateError: 템플릿이 존재하지 않는 경우
-            SendError: 이메일 발송 과정 오류
-        """
-        if self._client is None:
-            raise ClientNotInitializedError(
-                "SES 클라이언트가 초기화되지 않았습니다. get_client()를 먼저 호출하세요."
-            )
-
-        if not message.template_name:
-            raise ValueError("발송할 템플릿 정보가 필요합니다.")
-
-        try:
-            # 템플릿 데이터 JSON 직렬화
-            try:
-                template_data_json = json.dumps(message.template_data or {})
-            except (TypeError, ValueError) as json_error:
-                logger.error(f"템플릿 데이터 JSON 직렬화 실패: {str(json_error)}")
-                raise ValueError(f"템플릿 데이터 JSON 직렬화 실패: {str(json_error)}") from json_error
-
-            email_args = {
-                "Source": message.from_email,
-                "Destination": {
-                    "ToAddresses": message.to,
-                },
-                "Template": message.template_name,
-                "TemplateData": template_data_json,
-            }
-
-            # CC, BCC 추가
-            if message.cc:
-                email_args["Destination"]["CcAddresses"] = message.cc
-            if message.bcc:
-                email_args["Destination"]["BccAddresses"] = message.bcc
-
-            response = self._client.send_templated_email(**email_args)
-            return response["MessageId"]
-
-        except ClientError as e:
-            # 공통 에러 처리
-            self._handle_aws_common_errors(e)
-            # 특정 에러 처리
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "TemplateDoesNotExistException":
-                logger.error(
-                    f"템플릿 '{message.template_name}'이(가) 존재하지 않습니다."
-                )
-                raise TemplateError(
-                    f"템플릿 '{message.template_name}'이(가) 존재하지 않습니다."
-                ) from e
-            logger.error(f"템플릿 이메일 발송 실패: {str(e)}")
-            raise SendError(f"템플릿 이메일 발송 실패: {str(e)}") from e
-        except Exception as e:
-            logger.error(f"템플릿 이메일 발송 실패: {str(e)}")
-            raise SendError(f"템플릿 이메일 발송 실패: {str(e)}") from e
 
     @classmethod
     def reset_client(cls) -> None:
