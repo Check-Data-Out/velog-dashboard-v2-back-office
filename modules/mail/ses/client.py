@@ -12,12 +12,13 @@ from modules.mail.constants import (
     AWS_VALUE_ERROR_CODES,
 )
 from modules.mail.exceptions import (
-    AuthenticationError,
     ClientNotInitializedError,
-    ConnectionError,
+    AuthenticationError,
     LimitExceededException,
-    SendError,
     ValidationError,
+    ConnectionError,
+    UnexpectedClientError,
+    SendError,
 )
 from modules.mail.schemas import (
     AWSSESCredentials,
@@ -92,9 +93,10 @@ class SESClient(MailClient):
         except ClientError as e:
             # 공통 에러 처리
             cls._handle_aws_common_errors(e)
-            logger.error(f"AWS SES 클라이언트 초기화 실패: {str(e)}")
-            raise ConnectionError(
-                f"AWS SES 클라이언트 초기화 실패: {str(e)}"
+            # 그 외 ClientError 처리
+            logger.error(f"예상하지 못한 AWS SES 클라이언트 초기화 오류: {str(e)}")
+            raise UnexpectedClientError(
+                f"예상하지 못한 AWS SES 클라이언트 초기화 오류: {str(e)}"
             ) from e
         except Exception as e:
             logger.error(f"AWS SES 클라이언트 초기화 실패: {str(e)}")
@@ -173,8 +175,9 @@ class SESClient(MailClient):
                 raise SendError(
                     f"계정의 이메일 발송이 일시 중지되었습니다. {str(e)}"
                 ) from e
-            logger.error(f"이메일 발송 실패: {str(e)}")
-            raise SendError(f"이메일 발송 실패: {str(e)}") from e
+            # 그 외 ClientError 처리
+            logger.error(f"예상하지 못한 이메일 발송 오류: {str(e)}")
+            raise UnexpectedClientError(f"예상하지 못한 이메일 발송 오류: {str(e)}") from e
         except Exception as e:
             logger.error(f"이메일 발송 실패: {str(e)}")
             raise SendError(f"이메일 발송 실패: {str(e)}") from e
