@@ -217,6 +217,21 @@ LOGGING = {
             "encoding": "utf-8",
             "filename": os.path.join(BASE_DIR, "logs", "scraping.log"),
         },
+        "newsletter_console": {
+            "level": "INFO",
+            "class": "logging.StreamHandler",
+            "formatter": "default_formatter",
+        },
+        "newsletter_file": {
+            "level": "INFO",
+            "class": "logging.handlers.TimedRotatingFileHandler",
+            "when": "midnight",
+            "interval": 1,
+            "backupCount": 7,
+            "formatter": "default_formatter",
+            "encoding": "utf-8",
+            "filename": os.path.join(BASE_DIR, "logs", "newsletter.log"),
+        },
     },
     "loggers": {
         "django": {
@@ -226,6 +241,11 @@ LOGGING = {
         },
         "scraping": {
             "handlers": ["scraping_console", "scraping_file"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "newsletter": {
+            "handlers": ["newsletter_console", "newsletter_file"],
             "level": "INFO",
             "propagate": False,
         },
