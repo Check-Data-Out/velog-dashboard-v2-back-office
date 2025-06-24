@@ -23,6 +23,7 @@ macwinua = "^0.1.2"
 openai = "^1.78.1"
 boto3 = "^1.38.30"
 botocore = "^1.38.30"
+html2text = "^2025.4.15"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.7.4"
