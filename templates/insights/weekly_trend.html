@@ -1,0 +1,54 @@
+<div class="weekly-trend" style="color: #333333;">
+    {% if insight.trending_summary %}
+        <h2 style="margin-bottom: 10px; color: #333333;">
+            이 주의 트렌딩 글
+        </h2>
+        {% for item in insight.trending_summary %}
+            <div style="margin: 15px 0; padding-left: 15px; border-left: 3px solid #ddd;">
+                <h3 style="margin-bottom: 5px; color: #333333;">
+                    {{forloop.counter}}. {{ item.title }}
+                </h3>
+                <p style="line-height: 1.5; margin-bottom: 8px; color: #333333;">
+                    {{ item.summary }}
+                </p>
+                {% if item.key_points %}
+                    <ul style="margin-top: 8px; margin-bottom: 0;">
+                        {% for point in item.key_points %}
+                            <li style="color: #333333;">
+                                {{ point }}
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    {% if insight.trend_analysis %}
+        <h2 style="margin-bottom: 10px; color: #333333;">
+            트렌드 분석
+        </h2>
+        <div style="margin-left: 15px;">
+            {% if insight.trend_analysis.hot_keywords %}
+                <p style="color: #333333;">
+                    <strong>핫한 기술 키워드: </strong>{{ insight.trend_analysis.hot_keywords|join:", " }}
+                </p>
+            {% endif %}
+            {% if insight.trend_analysis.title_trends %}
+                <p style="color: #333333;">
+                    <strong>제목 트렌드: </strong>{{ insight.trend_analysis.title_trends }}
+                </p>
+            {% endif %}
+            {% if insight.trend_analysis.content_trends %}
+                <p style="color: #333333;">
+                    <strong>콘텐츠 트렌드: </strong>{{ insight.trend_analysis.content_trends }}
+                </p>
+            {% endif %}
+            {% if insight.trend_analysis.insights %}
+                <p style="color: #333333;">
+                    <strong>인사이트: </strong>{{ insight.trend_analysis.insights }}
+                </p>
+            {% endif %}
+        </div>
+    {% endif %}
+</div>

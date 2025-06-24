@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Velog Dashboard Weekly</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: Arial, sans-serif;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5;">
+        <tr>
+            <td align="center" style="padding: 20px;">
+                <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);">
+                    <tr>
+                        <td style="padding: 30px;">
+                            <div class="header" style="text-align: center; margin-bottom: 20px;">
+                                <h1 style="text-decoration: underline; margin-bottom: 0; color: #333333; font-size: 24px;">
+                                    <span style="color: #63e6be;">Velog Dashboard</span> Weekly
+                                </h1>
+                                <p style="font-size: 12px; color: #666; margin-top: 5px;">
+                                    {{s_date}} ~ {{e_date}} 사이의 트렌드를 전달해드려요.
+                                </p>
+                            </div>
+
+                            <div class="insights" style="color: #333333; font-size: 14px; line-height: 1.6;">
+                                {% if weekly_trend_html %}
+                                    {{weekly_trend_html}}
+                                {% endif %}
+
+                                {% if is_expired_token_user %}
+                                    <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 6px; margin: 20px 0;">
+                                        <p style="font-size: 16px; font-weight: bold; color: #574202; margin: 0 0 10px 0;">
+                                            🚨 잠깐, 토큰이 만료 되신 것 같아요!
+                                        </p>
+                                        <p style="color: #574202; margin: 0;">
+                                            토큰이 만료되면 더 이상 통계를 수집할 수 없어요. 토큰을 재발급 받으시려면 
+                                            <a href="https://velog-dashboard.kro.kr/" style="color: #63e6be; font-weight: bold;">여기</a>에서 재로그인 해주세요.
+                                        </p>
+                                    </div>
+                                {% else %}
+                                    {% if user_weekly_trend_html %}
+                                        {{user_weekly_trend_html}}
+                                    {% endif %}
+                                {% endif %}
+                            </div>
+
+                            <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+
+                            <div class="footer" style="margin-top: 20px; text-align: center;">
+                                <a href="https://nuung.notion.site/terms-of-service" style="color: #666; font-size: 12px; margin: 0 5px; text-decoration: none;">
+                                    서비스 이용약관
+                                </a>
+                                <a href="https://nuung.notion.site/privacy-policy" style="color: #666; font-size: 12px; margin: 0 5px; text-decoration: none;">
+                                    개인정보처리방침
+                                </a>
+                                <a href="https://velog-dashboard.kro.kr/main" style="color: #63e6be; font-size: 12px; margin: 0 5px; text-decoration: none;">
+                                    VD 바로가기
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

@@ -1,0 +1,77 @@
+<div class="user-weekly-trend" style="margin-top: 20px; color: #333333;">
+    {% if insight.trending_summary %}
+        <h2 style="margin-bottom: 10px; color: #333333;">
+            {% if user.username %}
+                {{user.username}}님의
+            {% else %}
+                내
+            {% endif %}
+            활동 리포트
+        </h2>
+        {% if user_weekly_stats %}
+            <div style="margin-bottom: 15px; padding: 12px; background-color: #f8f9fa; border-radius: 6px;">
+                이번 주에는 
+                {% if user_weekly_stats.posts > 0 %}
+                    <b>{{user_weekly_stats.posts}}개</b>의 글을 작성하셨네요! 👏 <br>
+                {% endif %}
+                {% if user_weekly_stats.views > 0 %}
+                    <b>{{user_weekly_stats.views}}명</b>이 
+                    {% if user.username %}
+                        {{user.username}}님의
+                    {% else %}
+                        내
+                    {% endif %}
+                    포스트를 읽었어요. <br>
+                {% endif %}
+                {% if user_weekly_stats.likes > 0 %}
+                    <b>{{user_weekly_stats.likes}}개</b>의 좋아요를 받았어요.
+                {% endif %}
+            </div>
+        {% endif %}
+
+        {% for item in insight.trending_summary %}
+            <div style="margin: 15px 0; padding-left: 15px; border-left: 3px solid #ddd;">
+                <h3 style="margin-bottom: 5px; color: #333333;">
+                    {{forloop.counter}}. {{ item.title }}
+                </h3>
+                <p style="line-height: 1.5; margin-bottom: 8px; color: #333333;">
+                    {{ item.summary }}
+                </p>
+                {% if item.key_points %}
+                    <ul style="margin-top: 8px; margin-bottom: 0;">
+                        {% for point in item.key_points %}
+                            <li style="color: #333333;">
+                                {{ point }}
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+            </div>
+        {% endfor %}
+    {% endif %}
+    
+    {% if insight.trend_analysis %}
+        <h2 style="margin-bottom: 10px; color: #333333;">
+            내 트렌드 분석
+        </h2>
+        <div style="margin-left: 15px;">
+            {% if insight.trend_analysis.title_trends %}
+                <p style="color: #333333;">
+                    <strong>제목 분석: </strong>{{ insight.trend_analysis.title_trends }}
+                </p>
+            {% endif %}
+
+            {% if insight.trend_analysis.content_trends %}
+                <p style="color: #333333;">
+                    <strong>콘텐츠 분석: </strong>{{ insight.trend_analysis.content_trends }}
+                </p>
+            {% endif %}
+
+            {% if insight.trend_analysis.insights %}
+                <p style="color: #333333;">
+                    <strong>인사이트: </strong>{{ insight.trend_analysis.insights }}
+                </p>
+            {% endif %}
+        </div>
+    {% endif %}
+</div>
