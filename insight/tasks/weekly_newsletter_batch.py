@@ -1,14 +1,12 @@
 from datetime import timedelta
 import logging
+import warnings
+
 from django.template.loader import render_to_string
 from django.utils import timezone
+from django.db.models import Count, Sum
 import environ
 import html2text
-from django.db.models import Count, Sum
-
-# naive datetime 경고 무시
-import warnings
-warnings.filterwarnings('ignore', message='.*received a naive datetime.*')
 
 import setup_django  # noqa
 
@@ -27,7 +25,11 @@ from insight.schemas import (
     Newsletter
 )
 
+
 logger = logging.getLogger("newsletter")
+
+# naive datetime 경고 무시
+warnings.filterwarnings('ignore', message='.*received a naive datetime.*')
 
 class WeeklyNewsletterBatch:
     def __init__(self, chunk_size: int = 100, max_retry_count: int = 3):
@@ -96,7 +98,7 @@ class WeeklyNewsletterBatch:
             logger.error(f"Failed to get target user chunks: {e}")
             raise e from e
 
-    def get_templated_weekly_trend(self) -> str:
+    def render_weekly_trend(self) -> str:
         """
         공통 WeeklyTrend 조회 및 템플릿 적용
         
@@ -138,7 +140,7 @@ class WeeklyNewsletterBatch:
             logger.error(f"Failed to get templated weekly trend: {e}")
             raise e from e
     
-    def get_users_weekly_stats(self, user_ids: list[int]) -> dict[int, dict]:
+    def _get_users_weekly_stats(self, user_ids: list[int]) -> dict[int, dict]:
         """
         여러 유저의 주간 통계를 일괄 조회
         
@@ -146,10 +148,10 @@ class WeeklyNewsletterBatch:
             user_ids: 대상 사용자 ID 목록
             
         Returns:
-            stats_dict: user_id를 키로 하는 통계 정보 딕셔너리
+            users_weekly_stats_dict: user_id를 키로 하는 통계 정보 딕셔너리
         """
         try:
-            stats = PostDailyStatistics.objects.filter(
+            users_weekly_stats = PostDailyStatistics.objects.filter(
                 post__user_id__in=user_ids,
                 date__gte=self.before_a_week,
             ).values('post__user_id').annotate(
@@ -158,22 +160,22 @@ class WeeklyNewsletterBatch:
                 likes=Sum('daily_like_count')
             )
             
-            stats_dict = {
+            users_weekly_stats_dict = {
                 s['post__user_id']: {
                     'posts': s['posts'] or 0,
                     'views': s['views'] or 0,
                     'likes': s['likes'] or 0
-                } for s in stats
+                } for s in users_weekly_stats
             }
             
-            logger.info(f"Fetched weekly stats for {len(stats_dict)} users out of {len(user_ids)}")
-            return stats_dict
+            logger.info(f"Fetched weekly stats for {len(users_weekly_stats_dict)} users out of {len(user_ids)}")
+            return users_weekly_stats_dict
             
         except Exception as e:
             logger.error(f"Failed to get users weekly stats: {e}")
             return {}
 
-    def get_user_weekly_trends(self, user_ids: list[int]) -> dict[int, UserWeeklyTrend]:
+    def _get_users_weekly_trends(self, user_ids: list[int]) -> dict[int, UserWeeklyTrend]:
         """
         뉴스레터 발송 대상 유저 목록에 대한 UserWeeklyTrend 조회
         
@@ -181,7 +183,7 @@ class WeeklyNewsletterBatch:
             user_ids: 대상 사용자 ID 목록
             
         Returns:
-            user_weekly_trends_dict: user_id를 키로 하는 UserWeeklyTrend 딕셔너리
+            users_weekly_trends_dict: user_id를 키로 하는 UserWeeklyTrend 딕셔너리
         """
         try:
             user_weekly_trends = UserWeeklyTrend.objects.filter(
@@ -191,7 +193,7 @@ class WeeklyNewsletterBatch:
             ).values('id', 'user_id', 'insight')
 
             # user_id를 키로 하는 딕셔너리로 변환
-            user_weekly_trends_dict = {
+            users_weekly_trends_dict = {
                 trend['user_id']: UserWeeklyTrend(
                     id=trend['id'],
                     user_id=trend['user_id'],
@@ -199,14 +201,14 @@ class WeeklyNewsletterBatch:
                 ) for trend in user_weekly_trends
             }
 
-            logger.info(f"Found {len(user_weekly_trends_dict)} user weekly trends out of {len(user_ids)}")
-            return user_weekly_trends_dict
+            logger.info(f"Found {len(users_weekly_trends_dict)} user weekly trends out of {len(user_ids)}")
+            return users_weekly_trends_dict
             
         except Exception as e:
             logger.error(f"Failed to get user weekly trends: {e}")
             return {}
     
-    def get_expired_token_users(self, user_ids: list[int]) -> set[int]:
+    def _get_expired_token_users(self, user_ids: list[int]) -> set[int]:
         """
         토큰 만료된 유저 ID 목록 조회
         오늘 날짜에 통계 데이터가 없는 사용자를 만료된 토큰 사용자로 간주
@@ -233,6 +235,50 @@ class WeeklyNewsletterBatch:
         except Exception as e:
             logger.error(f"Failed to get expired token users: {e}")
             return set()
+    
+    def render_newsletter(self, user: dict, weekly_trend_html: str, user_weekly_trend: UserWeeklyTrend | None, user_weekly_stats: dict, is_expired: bool) -> str:
+        """
+        개별 사용자의 뉴스레터 HTML 렌더링
+        
+        Args:
+            user: 사용자 정보
+            weekly_trend_html: 공통 주간 트렌드 HTML
+            user_weekly_trend: 사용자별 주간 트렌드 (Optional)
+            user_weekly_stats: 사용자별 주간 통계
+            is_expired: 토큰 만료 여부
+            
+        Returns:
+            렌더링된 뉴스레터 HTML
+        """
+        try:
+            user_weekly_trend_html = None
+
+            if user_weekly_trend:
+                user_weekly_trend_html = render_to_string(
+                    'insights/user_weekly_trend.html', 
+                    to_dict(UserWeeklyTrendContext(
+                        insight=parse_json(user_weekly_trend.insight), 
+                        user=user,
+                        user_weekly_stats=user_weekly_stats
+                    ))
+                )
+
+            newsletter_html = render_to_string(
+                'insights/index.html', 
+                to_dict(NewsletterContext(
+                    s_date=self.weekly_info['s_date'], 
+                    e_date=self.weekly_info['e_date'], 
+                    is_expired_token_user=is_expired,
+                    weekly_trend_html=weekly_trend_html, 
+                    user_weekly_trend_html=user_weekly_trend_html, 
+                ))
+            )
+            
+            return newsletter_html
+        except Exception as e:
+            logger.error(f"Failed to render newsletter for user {user.get('id')}: {e}")
+            raise e from e
+
 
     def build_newsletters(self, user_chunk: list[dict], weekly_trend_html: str) -> list[Newsletter]:
         """
@@ -248,39 +294,19 @@ class WeeklyNewsletterBatch:
         try:
             user_ids = [user['id'] for user in user_chunk]
 
-            # 개인화를 위한 데이터 조회
-            user_weekly_trends_dict = self.get_user_weekly_trends(user_ids)
-            expired_token_user_ids = self.get_expired_token_users(user_ids)
-            users_weekly_stats = self.get_users_weekly_stats(user_ids)
+            # 개인화를 위한 데이터 일괄 조회
+            users_weekly_trends_dict = self._get_users_weekly_trends(user_ids)
+            users_weekly_stats_dict = self._get_users_weekly_stats(user_ids)
+            expired_token_user_ids = self._get_expired_token_users(user_ids)
 
             newsletters = []
             for user in user_chunk:
                 try:
-                    user_weekly_trend = user_weekly_trends_dict.get(user['id'])
-                    user_weekly_trend_html = None
-
-                    if user_weekly_trend:
-                        user_weekly_stats = users_weekly_stats.get(user['id'], {'posts': 0, 'views': 0, 'likes': 0})
-                        user_weekly_trend_html = render_to_string(
-                            'insights/user_weekly_trend.html', 
-                            to_dict(UserWeeklyTrendContext(
-                                insight=parse_json(user_weekly_trend.insight), 
-                                user=user,
-                                user_weekly_stats=user_weekly_stats
-                            ))
-                        )
+                    user_weekly_trend = users_weekly_trends_dict.get(user['id'])
+                    user_weekly_stats = users_weekly_stats_dict.get(user['id'], {'posts': 0, 'views': 0, 'likes': 0})
                     is_expired = user['id'] in expired_token_user_ids
 
-                    html_body = render_to_string(
-                        'insights/index.html', 
-                        to_dict(NewsletterContext(
-                            s_date=self.weekly_info['s_date'], 
-                            e_date=self.weekly_info['e_date'], 
-                            is_expired_token_user=is_expired,
-                            weekly_trend_html=weekly_trend_html, 
-                            user_weekly_trend_html=user_weekly_trend_html, 
-                        ))
-                    )
+                    html_body = self.render_newsletter(user, weekly_trend_html, user_weekly_trend, user_weekly_stats, is_expired)
                     text_body = html2text.HTML2Text().handle(html_body)
                     
                     newsletter = Newsletter(
@@ -418,7 +444,7 @@ class WeeklyNewsletterBatch:
                 raise Exception("No target users found for newsletter, batch stopped")
 
             # STEP3: 공통 WeeklyTrend 조회 및 템플릿 생성
-            weekly_trend_html = self.get_templated_weekly_trend()
+            weekly_trend_html = self.render_weekly_trend()
 
             # STEP4: 청크별로 뉴스레터 발송 및 결과 저장
             total_processed = 0
