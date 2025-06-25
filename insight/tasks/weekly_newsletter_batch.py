@@ -200,7 +200,7 @@ class WeeklyNewsletterBatch:
                 ) for trend in user_weekly_trends
             }
 
-            logger.info(f"Found {len(user_weekly_trends_dict)} user weekly trends for chunk")
+            logger.info(f"Found {len(user_weekly_trends_dict)} user weekly trends out of {len(user_ids)}")
             return user_weekly_trends_dict
             
         except Exception as e:
@@ -249,6 +249,7 @@ class WeeklyNewsletterBatch:
         try:
             user_ids = [user['id'] for user in user_chunk]
 
+            # 개인화를 위한 데이터 조회
             user_weekly_trends_dict = self.get_user_weekly_trends(user_ids)
             expired_token_user_ids = self.get_expired_token_users(user_ids)
             users_weekly_stats = self.get_users_weekly_stats(user_ids)
@@ -261,7 +262,6 @@ class WeeklyNewsletterBatch:
 
                     if user_weekly_trend:
                         user_weekly_stats = users_weekly_stats.get(user['id'], {'posts': 0, 'views': 0, 'likes': 0})
-
                         user_weekly_trend_html = render_to_string(
                             'insights/user_weekly_trend.html', 
                             to_dict(UserWeeklyTrendContext(
@@ -270,7 +270,6 @@ class WeeklyNewsletterBatch:
                                 user_weekly_stats=user_weekly_stats
                             ))
                         )
-
                     is_expired = user['id'] in expired_token_user_ids
 
                     html_body = render_to_string(
@@ -301,7 +300,7 @@ class WeeklyNewsletterBatch:
                     logger.error(f"Failed to build newsletter for user {user.get('id')}: {e}")
                     continue
             
-            logger.info(f"Built {len(newsletters)} newsletters for chunk")
+            logger.info(f"Built {len(newsletters)} newsletters out of {len(user_chunk)}")
             return newsletters
             
         except Exception as e:
@@ -319,12 +318,14 @@ class WeeklyNewsletterBatch:
             success_user_ids: 발송 성공한 사용자 ID 목록
         """
         success_user_ids = []
+        mail_logs = []
         
         for newsletter in newsletters:
             success = False
             failed_count = 0
             error_message = ""
             
+            # 최대 max_retry_count 만큼 메일 발송
             while failed_count < self.max_retry_count and not success:
                 try:
                     self.ses_client.send_email(newsletter.email_message)
@@ -339,27 +340,26 @@ class WeeklyNewsletterBatch:
                         f"(attempt {failed_count}/{self.max_retry_count}): {e}"
                     )
             
-            # 메일 발송 로그 저장
-            try:
-                NotiMailLog.objects.create(
+            # bulk_create를 위한 메일 발송 로그 생성
+            mail_logs.append(
+                NotiMailLog(
                     user_id=newsletter.user_id,
                     subject=newsletter.email_message.subject,
                     body=newsletter.email_message.text_body,
                     is_success=success,
+                    sent_at=timezone.now(),
                     error_message=error_message if not success else ""
                 )
-                
-            except Exception as e:
-                logger.error(f"Failed to save mail log for {newsletter.email_message.to[0]}: {e}")
-                                
-            if not success:
-                logger.error(f"Failed to send email to {newsletter.email_message.to[0]} after {self.max_retry_count} attempts")
+            )
         
-        if success_user_ids:
-            logger.info(f"Successfully sent {len(success_user_ids)} emails out of {len(newsletters)}")
-        else:
-            logger.warning(f"Failed to send {len(newsletters) - len(success_user_ids)} emails out of {len(newsletters)}")
-            
+        # 메일 발송 로그 저장
+        if mail_logs:
+            try:
+                NotiMailLog.objects.bulk_create(mail_logs)
+            except Exception as e:
+                logger.error(f"Failed to save mail logs: {e}")
+        
+        logger.info(f"Successfully sent {len(success_user_ids)} emails out of {len(newsletters)}")
         return success_user_ids
     
     def update_weekly_trend_result(self) -> None:
@@ -386,18 +386,15 @@ class WeeklyNewsletterBatch:
             success_user_ids: 발송 성공한 사용자 ID 목록
         """
         try:
-            if success_user_ids:
-                UserWeeklyTrend.objects.filter(
-                    user_id__in=success_user_ids,
-                    week_end_date__gte=self.before_a_week,
-                ).update(
-                    is_processed=True,
-                    processed_at=timezone.now(),
-                )
-                logger.info(f"Updated {len(success_user_ids)} UserWeeklyTrend records as processed")
-            else:
-                logger.warning("No successful email sends to update UserWeeklyTrend")
-                
+            UserWeeklyTrend.objects.filter(
+                user_id__in=success_user_ids,
+                week_end_date__gte=self.before_a_week,
+            ).update(
+                is_processed=True,
+                processed_at=timezone.now(),
+            )
+            logger.info(f"Updated {len(success_user_ids)} UserWeeklyTrend records as processed")
+            
         except Exception as e:
             logger.error(f"Failed to update user weekly trend result: {e}")
 
