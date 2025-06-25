@@ -22,14 +22,18 @@ def get_local_now() -> datetime:
     )
     return local_now
 
-def parse_json(data: Any, default: dict = {}) -> dict:
+
+def parse_json(data: Any, default: dict | None = None) -> dict:
     """데이터를 JSON 형식으로 안전하게 파싱"""
+    if default is None:
+        default = {}
     if isinstance(data, str):
         try:
             return json.loads(data)
         except json.JSONDecodeError:
             return default
     return data
+
 
 def split_range(start: int, end: int, parts: int) -> list[range]:
     """주어진 범위를 지정된 수만큼 균등하게 분할"""

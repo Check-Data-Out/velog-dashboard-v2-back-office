@@ -1,6 +1,5 @@
 from datetime import timedelta
 import logging
-import sys
 from django.template.loader import render_to_string
 from django.utils import timezone
 import environ
@@ -128,7 +127,7 @@ class WeeklyNewsletterBatch:
             weekly_trend_html = render_to_string('insights/weekly_trend.html', context)
 
             # 템플릿 렌더링이 제대로 되지 않은 경우
-            if not '이 주의 트렌딩 글' in weekly_trend_html or not '트렌드 분석' in weekly_trend_html:
+            if '이 주의 트렌딩 글' not in weekly_trend_html or '트렌드 분석' not in weekly_trend_html:
                 logger.error(f"Failed to build weekly trend HTML for newsletter #{weekly_trend['id']}")
                 raise Exception(f"Failed to build weekly trend HTML for newsletter #{weekly_trend['id']}")
             
@@ -287,11 +286,11 @@ class WeeklyNewsletterBatch:
                     newsletter = Newsletter(
                         user_id=user['id'],
                         email_message=EmailMessage(
-                        to=[user['email']],
-                        from_email=self.env('DEFAULT_FROM_EMAIL'),
-                        subject=f"벨로그 대시보드 주간 뉴스레터 #{self.weekly_info['newsletter_order']}",
-                        text_body=text_body,
-                        html_body=html_body,
+                            to=[user['email']],
+                            from_email=self.env('DEFAULT_FROM_EMAIL'),
+                            subject=f"벨로그 대시보드 주간 뉴스레터 #{self.weekly_info['newsletter_order']}",
+                            text_body=text_body,
+                            html_body=html_body,
                         )
                     )
                     newsletters.append(newsletter)
