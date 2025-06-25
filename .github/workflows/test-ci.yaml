@@ -74,6 +74,7 @@ jobs:
           echo "AWS_ACCESS_KEY_ID=ID" >> .env
           echo "AWS_SECRET_ACCESS_KEY=AccEssKeY" >> .env
           echo "AWS_REGION=ap-northeast-2" >> .env
+          echo "DEFAULT_FROM_EMAIL=no-reply@velog-dashboard.kro.kr" >> .env
           echo "AES_KEY_0=${{ secrets.AES_KEY_0 }}" >> .env
           echo "AES_KEY_1=${{ secrets.AES_KEY_1 }}" >> .env
           echo "AES_KEY_2=${{ secrets.AES_KEY_2 }}" >> .env

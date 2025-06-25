@@ -13,6 +13,8 @@
                 이번 주에는 
                 {% if user_weekly_stats.posts > 0 %}
                     <b>{{user_weekly_stats.posts}}개</b>의 글을 작성하셨네요! 👏 <br>
+                {% else %}
+                    이번 주에는 글을 작성하지 않으셨네요. 다음 주에는 멋진 글을 작성해보는 건 어떨까요? 화이팅! 💪 <br>
                 {% endif %}
                 {% if user_weekly_stats.views > 0 %}
                     <b>{{user_weekly_stats.views}}명</b>이 

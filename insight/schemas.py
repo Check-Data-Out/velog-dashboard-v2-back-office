@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from insight.models import WeeklyTrendInsight
+from modules.mail.schemas import EmailMessage
 
 # templates/insight/index.html 데이터 스키마
 @dataclass
@@ -21,3 +22,8 @@ class UserWeeklyTrendContext:
     user: dict
     user_weekly_stats: dict
     insight: WeeklyTrendInsight
+
+@dataclass
+class Newsletter:
+    user_id: int
+    email_message: EmailMessage
