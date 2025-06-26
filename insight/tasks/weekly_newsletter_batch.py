@@ -1,9 +1,10 @@
 """
 [25.06.26] 뉴스레터 발송 배치 @ooheunda
-- 대부분의 DB I/O 및 메서드는 사용자 청크 단위로 처리됩니다.
+- 대부분의 DB I/O 및 메서드는 사용자 청크 단위(100명)로 처리됩니다.
 - 메일 발송 실패 시 최대 3번까지 재시도합니다.
-- 
-python ./insight/tasks/weekly_newsletter_batch.py
+- Django 및 AWS SES 의존성 있는 배치입니다.
+- 아래 커맨드로 실행합니다.
+  python ./insight/tasks/weekly_newsletter_batch.py
 """
 from datetime import timedelta
 import logging
