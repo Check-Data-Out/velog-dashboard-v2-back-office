@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 import asyncio
 
 import aiohttp
@@ -22,8 +23,8 @@ REFRESH_TOKEN = ""
 
 async def run_weekly_trend_analysis():
     logger.info("Weekly trend analysis batch started")
-    week_start = get_local_now() - timezone.timedelta(weeks=1)
-    week_end = get_local_now()
+
+    week_start, week_end = get_previous_week_range()
 
     async with aiohttp.ClientSession() as session:
         try:
@@ -60,8 +61,8 @@ async def run_weekly_trend_analysis():
 
         try:
             await sync_to_async(WeeklyTrend.objects.update_or_create)(
-                week_start_date=week_start.date(),
-                week_end_date=week_end.date(),
+                week_start_date=week_start,
+                week_end_date=week_end,
                 insight=insight_data,
                 is_processed=True,
                 processed_at=timezone.now(),
@@ -69,6 +70,16 @@ async def run_weekly_trend_analysis():
             logger.info("WeeklyTrend saved successfully")
         except Exception as e:
             logger.exception("Failed to save WeeklyTrend: %s", e)
+
+
+def get_previous_week_range(today=None):
+    today = today or get_local_now().date()
+    days_since_monday = today.weekday()
+    this_monday = today - timedelta(days=days_since_monday)
+    last_monday = this_monday - timedelta(days=7)
+    last_sunday = this_monday - timedelta(days=1)
+
+    return last_monday, last_sunday
 
 
 if __name__ == "__main__":

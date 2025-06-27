@@ -54,8 +54,8 @@ def process_user(user, week_start, week_end):
         try:
             trend = UserWeeklyTrend(
                 user_id=user_id,
-                week_start_date=week_start.date(),
-                week_end_date=week_end.date(),
+                week_start_date=week_start,
+                week_end_date=week_end,
                 insight=insight_data,
             )
             logger.info("[user_id=%s] Successfully created UserWeeklyTrend", user_id)
@@ -75,8 +75,8 @@ def process_user(user, week_start, week_end):
 
 def run_multithreaded():
     logger.info("User weekly trend analysis (threaded) started")
-    week_start = get_local_now() - timedelta(weeks=1)
-    week_end = get_local_now()
+
+    week_start, week_end = get_previous_week_range()
 
     try:
         users = list(
@@ -99,18 +99,33 @@ def run_multithreaded():
             if result:
                 results.append(result)
 
-    if results:
-        UserWeeklyTrend.objects.bulk_update_or_create(results)
-        logger.info("All UserWeeklyTrends saved using bulk_update_or_create")
+    for trend in results:
+        try:
+            UserWeeklyTrend.objects.update_or_create(
+                user_id=trend.user_id,
+                week_start_date=trend.week_start_date,
+                week_end_date=trend.week_end_date,
+                defaults={
+                    "insight": trend.insight,
+                },
+            )
+        except Exception as e:
+            logger.warning(
+                "[user_id=%s] Failed to update_or_create UserWeeklyTrend: %s",
+                trend.user_id,
+                e,
+            )
+
+
+def get_previous_week_range(today=None):
+    today = today or get_local_now().date()
+    days_since_monday = today.weekday()
+    this_monday = today - timedelta(days=days_since_monday)
+    last_monday = this_monday - timedelta(days=7)
+    last_sunday = this_monday - timedelta(days=1)
+
+    return last_monday, last_sunday
 
 
 if __name__ == "__main__":
-    start = time.time()
-    try:
-        run_multithreaded()
-    except Exception:
-        logger.exception("Unexpected error occurred during user weekly trend analysis")
-    finally:
-        end = time.time()
-        duration = end - start
-        logger.info(f"Finished in {duration:.2f} seconds")
+    run_multithreaded()
