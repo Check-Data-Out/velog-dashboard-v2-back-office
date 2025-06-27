@@ -28,13 +28,11 @@ def process_user(user, week_start, week_end):
                 total_views=Sum("daily_statistics__daily_view_count"),
             )
         except DatabaseError as db_err:
-            logger.error("[user_id=%s] DB 조회 중 오류 발생: %s", user_id, db_err)
+            logger.error("[user_id=%s] Failed to query posts : %s", user_id, db_err)
             return None
 
         if not posts.exists():
-            logger.info(
-                "[user_id=%s] No posts in the selected period, skipping", user_id
-            )
+            logger.info("[user_id=%s] No posts in the selected period, skipping", user_id)
             return None
 
         payload = [
@@ -48,8 +46,9 @@ def process_user(user, week_start, week_end):
 
         try:
             insight_data = analyze_user_posts(payload, settings.OPENAI_API_KEY)
+
         except Exception as llm_err:
-            logger.error("[user_id=%s] OpenAI 분석 실패: %s", user_id, llm_err)
+            logger.error("[user_id=%s] Failed to analyze with OpenAI : %s", user_id, llm_err)
             return None
 
         try:
@@ -59,16 +58,18 @@ def process_user(user, week_start, week_end):
                 week_end_date=week_end.date(),
                 insight=insight_data,
             )
-            logger.info("[user_id=%s] UserWeeklyTrend 생성 완료", user_id)
+            logger.info("[user_id=%s] Successfully created UserWeeklyTrend", user_id)
             return trend
         except Exception as save_err:
             logger.error(
-                "[user_id=%s] UserWeeklyTrend 객체 생성 중 오류: %s", user_id, save_err
+                "[user_id=%s] Error occurred while creating UserWeeklyTrend : %s",
+                user_id,
+                save_err,
             )
             return None
 
     except Exception as e:
-        logger.exception("[user_id=%s] 처리 중 알 수 없는 오류 발생: %s", user_id, e)
+        logger.exception("[user_id=%s] Unexpected error occurred during processing : %s", user_id, e)
         return None
 
 
@@ -84,7 +85,7 @@ def run_multithreaded():
             .values("id", "access_token", "refresh_token")
         )
     except Exception as user_fetch_err:
-        logger.exception("User 목록 조회 실패: %s", user_fetch_err)
+        logger.exception("Failed to fetch user list : %s", user_fetch_err)
         return
 
     results = []
@@ -99,10 +100,8 @@ def run_multithreaded():
                 results.append(result)
 
     if results:
-        UserWeeklyTrend.objects.bulk_create(results, ignore_conflicts=True)
-        logger.info(
-            "All UserWeeklyTrends saved using bulk_create with ignore_conflicts"
-        )
+        UserWeeklyTrend.objects.bulk_update_or_create(results)
+        logger.info("All UserWeeklyTrends saved using bulk_update_or_create")
 
 
 if __name__ == "__main__":

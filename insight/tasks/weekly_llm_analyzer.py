@@ -115,7 +115,7 @@ def analyze_trending_posts(posts: list, api_key: str) -> dict:
             response_format={"type": "json_object"},
         )
     except Exception as e:
-        logger.error("analyze_trending_posts 실패: %s", e)
+        logger.error("Failed to analyze_trending_posts : %s", e)
         raise
 
 
@@ -130,5 +130,5 @@ def analyze_user_posts(posts: list, api_key: str) -> dict:
             response_format={"type": "json_object"},
         )
     except Exception as e:
-        logger.error("analyze_user_posts 실패: %s", e)
+        logger.error("Failed to analyze_user_posts : %s", e)
         raise
