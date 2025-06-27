@@ -1,83 +1,115 @@
-import os
-import sys
 import logging
+import time
 from datetime import timedelta
+from concurrent.futures import ThreadPoolExecutor
 
-from django.utils import timezone
-from django.db.models import Sum
 from django.db import DatabaseError
+from django.db.models import Sum
+from django.conf import settings
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.append(BASE_DIR)
-
-from scraping import setup_django  # noqa
-from users.models import User
+import setup_django  # noqa
 from posts.models import Post
 from insight.models import UserWeeklyTrend
-from .weekly_llm_analyzer import analyze_user_posts
+from users.models import User
+from weekly_llm_analyzer import analyze_user_posts
+from utils.utils import get_local_now
 
 logger = logging.getLogger("scraping")
 
 
-def run_user_weekly_trend_analysis():
-    logger.info("사용자 주간 트렌드 분석 배치 시작")
-    week_start = timezone.now() - timedelta(weeks=1)
-    week_end = timezone.now()
-
+def process_user(user, week_start, week_end):
+    user_id = user["id"]
     try:
-        users = User.objects.all()
-    except DatabaseError as e:
-        logger.exception("사용자 목록 조회 실패: %s", e)
-        return
-
-    for user in users:
         try:
             posts = Post.objects.filter(
-                user__username=user.username, created_at__gte=week_start
+                user_id=user_id, created_at__gte=week_start
             ).annotate(
                 total_likes=Sum("daily_statistics__daily_like_count"),
                 total_views=Sum("daily_statistics__daily_view_count"),
             )
+        except DatabaseError as db_err:
+            logger.error("[user_id=%s] DB 조회 중 오류 발생: %s", user_id, db_err)
+            return None
 
-            if not posts.exists():
-                logger.info("[%s] 최근 일주일 게시글 없음, 스킵", user.username)
-                continue
+        if not posts.exists():
+            logger.info(
+                "[user_id=%s] No posts in the selected period, skipping", user_id
+            )
+            return None
 
-            payload = [
-                {
-                    "제목": p.title,
-                    "내용": p.slug or "",
-                    "조회수": p.total_views or 0,
-                    "좋아요 수": p.total_likes or 0,
-                }
-                for p in posts
-            ]
+        payload = [
+            {
+                "제목": p.title,
+                "조회수": p.total_views or 0,
+                "좋아요 수": p.total_likes or 0,
+            }
+            for p in posts
+        ]
 
-            try:
-                insight_data = analyze_user_posts(payload)
-            except Exception as e:
-                logger.exception("[%s] LLM 분석 실패: %s", user.username, e)
-                continue
+        try:
+            insight_data = analyze_user_posts(payload, settings.OPENAI_API_KEY)
+        except Exception as llm_err:
+            logger.error("[user_id=%s] OpenAI 분석 실패: %s", user_id, llm_err)
+            return None
 
-            try:
-                UserWeeklyTrend.objects.create(
-                    user=user,
-                    week_start_date=week_start.date(),
-                    week_end_date=week_end.date(),
-                    insight=insight_data,
-                    is_processed=True,
-                    processed_at=timezone.now(),
-                )
-                logger.info("[%s] UserWeeklyTrend 저장 완료", user.username)
-            except Exception as e:
-                logger.exception("[%s] UserWeeklyTrend 저장 실패: %s", user.username, e)
+        try:
+            trend = UserWeeklyTrend(
+                user_id=user_id,
+                week_start_date=week_start.date(),
+                week_end_date=week_end.date(),
+                insight=insight_data,
+            )
+            logger.info("[user_id=%s] UserWeeklyTrend 생성 완료", user_id)
+            return trend
+        except Exception as save_err:
+            logger.error(
+                "[user_id=%s] UserWeeklyTrend 객체 생성 중 오류: %s", user_id, save_err
+            )
+            return None
 
-        except Exception as e:
-            logger.exception("[%s] 게시글 처리 중 예외 발생: %s", user.username, e)
+    except Exception as e:
+        logger.exception("[user_id=%s] 처리 중 알 수 없는 오류 발생: %s", user_id, e)
+        return None
+
+
+def run_multithreaded():
+    logger.info("User weekly trend analysis (threaded) started")
+    week_start = get_local_now() - timedelta(weeks=1)
+    week_end = get_local_now()
+
+    try:
+        users = list(
+            User.objects.filter(email__isnull=False)
+            .exclude(email="")
+            .values("id", "access_token", "refresh_token")
+        )
+    except Exception as user_fetch_err:
+        logger.exception("User 목록 조회 실패: %s", user_fetch_err)
+        return
+
+    results = []
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [
+            executor.submit(process_user, user, week_start, week_end) for user in users
+        ]
+
+        for future in futures:
+            result = future.result()
+            if result:
+                results.append(result)
+
+    if results:
+        UserWeeklyTrend.objects.bulk_create(results)
+        logger.info("All UserWeeklyTrends saved using bulk_create")
 
 
 if __name__ == "__main__":
+    start = time.time()
     try:
-        run_user_weekly_trend_analysis()
+        run_multithreaded()
     except Exception:
-        logger.exception("전체 사용자 주간 트렌드 분석 중 알 수 없는 예외 발생")
+        logger.exception("Unexpected error occurred during user weekly trend analysis")
+    finally:
+        end = time.time()
+        duration = end - start
+        logger.info(f"Finished in {duration:.2f} seconds")
