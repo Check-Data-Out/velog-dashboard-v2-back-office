@@ -1,5 +1,4 @@
 import logging
-import time
 from datetime import timedelta
 from concurrent.futures import ThreadPoolExecutor
 
