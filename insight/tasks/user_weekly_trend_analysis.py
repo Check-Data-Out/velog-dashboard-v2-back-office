@@ -99,8 +99,10 @@ def run_multithreaded():
                 results.append(result)
 
     if results:
-        UserWeeklyTrend.objects.bulk_create(results)
-        logger.info("All UserWeeklyTrends saved using bulk_create")
+        UserWeeklyTrend.objects.bulk_create(results, ignore_conflicts=True)
+        logger.info(
+            "All UserWeeklyTrends saved using bulk_create with ignore_conflicts"
+        )
 
 
 if __name__ == "__main__":
