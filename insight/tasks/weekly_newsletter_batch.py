@@ -12,7 +12,6 @@ import warnings
 from datetime import timedelta
 
 import environ
-import html2text
 import setup_django  # noqa
 from django.db.models import Count, Sum
 from django.template.loader import render_to_string
@@ -30,7 +29,12 @@ from modules.mail.ses.client import SESClient
 from noti.models import NotiMailLog
 from posts.models import PostDailyStatistics
 from users.models import User
-from utils.utils import get_local_now, parse_json, to_dict
+from utils.utils import (
+    get_local_now,
+    parse_json,
+    strip_html_tags,
+    to_dict,
+)
 
 logger = logging.getLogger("newsletter")
 
@@ -334,7 +338,7 @@ class WeeklyNewsletterBatch:
                         user_weekly_stats=user_weekly_stats,
                         is_expired=is_expired,
                     )
-                    text_body = html2text.HTML2Text().handle(html_body)
+                    text_body = strip_html_tags(html_body)
 
                     # 뉴스레터 객체 생성
                     newsletter = Newsletter(

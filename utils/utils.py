@@ -1,5 +1,6 @@
 import json
 import random
+import re
 from dataclasses import fields, is_dataclass
 from datetime import datetime
 from typing import Any, Type, TypeVar, get_args, get_origin, no_type_check
@@ -33,6 +34,11 @@ def parse_json(data: Any, default: dict | None = None) -> dict[Any, Any]:
         except json.JSONDecodeError:
             return default
     return data
+
+
+def strip_html_tags(html: str) -> str:
+    """HTML 태그를 제거한 문자열 반환"""
+    return re.sub(r"<[^>]+>", "", html)
 
 
 def split_range(start: int, end: int, parts: int) -> list[range]:
