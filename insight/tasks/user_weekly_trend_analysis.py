@@ -1,7 +1,9 @@
 import logging
 from datetime import timedelta
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
+from django.utils import timezone
 from django.db import DatabaseError
 from django.db.models import Sum
 from django.conf import settings
@@ -123,7 +125,9 @@ def get_previous_week_range(today=None):
     last_monday = this_monday - timedelta(days=7)
     last_sunday = this_monday - timedelta(days=1)
 
-    return last_monday, last_sunday
+    week_start = timezone.make_aware(datetime.combine(last_monday, datetime.min.time()))
+    week_end = timezone.make_aware(datetime.combine(last_sunday, datetime.max.time()))
+    return week_start, week_end
 
 
 if __name__ == "__main__":
