@@ -51,6 +51,8 @@ async def run_weekly_trend_analysis():
                     "내용": body,
                     "조회수": post.views,
                     "좋아요 수": post.likes,
+                    "사용자 이름": post.user.username,
+                    "게시글 썸네일": post.thumbnail,
                 }
             )
 
