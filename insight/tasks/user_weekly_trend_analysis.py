@@ -1,9 +1,6 @@
 import logging
-from datetime import timedelta
-from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
-from django.utils import timezone
 from django.db import DatabaseError
 from django.db.models import Sum
 from django.conf import settings
@@ -13,12 +10,13 @@ from posts.models import Post
 from insight.models import UserWeeklyTrend
 from users.models import User
 from weekly_llm_analyzer import analyze_user_posts
-from utils.utils import get_local_now
+from utils.utils import get_previous_week_range
 
 logger = logging.getLogger("scraping")
 
 
 def process_user(user, week_start, week_end):
+    """주간 사용자 트렌드 분석 배치 실행"""
     user_id = user["id"]
     try:
         try:
@@ -75,6 +73,7 @@ def process_user(user, week_start, week_end):
 
 
 def run_multithreaded():
+    """각 사용자별 UserWeeklyTrend 저장"""
     logger.info("User weekly trend analysis (threaded) started")
 
     week_start, week_end = get_previous_week_range()
@@ -116,18 +115,6 @@ def run_multithreaded():
                 trend.user_id,
                 e,
             )
-
-
-def get_previous_week_range(today=None):
-    today = today or get_local_now().date()
-    days_since_monday = today.weekday()
-    this_monday = today - timedelta(days=days_since_monday)
-    last_monday = this_monday - timedelta(days=7)
-    last_sunday = this_monday - timedelta(days=1)
-
-    week_start = timezone.make_aware(datetime.combine(last_monday, datetime.min.time()))
-    week_end = timezone.make_aware(datetime.combine(last_sunday, datetime.max.time()))
-    return week_start, week_end
 
 
 if __name__ == "__main__":

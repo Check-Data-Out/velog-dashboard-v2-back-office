@@ -1,6 +1,6 @@
 import random
 from dataclasses import fields, is_dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Type, TypeVar, get_args, get_origin, no_type_check
 
 from django.utils import timezone
@@ -87,3 +87,16 @@ def from_dict(cls: Type[T], data: dict[str, Any]) -> T:
             kwargs[f.name] = value
 
     return cls(**kwargs)
+
+
+def get_previous_week_range(today: datetime.date = None) -> tuple[datetime, datetime]:
+    """주간 트렌드/사용자 분석 배치 날짜 계산"""
+    today = today or get_local_now().date()
+    days_since_monday = today.weekday()
+    this_monday = today - timedelta(days=days_since_monday)
+    last_monday = this_monday - timedelta(days=7)
+    last_sunday = this_monday - timedelta(days=1)
+
+    week_start = timezone.make_aware(datetime.combine(last_monday, datetime.min.time()))
+    week_end = timezone.make_aware(datetime.combine(last_sunday, datetime.max.time()))
+    return week_start, week_end

@@ -1,9 +1,7 @@
 import logging
 import asyncio
 import aiohttp
-from datetime import timedelta, datetime
 
-from django.utils import timezone
 from django.conf import settings
 from asgiref.sync import sync_to_async
 
@@ -11,7 +9,7 @@ import setup_django  # noqa
 from insight.models import WeeklyTrend
 from scraping.velog.client import VelogClient
 from weekly_llm_analyzer import analyze_trending_posts
-from utils.utils import get_local_now
+from utils.utils import get_previous_week_range
 
 logger = logging.getLogger("scraping")
 
@@ -73,19 +71,6 @@ async def run_weekly_trend_analysis():
         logger.info("WeeklyTrend saved successfully")
     except Exception as e:
         logger.exception("Failed to save WeeklyTrend : %s", e)
-
-
-def get_previous_week_range(today=None):
-    """주간 날짜 계산"""
-    today = today or get_local_now().date()
-    days_since_monday = today.weekday()
-    this_monday = today - timedelta(days=days_since_monday)
-    last_monday = this_monday - timedelta(days=7)
-    last_sunday = this_monday - timedelta(days=1)
-
-    week_start = timezone.make_aware(datetime.combine(last_monday, datetime.min.time()))
-    week_end = timezone.make_aware(datetime.combine(last_sunday, datetime.max.time()))
-    return week_start, week_end
 
 
 if __name__ == "__main__":
