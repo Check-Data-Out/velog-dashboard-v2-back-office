@@ -1,8 +1,9 @@
 import logging
 
+from prompts import SYS_PROM, USER_TREND_PROM, WEEKLY_TREND_PROM
+
 from modules.llm.base_client import LLMClient
 from modules.llm.openai.client import OpenAIClient
-from prompts import SYS_PROM, WEEKLY_TREND_PROM, USER_TREND_PROM
 
 logger = logging.getLogger("scraping")
 
