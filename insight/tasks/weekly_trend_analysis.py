@@ -1,14 +1,14 @@
-import logging
 import asyncio
+import logging
+
 import aiohttp
-
-from django.conf import settings
-from asgiref.sync import sync_to_async
-
 import setup_django  # noqa
+from asgiref.sync import sync_to_async
+from django.conf import settings
+from weekly_llm_analyzer import analyze_trending_posts
+
 from insight.models import WeeklyTrend
 from scraping.velog.client import VelogClient
-from weekly_llm_analyzer import analyze_trending_posts
 from utils.utils import get_previous_week_range
 
 logger = logging.getLogger("scraping")

@@ -1,15 +1,15 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
+import setup_django  # noqa
+from django.conf import settings
 from django.db import DatabaseError
 from django.db.models import Sum
-from django.conf import settings
-
-import setup_django  # noqa
-from posts.models import Post
-from insight.models import UserWeeklyTrend
-from users.models import User
 from weekly_llm_analyzer import analyze_user_posts
+
+from insight.models import UserWeeklyTrend
+from posts.models import Post
+from users.models import User
 from utils.utils import get_previous_week_range
 
 logger = logging.getLogger("scraping")
@@ -60,11 +60,7 @@ def process_user(user, week_start, week_end):
             logger.info("[user_id=%s] Successfully created UserWeeklyTrend", user_id)
             return trend
         except Exception as save_err:
-            logger.error(
-                "[user_id=%s] Error occurred while creating UserWeeklyTrend : %s",
-                user_id,
-                save_err,
-            )
+            logger.error("[user_id=%s] Error occurred while creating UserWeeklyTrend : %s", user_id, save_err)
             return None
 
     except Exception as e:
@@ -91,7 +87,8 @@ def run_multithreaded():
     results = []
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = [
-            executor.submit(process_user, user, week_start, week_end) for user in users
+            executor.submit(process_user, user, week_start, week_end)
+            for user in users
         ]
 
         for future in futures:
@@ -110,11 +107,7 @@ def run_multithreaded():
                 },
             )
         except Exception as e:
-            logger.warning(
-                "[user_id=%s] Failed to update_or_create UserWeeklyTrend: %s",
-                trend.user_id,
-                e,
-            )
+            logger.warning("[user_id=%s] Failed to update_or_create UserWeeklyTrend: %s", trend.user_id, e)
 
 
 if __name__ == "__main__":
