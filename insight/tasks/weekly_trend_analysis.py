@@ -1,3 +1,9 @@
+"""
+[25.07.01] 주간 트렌드 분석 배치 (작성자: 이지현)
+- 실행은 아래와 같은 커멘드 활용
+- poetry run python ./insight/tasks/weekly_trend_analysis.py
+"""
+
 import asyncio
 import logging
 
@@ -14,56 +20,24 @@ from utils.utils import get_previous_week_range
 logger = logging.getLogger("scraping")
 
 
-async def retry_fetch_trending_posts(client, max_retries=3):
-    for attempt in range(max_retries):
-        try:
-            return await client.get_trending_posts(limit=10)
-        except Exception as e:
-            logger.warning("Trending posts fetch failed (attempt %d): %s", attempt + 1, e)
-            if attempt < max_retries - 1:
-                await asyncio.sleep(2**attempt)
-    return []
-
-
-async def retry_fetch_post_detail(client, post_id, max_retries=3):
-    for attempt in range(max_retries):
-        try:
-            return await client.get_post(post_id)
-        except Exception as e:
-            logger.warning("Failed to fetch post detail (id=%s, attempt %d): %s", post_id, attempt + 1, e)
-            if attempt < max_retries - 1:
-                await asyncio.sleep(2**attempt)
-    return None
-
-
-async def retry_analyze_trending_posts(payload, api_key, max_retries=3):
-    for attempt in range(max_retries):
-        try:
-            return analyze_trending_posts(payload, api_key)
-        except Exception as e:
-            logger.warning("[user_id=%s] LLM analysis failed (attempt %d): %s", attempt + 1)
-            if attempt < max_retries - 1:
-                await asyncio.sleep(2**attempt)
-    return ""
-
-
 async def run_weekly_trend_analysis():
-    """주간 트렌드 분석 배치 실행"""
+    """Velog 트렌딩 게시글을 기반으로 주간 트렌드 분석"""
     logger.info("Weekly trend analysis batch started")
 
+    # 1. 주간 시작/끝 날짜 계산
     week_start, week_end = get_previous_week_range()
 
     async with aiohttp.ClientSession() as session:
         try:
+            # 2. Velog 트렌딩 게시글 조회
             velog_client = VelogClient.get_client(
                 session=session,
                 access_token="dummy_access_token",
                 refresh_token="dummy_refresh_token",
             )
-
-            trending_posts = await retry_fetch_trending_posts(velog_client)
+            trending_posts = await velog_client.get_trending_posts(limit=10)
         except Exception as e:
-            logger.exception("Velog client init or trending post fetch failed: %s", e)
+            logger.exception("Failed to fetch trending posts from Velog API : %s", e)
             return
 
         if not trending_posts:
@@ -72,8 +46,14 @@ async def run_weekly_trend_analysis():
 
         payload = []
         for post in trending_posts:
-            detail = await retry_fetch_post_detail(velog_client, post.id)
-            body = detail.body if detail and detail.body else ""
+            try:
+                # 3. Velog API 게시글 상세 조회
+                detail = await velog_client.get_post(post.id)
+                body = detail.body if detail and detail.body else ""
+            except Exception as e:
+                logger.warning("Failed to fetch post detail (id=%s) : %s", post.id, e)
+                body = ""
+
             payload.append(
                 {
                     "제목": post.title,
@@ -85,9 +65,15 @@ async def run_weekly_trend_analysis():
                 }
             )
 
-    insight_data = await retry_analyze_trending_posts(payload, settings.OPENAI_API_KEY)
+    try:
+        # 4. LLM을 이용한 트렌드 분석
+        insight_data = analyze_trending_posts(payload, settings.OPENAI_API_KEY)
+    except Exception as e:
+        logger.warning("LLM analysis failed: %s", e)
+        insight_data = ""
 
     try:
+        # 5. 결과 DB에 저장
         await sync_to_async(WeeklyTrend.objects.update_or_create)(
             week_start_date=week_start,
             week_end_date=week_end,
