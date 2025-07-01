@@ -14,6 +14,39 @@ from utils.utils import get_previous_week_range
 logger = logging.getLogger("scraping")
 
 
+async def retry_fetch_trending_posts(client, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            return await client.get_trending_posts(limit=10)
+        except Exception as e:
+            logger.warning("Trending posts fetch failed (attempt %d): %s", attempt + 1, e)
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2**attempt)
+    return []
+
+
+async def retry_fetch_post_detail(client, post_id, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            return await client.get_post(post_id)
+        except Exception as e:
+            logger.warning("Failed to fetch post detail (id=%s, attempt %d): %s", post_id, attempt + 1, e)
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2**attempt)
+    return None
+
+
+async def retry_analyze_trending_posts(payload, api_key, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            return analyze_trending_posts(payload, api_key)
+        except Exception as e:
+            logger.warning("[user_id=%s] LLM analysis failed (attempt %d): %s", attempt + 1)
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2**attempt)
+    return ""
+
+
 async def run_weekly_trend_analysis():
     """주간 트렌드 분석 배치 실행"""
     logger.info("Weekly trend analysis batch started")
@@ -27,9 +60,10 @@ async def run_weekly_trend_analysis():
                 access_token="dummy_access_token",
                 refresh_token="dummy_refresh_token",
             )
-            trending_posts = await velog_client.get_trending_posts(limit=10)
+
+            trending_posts = await retry_fetch_trending_posts(velog_client)
         except Exception as e:
-            logger.exception("Failed to fetch trending posts from Velog API : %s", e)
+            logger.exception("Velog client init or trending post fetch failed: %s", e)
             return
 
         if not trending_posts:
@@ -38,13 +72,8 @@ async def run_weekly_trend_analysis():
 
         payload = []
         for post in trending_posts:
-            try:
-                detail = await velog_client.get_post(post.id)
-                body = detail.body if detail and detail.body else ""
-            except Exception as e:
-                logger.warning("Failed to fetch post detail (id=%s) : %s", post.id, e)
-                body = ""
-
+            detail = await retry_fetch_post_detail(velog_client, post.id)
+            body = detail.body if detail and detail.body else ""
             payload.append(
                 {
                     "제목": post.title,
@@ -56,11 +85,7 @@ async def run_weekly_trend_analysis():
                 }
             )
 
-    try:
-        insight_data = analyze_trending_posts(payload, settings.OPENAI_API_KEY)
-    except Exception as e:
-        logger.exception("Failed to LLM analysis : %s", e)
-        return
+    insight_data = await retry_analyze_trending_posts(payload, settings.OPENAI_API_KEY)
 
     try:
         await sync_to_async(WeeklyTrend.objects.update_or_create)(
