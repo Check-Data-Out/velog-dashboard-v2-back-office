@@ -3,6 +3,7 @@
 - 대부분의 DB I/O 및 메서드는 사용자 청크 단위(100명)로 처리됩니다.
 - 메일 발송 실패 시 최대 3번까지 재시도합니다.
 - Django 및 AWS SES 의존성 있는 배치입니다.
+- ./templates/insights/ 경로의 HTML 템플릿을 사용합니다.
 - 아래 커맨드로 실행합니다.
   python ./insight/tasks/weekly_newsletter_batch.py
 """
@@ -10,6 +11,7 @@
 import logging
 import warnings
 from datetime import timedelta
+from time import sleep
 
 import environ
 import setup_django  # noqa
@@ -53,9 +55,9 @@ class WeeklyNewsletterBatch:
         클래스 초기화
 
         Args:
+            ses_client: SESClient 인스턴스
             chunk_size: 한 번에 처리할 사용자 수
             max_retry_count: 메일 발송 실패 시 최대 재시도 횟수
-            ses_client: SESClient 인스턴스 (Optional)
         """
         self.env = environ.Env()
         self.ses_client = ses_client
@@ -247,6 +249,7 @@ class WeeklyNewsletterBatch:
             if expired_user_ids:
                 logger.info(
                     f"Found {len(expired_user_ids)} users with expired tokens"
+                    f"Expired user ids: {expired_user_ids}"
                 )
 
             return expired_user_ids
@@ -392,9 +395,12 @@ class WeeklyNewsletterBatch:
                     failed_count += 1
                     error_message = str(e)
                     logger.error(
-                        f"Failed to send email to {newsletter.email_message.to[0]} "
+                        f"Failed to send newsletter to (id: {newsletter.user_id} email: {newsletter.email_message.to[0]}) "
                         f"(attempt {failed_count}/{self.max_retry_count}): {e}"
                     )
+                    # 재시도 전 대기
+                    if failed_count != self.max_retry_count:
+                        sleep(failed_count)
 
             try:
                 # bulk_create를 위한 메일 발송 로그 생성
@@ -422,7 +428,7 @@ class WeeklyNewsletterBatch:
                 logger.error(f"Failed to save mail logs: {e}")
 
         logger.info(
-            f"Successfully sent {len(success_user_ids)} emails out of {len(newsletters)}"
+            f"Successfully sent {len(success_user_ids)} newsletters out of {len(newsletters)}"
         )
         return success_user_ids
 
@@ -519,7 +525,7 @@ class WeeklyNewsletterBatch:
                     # 발송할 뉴스레터 없을 시 다음 청크로
                     if not newsletters:
                         logger.warning(
-                            f"No email messages built for chunk {chunk_index}"
+                            f"No newsletters built for chunk {chunk_index}"
                         )
                         continue
 
@@ -546,7 +552,7 @@ class WeeklyNewsletterBatch:
             )
 
             if total_processed > total_failed:
-                # 과반수 이상 성공 시에만 processed로 마킹
+                # 과반수 이상 성공시에만 processed로 마킹
                 self._update_weekly_trend_result()
                 logger.info(
                     f"Newsletter batch process completed successfully in {(timezone.now() - start_time).total_seconds()} seconds. "
