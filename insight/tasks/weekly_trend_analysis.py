@@ -29,7 +29,7 @@ async def run_weekly_trend_analysis():
 
     async with aiohttp.ClientSession() as session:
         try:
-            # 2. Velog 트렌딩 게시글 조회
+            # 2. 트렌딩 게시글 목록 조회
             velog_client = VelogClient.get_client(
                 session=session,
                 access_token="dummy_access_token",
@@ -44,42 +44,70 @@ async def run_weekly_trend_analysis():
             logger.info("No trending posts found for the past week")
             return
 
-        payload = []
+        full_contents = []
+        post_meta = []
+
+        # 3. 게시글 본문 조회 + 메타 저장
         for post in trending_posts:
             try:
-                # 3. Velog API 게시글 상세 조회
                 detail = await velog_client.get_post(post.id)
                 body = detail.body if detail and detail.body else ""
             except Exception as e:
                 logger.warning("Failed to fetch post detail (id=%s) : %s", post.id, e)
                 body = ""
 
-            payload.append(
+            full_contents.append(
                 {
                     "제목": post.title,
                     "내용": body,
                     "조회수": post.views,
                     "좋아요 수": post.likes,
-                    "사용자 이름": post.user.username,
-                    "게시글 썸네일": post.thumbnail,
+                }
+            )
+            post_meta.append(
+                {
+                    "title": post.title,
+                    "username": post.user.username,
+                    "thumbnail": post.thumbnail or "",
+                    "slug": post.url_slug or "",
                 }
             )
 
     try:
-        # 4. LLM을 이용한 트렌드 분석
-        insight_data = analyze_trending_posts(payload, settings.OPENAI_API_KEY)
+        # 4. LLM 분석
+        llm_result = analyze_trending_posts(full_contents, settings.OPENAI_API_KEY)
+        trending_summary_raw = llm_result.get("trending_summary", [])
+        trend_analysis = llm_result.get("trend_analysis", {})
     except Exception as e:
-        logger.warning("LLM analysis failed: %s", e)
-        insight_data = ""
+        logger.exception("LLM analysis failed: %s", e)
+        return
+
+    # 5. 결과 포맷 가공
+    trending_summary = []
+    for i, item in enumerate(trending_summary_raw):
+        meta = post_meta[i]
+        trending_summary.append(
+            {
+                "title": meta["title"],
+                "summary": item.get("summary", ""),
+                "key_points": item.get("key_points", []),
+                "username": meta["username"],
+                "thumbnail": meta["thumbnail"],
+                "slug": meta["slug"],
+            }
+        )
+
+    # 6. 최종 insight 저장 포맷 구성
+    insight = {
+        "trending_summary": trending_summary,
+        "trend_analysis": trend_analysis,
+    }
 
     try:
-        # 5. 결과 DB에 저장
         await sync_to_async(WeeklyTrend.objects.update_or_create)(
             week_start_date=week_start,
             week_end_date=week_end,
-            defaults={
-                "insight": insight_data,
-            },
+            defaults={"insight": insight},
         )
         logger.info("WeeklyTrend saved successfully")
     except Exception as e:
