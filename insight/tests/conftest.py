@@ -73,11 +73,17 @@ def sample_trending_items():
             title="Django와 React로 풀스택 개발하기",
             summary="Django 백엔드와 React 프론트엔드를 연결하는 방법",
             key_points=["Django REST Framework", "React Hooks", "JWT 인증"],
+            username="test1",
+            thumbnail="https://velog.io/sample1.jpg",
+            slug="django-react-fullstack",
         ),
         TrendingItem(
             title="파이썬 성능 최적화 기법",
             summary="파이썬 코드를 더 빠르게 실행하는 방법",
             key_points=["프로파일링", "메모리 관리", "C 확장 모듈"],
+            username="test2",
+            thumbnail="https://velog.io/sample2.jpg",
+            slug="python-performance",
         ),
     ]
 
