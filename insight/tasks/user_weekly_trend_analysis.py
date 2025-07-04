@@ -1,3 +1,9 @@
+"""
+[25.07.01] 주간 사용자 분석 배치 (작성자: 이지현)
+- 실행은 아래와 같은 커멘드 활용
+- poetry run python ./insight/tasks/user_weekly_trend_analysis.py
+"""
+
 import asyncio
 import logging
 from datetime import timedelta
@@ -19,6 +25,7 @@ logger = logging.getLogger("scraping")
 
 
 async def run_weekly_user_trend_analysis(user, velog_client, week_start, week_end):
+    """각 사용자에 대한 주간 통계 데이터를 바탕으로 요약 및 분석"""
     user_id = user["id"]
     try:
         # 1. 주간 통계 정보 집계(DB에서 직접 집계)
