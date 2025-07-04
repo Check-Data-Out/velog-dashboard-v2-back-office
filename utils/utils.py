@@ -1,6 +1,6 @@
 import random
 from dataclasses import fields, is_dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Type, TypeVar, get_args, get_origin, no_type_check
 
 from django.utils import timezone
@@ -89,7 +89,7 @@ def from_dict(cls: Type[T], data: dict[str, Any]) -> T:
     return cls(**kwargs)
 
 
-def get_previous_week_range(today: datetime.date = None) -> tuple[datetime, datetime]:
+def get_previous_week_range(today: date = None) -> tuple[datetime, datetime]:
     """주간 트렌드/사용자 분석 배치 날짜 계산"""
     today = today or get_local_now().date()
     days_since_monday = today.weekday()
