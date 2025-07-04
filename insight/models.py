@@ -11,6 +11,12 @@ class TrendingItem(SerializableMixin):
     title: str
     summary: str
     key_points: list[str]
+    username: str
+    thumbnail: str
+    slug: str
+
+    def get_post_url(self) -> str:
+        return f"https://velog.io/@{self.username}/{self.slug}"
 
 
 @dataclass
