@@ -13,21 +13,17 @@
                     <tr>
                         <td style="padding: 30px;">
                             <div class="header" style="text-align: center; margin-bottom: 20px;">
-                                <h1 style="text-decoration: underline; margin-bottom: 0; color: #333333; font-size: 24px;">
+                                <h1 style="text-decoration: underline; margin-bottom: 0; font-size: 32px; color: #333333;">
                                     <span style="color: #63e6be;">Velog Dashboard</span> Weekly
                                 </h1>
-                                <p style="font-size: 12px; color: #666; margin-top: 5px;">
+                                <p style="font-size: 14px; color: #666;">
                                     {{s_date}} ~ {{e_date}} 사이의 트렌드를 전달해드려요.
                                 </p>
                             </div>
 
                             <div class="insights" style="color: #333333; font-size: 14px; line-height: 1.6;">
-                                {% if weekly_trend_html %}
-                                    {{weekly_trend_html}}
-                                {% endif %}
-
                                 {% if is_expired_token_user %}
-                                    <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 6px; margin: 20px 0;">
+                                    <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 6px; margin: 30px 0;">
                                         <p style="font-size: 16px; font-weight: bold; color: #574202; margin: 0 0 10px 0;">
                                             🚨 잠깐, 토큰이 만료 되신 것 같아요!
                                         </p>
@@ -36,10 +32,14 @@
                                             <a href="https://velog-dashboard.kro.kr/" style="color: #63e6be; font-weight: bold;">여기</a>에서 재로그인 해주세요.
                                         </p>
                                     </div>
-                                {% else %}
-                                    {% if user_weekly_trend_html %}
-                                        {{user_weekly_trend_html}}
-                                    {% endif %}
+                                {% endif %}
+
+                                {% if weekly_trend_html %}
+                                    {{weekly_trend_html}}
+                                {% endif %}
+                                
+                                {% if not is_expired_token_user and user_weekly_trend_html %}
+                                    {{user_weekly_trend_html}}
                                 {% endif %}
                             </div>
 
