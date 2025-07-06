@@ -6,7 +6,6 @@
 
 import asyncio
 import logging
-from datetime import timedelta
 
 import aiohttp
 import setup_django  # noqa
@@ -34,7 +33,10 @@ async def run_weekly_user_trend_analysis(user, velog_client, week_start, week_en
         ).order_by("-date")
 
         posts = await sync_to_async(list)(
-            Post.objects.filter(user_id=user_id)
+            Post.objects.filter(
+                user_id=user_id, 
+                released_at__range=(week_start, week_end)
+            )
             .annotate(
                 latest_view_count=Subquery(latest_stats_subquery.values("daily_view_count")[:1]),
                 latest_like_count=Subquery(latest_stats_subquery.values("daily_like_count")[:1]),
@@ -107,8 +109,8 @@ async def run_weekly_user_trend_analysis(user, velog_client, week_start, week_en
 
         # 5. 인사이트 저장 포맷
         insight = {
-            "trending_summary": simple_summary,
-            "trend_analysis": detailed_insight,
+            "trending_summary": detailed_insight,
+            "trend_analysis": {"summary": simple_summary},
         }
 
         return UserWeeklyTrend(
