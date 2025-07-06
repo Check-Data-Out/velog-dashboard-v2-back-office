@@ -484,6 +484,10 @@ class Scraper:
             f"{get_local_now().isoformat()}"
         )
 
+        # [25.06.13] 핫픽스: 쿠키 자동 저장 강제 비활성화
+        connector = aiohttp.TCPConnector(limit=30)
+        cookie_jar = aiohttp.DummyCookieJar()  # 쿠키 저장 비활성화
+
         users = [
             user
             async for user in User.objects.filter(
@@ -491,7 +495,8 @@ class Scraper:
             )
         ]
         async with aiohttp.ClientSession(
-            connector=aiohttp.TCPConnector(limit=30)
+            connector=connector,
+            cookie_jar=cookie_jar,
         ) as session:
             for user in users:
                 await self.process_user(user, session)

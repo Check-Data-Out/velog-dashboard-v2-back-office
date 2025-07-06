@@ -1,0 +1,115 @@
+<div class="user-weekly-trend" style="margin-top: 40px; color: #333333;">
+    {% if insight.trending_summary or user_weekly_stats %}
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+        <h2 style="margin-bottom: 15px; color: #333333; font-size: 24px;">
+            📝
+            {% if user.username %}
+                {{user.username}}님의
+            {% else %}
+                내
+            {% endif %}
+            활동 리포트
+        </h2>
+    {% endif %}
+    
+    {% if user_weekly_stats %}
+        <div style="margin-bottom: 20px; padding: 16px; background-color: #f8f9fa; border-radius: 8px; border: 1px solid #e0e0e0;">
+            이번 주에는 
+            {% if user_weekly_stats.posts > 0 %}
+                <b>{{user_weekly_stats.posts}}개</b>의 글을 작성하셨네요! 👏 <br>
+            {% else %}
+                글을 작성하지 않으셨네요. 다음 주에는 멋진 글을 작성해보는 건 어떨까요? 화이팅! 💪 <br>
+            {% endif %}
+            {% if user_weekly_stats.views > 0 %}
+                <b>{{user_weekly_stats.views}}명</b>이 
+                {% if user.username %}
+                    {{user.username}}님의
+                {% else %}
+                    내
+                {% endif %}
+                포스트를 읽었어요. <br>
+            {% endif %}
+            {% if user_weekly_stats.likes > 0 %}
+                <b>{{user_weekly_stats.likes}}개</b>의 좋아요를 받았어요.
+            {% endif %}
+        </div>
+    {% endif %}
+    
+    {% if insight.trending_summary %}
+        <h3 style="margin: 30px 0 15px 0; color: #333333; font-size: 20px;">
+            이번 주에 쓴 글
+        </h3>
+        {% for item in insight.trending_summary %}
+            <div style="margin: 20px 0; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; background-color: rgb(252, 252, 252); box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <div style="display: flex; gap: 15px; align-items: flex-start; margin-bottom: 12px;">
+                    {% if item.thumbnail %}
+                        <div style="flex-shrink: 0; width: 120px; height: 80px; overflow: hidden; border-radius: 6px; border: 1px solid #e0e0e0;">
+                            <img src="{{item.thumbnail}}" alt="{{item.title}}" style="width: 100%; height: 100%; object-fit: cover;">
+                        </div>
+                    {% endif %}
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="display: flex; align-items: center;">
+                            {% if item.thumbnail %}
+                            <h4 style="margin-left: 8px; font-size: 16px; line-height: 1.4; color: #333333;">
+                            {% else %}
+                            <h4 style="margin: 0; font-size: 16px; line-height: 1.4; color: #333333;">
+                            {% endif %}
+                                <a href="https://velog.io/@{{item.username}}/{{item.slug}}" target="_blank" style="color: #333333; text-decoration: none;">
+                                    {{forloop.counter}}. {{ item.title }}
+                                </a>
+                            </h4>
+                        </div>
+                    </div>
+                </div>
+                <p style="line-height: 1.5; margin: 0 0 10px 0; color: #333333; font-size: 13px;">
+                    {{ item.summary }}
+                </p>
+                <div style="margin-top: 15px;">
+                    {% if item.key_points %}
+                        <p style="line-height: 1.5; margin: 0 0 10px 0; color: #333333; font-size: 14px; font-weight: bold;">
+                            📌 {{ item.key_points|join:", " }}
+                        </p>
+                    {% endif %}
+                </div>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    {% if insight.trend_analysis %}
+        <h3 style="margin: 50px 0 15px 0; color: #333333; font-size: 20px;">
+            내 글을 분석해보면?
+        </h3>
+        {% if insight.trend_analysis.hot_keywords %}
+            <h4 style="color: #333333; margin: 10px 0 8px 0; line-height: 1.5; font-size: 16px;">
+                📌 내 기술 키워드
+            </h4>
+            <p style="margin-left: 15px; color: #333333; font-size: 14px;">
+                {{ insight.trend_analysis.hot_keywords|join:", " }}
+            </p>
+        {% endif %}
+        {% if insight.trend_analysis.title_trends %}
+            <h4 style="color: #333333; margin: 25px 0 8px 0; line-height: 1.5; font-size: 16px;">
+                🤔 제목 분석
+            </h4>
+            <p style="margin-left: 15px; color: #333333; font-size: 14px;">
+                {{ insight.trend_analysis.title_trends }}
+            </p>
+        {% endif %}
+        {% if insight.trend_analysis.content_trends %}
+            <h4 style="color: #333333; margin: 25px 0 8px 0; line-height: 1.5; font-size: 16px;">
+                🧐 콘텐츠 분석
+            </h4>
+            <p style="margin-left: 15px; color: #333333; font-size: 14px;">
+                {{ insight.trend_analysis.content_trends }}
+            </p>
+        {% endif %}
+        {% if insight.trend_analysis.insights %}
+            <h4 style="color: #333333; margin: 25px 0 8px 0; line-height: 1.5; font-size: 16px;">
+                💡 인사이트
+            </h4>
+            <p style="margin-left: 15px; color: #333333; font-size: 14px;">
+                {{ insight.trend_analysis.insights }}
+            </p>
+        {% endif %}
+    {% endif %}
+</div>

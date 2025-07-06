@@ -1,4 +1,6 @@
+import json
 import random
+import re
 from dataclasses import fields, is_dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Type, TypeVar, get_args, get_origin, no_type_check
@@ -20,6 +22,23 @@ def get_local_now() -> datetime:
         timezone=timezone.get_current_timezone(),
     )
     return local_now
+
+
+def parse_json(data: Any, default: dict | None = None) -> dict[Any, Any]:
+    """데이터를 JSON 형식으로 안전하게 파싱"""
+    if default is None:
+        default = {}
+    if isinstance(data, str):
+        try:
+            return json.loads(data)
+        except json.JSONDecodeError:
+            return default
+    return data
+
+
+def strip_html_tags(html: str) -> str:
+    """HTML 태그를 제거한 문자열 반환"""
+    return re.sub(r"<[^>]+>", "", html)
 
 
 def split_range(start: int, end: int, parts: int) -> list[range]:
