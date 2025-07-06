@@ -83,29 +83,35 @@ async def run_weekly_user_trend_analysis(user, velog_client, week_start, week_en
                 logger.warning("[user_id=%s] Failed to fetch Velog post : %s", user_id, err)
                 continue
 
-        # 4. LLM 분석 (게시글 단위로 개별 분석 처리)
+        # 4. LLM 분석
         detailed_insight = []
 
-        for i, post in enumerate(full_contents):
+        max_len = max(len(full_contents), len(post_meta))
+        for i in range(max_len):
+            post = full_contents[i] if i < len(full_contents) else {}
+            meta = post_meta[i] if i < len(post_meta) else {}
+
             try:
                 result = analyze_user_posts([post], settings.OPENAI_API_KEY)
                 result_item = result[0] if result else {}
-
-                meta = post_meta[i] if i < len(post_meta) else {}
-                detailed_insight.append(
-                    {
-                        "summary": result_item.get("summary", ""),
-                        "key_points": result_item.get("key_points", []),
-                        "username": meta.get("username", ""),
-                        "thumbnail": meta.get("thumbnail", ""),
-                        "slug": meta.get("slug", ""),
-                    }
-                )
+                summary = result_item.get("summary", "") or "[요약 실패]"
+                key_points = result_item.get("key_points", [])
             except Exception as err:
                 logger.warning(
                     "[user_id=%s] LLM analysis failed for post index %d: %s", user_id, i, err
                 )
-                continue
+                summary = "[요약 실패]"
+                key_points = []
+
+            detailed_insight.append(
+                {
+                    "summary": summary,
+                    "key_points": key_points,
+                    "username": meta.get("username", ""),
+                    "thumbnail": meta.get("thumbnail", ""),
+                    "slug": meta.get("slug", ""),
+                }
+            )
 
         # 5. 인사이트 저장 포맷
         insight = {
