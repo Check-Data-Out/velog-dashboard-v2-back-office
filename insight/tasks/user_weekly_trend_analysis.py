@@ -12,11 +12,11 @@ import aiohttp
 import setup_django  # noqa
 from asgiref.sync import sync_to_async
 from django.conf import settings
-from django.db.models import Sum
+from django.db.models import OuterRef, Subquery
 from weekly_llm_analyzer import analyze_user_posts
 
 from insight.models import UserWeeklyTrend
-from posts.models import PostDailyStatistics
+from posts.models import Post, PostDailyStatistics
 from scraping.velog.client import VelogClient
 from users.models import User
 from utils.utils import get_previous_week_range
@@ -28,91 +28,87 @@ async def run_weekly_user_trend_analysis(user, velog_client, week_start, week_en
     """각 사용자에 대한 주간 통계 데이터를 바탕으로 요약 및 분석"""
     user_id = user["id"]
     try:
-        # 1. 주간 통계 정보 집계(DB에서 직접 집계)
-        stats = await sync_to_async(list)(
-            PostDailyStatistics.objects.filter(
-                post__user_id=user_id,
-                post__created_at__range=(week_start, week_end),
-            )
-            .values("post__id", "post__title", "post__post_uuid")
+        # 1. 게시글 목록 + 최신 통계 정보 가져오기
+        latest_stats_subquery = PostDailyStatistics.objects.filter(
+            post=OuterRef("pk")
+        ).order_by("-date")
+
+        posts = await sync_to_async(list)(
+            Post.objects.filter(user_id=user_id)
             .annotate(
-                total_views=Sum("daily_view_count"),
-                total_likes=Sum("daily_like_count"),
+                latest_view_count=Subquery(latest_stats_subquery.values("daily_view_count")[:1]),
+                latest_like_count=Subquery(latest_stats_subquery.values("daily_like_count")[:1]),
             )
+            .values("id", "title", "post_uuid", "latest_view_count", "latest_like_count")
         )
 
-        if not stats:
-            logger.info("[user_id=%s] No statistics found. Skipping.", user_id)
+        if not posts:
+            logger.info("[user_id=%s] No posts found. Skipping.", user_id)
             return None
 
         # 2. 단순 요약 문자열 생성
         simple_summary = (
-            f"총 게시글 수: {len(stats)}, "
-            f"총 조회수: {sum(p['total_views'] for p in stats)}, "
-            f"총 좋아요 수: {sum(p['total_likes'] for p in stats)}"
+            f"총 게시글 수: {len(posts)}, "
+            f"총 조회수: {sum(p['latest_view_count'] or 0 for p in posts)}, "
+            f"총 좋아요 수: {sum(p['latest_like_count'] or 0 for p in posts)}"
         )
 
         # 3. Velog 게시글 상세 조회
         full_contents = []
         post_meta = []
 
-        for p in stats:
+        for p in posts:
             try:
-                velog_post = await velog_client.get_post(str(p["post__post_uuid"]))
+                velog_post = await velog_client.get_post(str(p["post_uuid"]))
                 if velog_post and velog_post.body:
                     full_contents.append(
                         {
-                            "제목": p["post__title"],
+                            "제목": p["title"],
                             "내용": velog_post.body,
-                            "조회수": p["total_views"],
-                            "좋아요 수": p["total_likes"],
+                            "조회수": p["latest_view_count"] or 0,
+                            "좋아요 수": p["latest_like_count"] or 0,
                         }
                     )
                     post_meta.append(
                         {
-                            "title": p["post__title"],
-                            "username": (
-                                velog_post.user.username if velog_post.user else ""
-                            ),
+                            "title": p["title"],
+                            "username": velog_post.user.username if velog_post.user else "",
                             "thumbnail": velog_post.thumbnail or "",
                             "slug": velog_post.url_slug or "",
                         }
                     )
             except Exception as err:
+                logger.warning("[user_id=%s] Failed to fetch Velog post : %s", user_id, err)
+                continue
+
+        # 4. LLM 분석 (게시글 단위로 개별 분석 처리)
+        detailed_insight = []
+
+        for i, post in enumerate(full_contents):
+            try:
+                result = analyze_user_posts([post], settings.OPENAI_API_KEY)
+                result_item = result[0] if result else {}
+
+                meta = post_meta[i] if i < len(post_meta) else {}
+                detailed_insight.append(
+                    {
+                        "summary": result_item.get("summary", ""),
+                        "key_points": result_item.get("key_points", []),
+                        "username": meta.get("username", ""),
+                        "thumbnail": meta.get("thumbnail", ""),
+                        "slug": meta.get("slug", ""),
+                    }
+                )
+            except Exception as err:
                 logger.warning(
-                    "[user_id=%s] Failed to fetch Velog post : %s", user_id, err
+                    "[user_id=%s] LLM analysis failed for post index %d: %s", user_id, i, err
                 )
                 continue
 
-        # 4. LLM 분석
-        try:
-            llm_result = (
-                analyze_user_posts(full_contents, settings.OPENAI_API_KEY)
-                if full_contents
-                else []
-            )
-        except Exception as err:
-            logger.exception("[user_id=%s] LLM analysis failed : %s", user_id, err)
-            llm_result = []
-
-        detailed_insight = []
-        for i, item in enumerate(llm_result):
-            meta = post_meta[i]
-            detailed_insight.append(
-                {
-                    "title": meta["title"],
-                    "summary": item.get("summary", ""),
-                    "key_points": item.get("key_points", []),
-                    "username": meta["username"],
-                    "thumbnail": meta["thumbnail"],
-                    "slug": meta["slug"],
-                }
-            )
-
         # 5. 인사이트 저장 포맷
         insight = {
-            "summary": simple_summary,
-            "llm_analysis": detailed_insight,
+            "trending_summary": simple_summary,
+            "trend_analysis": detailed_insight,
         }
 
         return UserWeeklyTrend(
@@ -156,9 +152,7 @@ async def run_all_users():
                     )
                 )
             except Exception as e:
-                logger.warning(
-                    "[user_id=%s] Failed to prepare Velog client : %s", user["id"], e
-                )
+                logger.warning("[user_id=%s] Failed to prepare Velog client : %s", user["id"], e)
 
         # 4. 비동기 병렬 처리
         trends = await asyncio.gather(*tasks, return_exceptions=True)
