@@ -158,7 +158,15 @@ async def run_all_users():
 
         # 4. 비동기 병렬 처리
         trends = await asyncio.gather(*tasks, return_exceptions=True)
-        results = [t for t in trends if isinstance(t, UserWeeklyTrend)]
+        results = []
+
+        for i, trend in enumerate(trends):
+            if isinstance(trend, UserWeeklyTrend):
+                results.append(trend)
+            elif isinstance(trend, Exception):
+                logger.warning("Task %d failed with exception: %s", i, trend)
+            else:
+                logger.warning("Task %d returned None (no posts or other issue)", i)
 
     # 5. DB 저장
     for trend in results:
