@@ -13,8 +13,8 @@ import warnings
 from datetime import timedelta
 from time import sleep
 
-import environ
 import setup_django  # noqa
+from django.conf import settings
 from django.db.models import Count, Sum
 from django.template.loader import render_to_string
 from django.utils import timezone
@@ -59,7 +59,6 @@ class WeeklyNewsletterBatch:
             chunk_size: 한 번에 처리할 사용자 수
             max_retry_count: 메일 발송 실패 시 최대 재시도 횟수
         """
-        self.env = environ.Env()
         self.ses_client = ses_client
         self.chunk_size = chunk_size
         self.max_retry_count = max_retry_count
@@ -348,7 +347,7 @@ class WeeklyNewsletterBatch:
                         user_id=user["id"],
                         email_message=EmailMessage(  # SES 발송 객체
                             to=[user["email"]],
-                            from_email=self.env("DEFAULT_FROM_EMAIL"),
+                            from_email=settings.DEFAULT_FROM_EMAIL,
                             subject=f"벨로그 대시보드 주간 뉴스레터 #{self.weekly_info['newsletter_id']}",
                             text_body=text_body,
                             html_body=html_body,
@@ -503,8 +502,8 @@ class WeeklyNewsletterBatch:
             # ========================================================== #
             weekly_trend_html = self._get_weekly_trend_html()
 
-            # DEBUG 모드에선 뉴스레터 발송 건너뜀
-            if self.env.bool("DEBUG", False):
+            # 로컬 환경에선 뉴스레터 발송 건너뜀
+            if settings.DEBUG:
                 logger.info("DEBUG mode: Skipping newsletter sending")
                 return
 
@@ -573,11 +572,10 @@ class WeeklyNewsletterBatch:
 if __name__ == "__main__":
     # SES 클라이언트 초기화
     try:
-        env = environ.Env()
         aws_credentials = AWSSESCredentials(
-            aws_access_key_id=env("AWS_ACCESS_KEY_ID"),
-            aws_secret_access_key=env("AWS_SECRET_ACCESS_KEY"),
-            aws_region_name=env("AWS_REGION"),
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            aws_region_name=settings.AWS_REGION,
         )
 
         ses_client = SESClient.get_client(aws_credentials)
