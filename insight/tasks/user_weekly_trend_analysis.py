@@ -6,6 +6,8 @@
 
 import asyncio
 import logging
+from datetime import datetime
+from typing import Any
 
 import aiohttp
 import setup_django  # noqa
@@ -23,9 +25,20 @@ from utils.utils import get_previous_week_range
 logger = logging.getLogger("scraping")
 
 
-async def run_weekly_user_trend_analysis(user, velog_client, week_start, week_end):
+async def run_weekly_user_trend_analysis(
+    user: dict[str, Any],
+    velog_client: VelogClient,
+    week_start: datetime,
+    week_end: datetime,
+):
     """각 사용자에 대한 주간 통계 데이터를 바탕으로 요약 및 분석"""
     user_id = user["id"]
+
+    # # week_start 값을 2025년 1월 1일 KST로 고정
+    # kst = timezone(timedelta(hours=9))
+    # week_start = datetime(2025, 1, 1, 0, 0, 0, tzinfo=kst)
+    # print(f"[user_id={user_id}] Starting weekly trend analysis... ({week_start} ~ {week_end})")
+
     try:
         # 1. 게시글 목록 + 최신 통계 정보 가져오기
         latest_stats_subquery = PostDailyStatistics.objects.filter(
@@ -34,14 +47,23 @@ async def run_weekly_user_trend_analysis(user, velog_client, week_start, week_en
 
         posts = await sync_to_async(list)(
             Post.objects.filter(
-                user_id=user_id, 
-                released_at__range=(week_start, week_end)
+                user_id=user_id, released_at__range=(week_start, week_end)
             )
             .annotate(
-                latest_view_count=Subquery(latest_stats_subquery.values("daily_view_count")[:1]),
-                latest_like_count=Subquery(latest_stats_subquery.values("daily_like_count")[:1]),
+                latest_view_count=Subquery(
+                    latest_stats_subquery.values("daily_view_count")[:1]
+                ),
+                latest_like_count=Subquery(
+                    latest_stats_subquery.values("daily_like_count")[:1]
+                ),
             )
-            .values("id", "title", "post_uuid", "latest_view_count", "latest_like_count")
+            .values(
+                "id",
+                "title",
+                "post_uuid",
+                "latest_view_count",
+                "latest_like_count",
+            )
         )
 
         if not posts:
@@ -74,13 +96,21 @@ async def run_weekly_user_trend_analysis(user, velog_client, week_start, week_en
                     post_meta.append(
                         {
                             "title": p["title"],
-                            "username": velog_post.user.username if velog_post.user else "",
+                            "username": (
+                                velog_post.user.username
+                                if velog_post.user
+                                else ""
+                            ),
                             "thumbnail": velog_post.thumbnail or "",
                             "slug": velog_post.url_slug or "",
                         }
                     )
             except Exception as err:
-                logger.warning("[user_id=%s] Failed to fetch Velog post : %s", user_id, err)
+                logger.warning(
+                    "[user_id=%s] Failed to fetch Velog post : %s",
+                    user_id,
+                    err,
+                )
                 continue
 
         # 4. LLM 분석
@@ -98,7 +128,10 @@ async def run_weekly_user_trend_analysis(user, velog_client, week_start, week_en
                 key_points = result_item.get("key_points", [])
             except Exception as err:
                 logger.warning(
-                    "[user_id=%s] LLM analysis failed for post index %d: %s", user_id, i, err
+                    "[user_id=%s] LLM analysis failed for post index %d: %s",
+                    user_id,
+                    i,
+                    err,
                 )
                 summary = "[요약 실패]"
                 key_points = []
@@ -137,7 +170,16 @@ async def run_all_users():
 
     # 1. 사용자 목록 조회
     users = await sync_to_async(list)(
-        User.objects.filter(email__isnull=False)
+        User.objects.filter(
+            email__isnull=False,
+            id__in=[
+                244,
+                167,
+                77,
+                8,
+                1,
+            ],
+        )
         .exclude(email="")
         .values("id", "username", "access_token", "refresh_token")
     )
@@ -160,11 +202,15 @@ async def run_all_users():
                     )
                 )
             except Exception as e:
-                logger.warning("[user_id=%s] Failed to prepare Velog client : %s", user["id"], e)
+                logger.warning(
+                    "[user_id=%s] Failed to prepare Velog client : %s",
+                    user["id"],
+                    e,
+                )
 
         # 4. 비동기 병렬 처리
         trends = await asyncio.gather(*tasks, return_exceptions=True)
-        results = []
+        results: list[UserWeeklyTrend] = []
 
         for i, trend in enumerate(trends):
             if isinstance(trend, UserWeeklyTrend):
@@ -172,7 +218,9 @@ async def run_all_users():
             elif isinstance(trend, Exception):
                 logger.warning("Task %d failed with exception: %s", i, trend)
             else:
-                logger.warning("Task %d returned None (no posts or other issue)", i)
+                logger.warning(
+                    "Task %d returned None (no posts or other issue)", i
+                )
 
     # 5. DB 저장
     for trend in results:
@@ -184,7 +232,9 @@ async def run_all_users():
                 defaults={"insight": trend.insight},
             )
         except Exception as e:
-            logger.exception("[user_id=%s] Failed to save trend : %s", trend.user_id, e)
+            logger.exception(
+                "[user_id=%s] Failed to save trend : %s", trend.user_id, e
+            )
 
 
 if __name__ == "__main__":

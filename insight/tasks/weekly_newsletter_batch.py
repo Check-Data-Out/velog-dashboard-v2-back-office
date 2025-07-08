@@ -5,7 +5,7 @@
 - Django 및 AWS SES 의존성 있는 배치입니다.
 - ./templates/insights/ 경로의 HTML 템플릿을 사용합니다.
 - 아래 커맨드로 실행합니다.
-  python ./insight/tasks/weekly_newsletter_batch.py
+- poetry run python ./insight/tasks/weekly_newsletter_batch.py
 """
 
 import logging
@@ -503,10 +503,10 @@ class WeeklyNewsletterBatch:
             # ========================================================== #
             weekly_trend_html = self._get_weekly_trend_html()
 
-            # DEBUG 모드에선 뉴스레터 발송 건너뜀
-            if self.env.bool("DEBUG", False):
-                logger.info("DEBUG mode: Skipping newsletter sending")
-                return
+            # # DEBUG 모드에선 뉴스레터 발송 건너뜀
+            # if self.env.bool("DEBUG", False):
+            #     logger.info("DEBUG mode: Skipping newsletter sending")
+            #     return
 
             # ========================================================== #
             # STEP4: 청크별로 뉴스레터 발송 및 결과 저장
