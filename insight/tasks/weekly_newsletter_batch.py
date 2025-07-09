@@ -29,7 +29,7 @@ from insight.schemas import (
 from modules.mail.schemas import AWSSESCredentials, EmailMessage
 from modules.mail.ses.client import SESClient
 from noti.models import NotiMailLog
-from posts.models import PostDailyStatistics
+from posts.models import Post, PostDailyStatistics
 from users.models import User
 from utils.utils import (
     get_local_now,
@@ -271,27 +271,66 @@ class WeeklyNewsletterBatch:
             logger.error(f"Failed to get user weekly trends: {e}")
             return {}
 
+    def _get_users_reminder_chunk(
+        self, user_ids: list[int]
+    ) -> dict[int, dict]:
+        """여러 유저의 가장 최근 글 일괄 조회 후 리마인더로 매핑"""
+        try:
+            reminders = (
+                Post.objects.filter(
+                    user_id__in=user_ids,
+                    is_active=True,
+                )
+                .values("user_id", "title", "released_at")
+                .order_by("user_id", "-released_at")
+                .distinct("user_id")
+            )
+
+            users_reminder_dict = {
+                reminder["user_id"]: {
+                    "title": reminder["title"],
+                    "days_ago": (
+                        get_local_now() - reminder["released_at"]
+                    ).days,
+                }
+                for reminder in reminders
+            }
+
+            logger.info(
+                f"Found {len(users_reminder_dict)} user reminders out of {len(user_ids)}"
+            )
+            return users_reminder_dict
+
+        except Exception as e:
+            # 리마인드 조회 실패 시에도 계속 진행
+            logger.error(f"Failed to get users reminder: {e}")
+            return {}
+
     def _get_personalized_newsletter_html(
         self,
         user: dict,
         weekly_trend_html: str,
         user_weekly_trend: UserWeeklyTrend | None,
-        user_weekly_stats: dict,
+        user_weekly_stats: dict[str, int] | None,
+        reminder: dict[str, str] | None,
         is_expired: bool,
     ) -> str:
         """개별 사용자의 뉴스레터 HTML 렌더링"""
         try:
             user_weekly_trend_html = None
 
-            # 개인 인사이트 데이터 있으면 렌더링
-            if user_weekly_trend:
+            # 토큰 정상 유저만 개인 렌더링
+            if not is_expired:
                 user_weekly_trend_html = render_to_string(
                     "insights/user_weekly_trend.html",
                     to_dict(
                         UserWeeklyTrendContext(
-                            insight=parse_json(user_weekly_trend.insight),
                             user=user,
                             user_weekly_stats=user_weekly_stats,
+                            insight=parse_json(user_weekly_trend.insight)
+                            if user_weekly_trend
+                            else None,
+                            reminder=reminder,
                         )
                     ),
                 )
@@ -333,6 +372,14 @@ class WeeklyNewsletterBatch:
                 self._get_users_weekly_stats_chunk(user_ids)
             )
 
+            # 글 미작성 유저의 리마인드 일괄 조회
+            remind_target_user_ids = set(user_ids) - set(
+                users_weekly_trends_chunk.keys()
+            )
+            users_reminder_chunk = self._get_users_reminder_chunk(
+                remind_target_user_ids
+            )
+
             for user in user_chunk:
                 try:
                     # user_id 키의 딕셔너리에서 개인 데이터 조회
@@ -343,6 +390,7 @@ class WeeklyNewsletterBatch:
                         user["id"]
                     )
                     is_expired = user["id"] in expired_token_user_ids
+                    reminder = users_reminder_chunk.get(user["id"])
 
                     # 뉴스레터 템플릿 렌더링
                     html_body = self._get_personalized_newsletter_html(
@@ -350,6 +398,7 @@ class WeeklyNewsletterBatch:
                         weekly_trend_html=weekly_trend_html,
                         user_weekly_trend=user_weekly_trend,
                         user_weekly_stats=user_weekly_stats,
+                        reminder=reminder,
                         is_expired=is_expired,
                     )
                     text_body = strip_html_tags(html_body)

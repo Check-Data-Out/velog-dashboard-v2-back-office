@@ -10,7 +10,7 @@ class NewsletterContext:
     s_date: str
     e_date: str
     is_expired_token_user: bool
-    weekly_trend_html: str | None = None
+    weekly_trend_html: str
     user_weekly_trend_html: str | None = None
 
 
@@ -24,8 +24,11 @@ class WeeklyTrendContext:
 @dataclass
 class UserWeeklyTrendContext:
     user: dict[str, str]  # username
-    user_weekly_stats: dict[str, int]  # posts, views, likes
-    insight: WeeklyTrendInsight
+    user_weekly_stats: dict[str, int] | None  # posts, views, likes
+    reminder: (
+        dict[str, str] | None
+    )  # title, days_ago (주간 글 미작성 유저 리마인드)
+    insight: WeeklyTrendInsight | None
 
 
 @dataclass
