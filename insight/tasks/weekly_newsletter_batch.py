@@ -40,7 +40,7 @@ from utils.utils import (
 
 logger = logging.getLogger("newsletter")
 
-# naive datetime 경고 무시 (for _get_expired_token_user_ids)
+# naive datetime 경고 무시 (for _get_users_weekly_stats_chunk)
 warnings.filterwarnings("ignore", message=".*received a naive datetime.*")
 
 
@@ -164,13 +164,14 @@ class WeeklyNewsletterBatch:
 
     def _get_users_weekly_stats_chunk(
         self, user_ids: list[int]
-    ) -> dict[int, dict]:
-        """여러 유저의 주간 통계를 일괄 조회후 매핑"""
+    ) -> tuple[dict[str, dict], set[int]]:
+        """유저별 전체 글 주간 통계를 청크 단위로 일괄 조회후 매핑"""
         try:
-            users_weekly_stats = (
+            # 오늘자 통계 조회
+            today_stats = (
                 PostDailyStatistics.objects.filter(
                     post__user_id__in=user_ids,
-                    date__gte=self.before_a_week,
+                    date=get_local_now().date(),
                 )
                 .values("post__user_id")
                 .annotate(
@@ -180,25 +181,64 @@ class WeeklyNewsletterBatch:
                 )
             )
 
-            # user_id를 키로 하는 딕셔너리로 변환 (매핑)
-            users_weekly_stats_dict = {
-                s["post__user_id"]: {
-                    "posts": s["posts"] or 0,
-                    "views": s["views"] or 0,
-                    "likes": s["likes"] or 0,
+            # 오늘자 통계 없는 유저는 토큰 만료로 간주
+            expired_user_ids = set(user_ids) - set(
+                today_stats.values_list("post__user_id", flat=True)
+            )
+
+            if expired_user_ids:
+                logger.info(
+                    f"Found {len(expired_user_ids)} users with expired tokens"
+                    f"Expired user ids: {expired_user_ids}"
+                )
+
+            # 토큰 정상 사용자들의 일주일 전 통계 조회
+            before_a_week_stats = (
+                PostDailyStatistics.objects.filter(
+                    post__user_id__in=set(user_ids) - expired_user_ids,
+                    date=self.before_a_week.date(),
+                )
+                .values("post__user_id")
+                .annotate(
+                    posts=Count("post", distinct=True),
+                    views=Sum("daily_view_count"),
+                    likes=Sum("daily_like_count"),
+                )
+            )
+
+            # 계산 편의성 및 가독성을 위해 딕셔너리로 변경
+            before_stats_dict = {
+                stat["post__user_id"]: {
+                    "posts": stat["posts"] or 0,
+                    "views": stat["views"] or 0,
+                    "likes": stat["likes"] or 0,
                 }
-                for s in users_weekly_stats
+                for stat in before_a_week_stats
             }
+
+            # 일주일간의 변동값 계산 (오늘 통계 - 일주일 전 통계)
+            users_weekly_stats_dict = {}
+            for stat in today_stats:
+                user_id = stat["post__user_id"]
+                before_stat = before_stats_dict.get(
+                    user_id, {"posts": 0, "views": 0, "likes": 0}
+                )
+                users_weekly_stats_dict[user_id] = {
+                    "posts": stat["posts"] - before_stat["posts"],
+                    "views": stat["views"] - before_stat["views"],
+                    "likes": stat["likes"] - before_stat["likes"],
+                }
 
             logger.info(
                 f"Fetched weekly stats for {len(users_weekly_stats_dict)} users out of {len(user_ids)}"
             )
-            return users_weekly_stats_dict
+
+            return users_weekly_stats_dict, expired_user_ids
 
         except Exception as e:
             # 개인 통계 조회 실패 시에도 계속 진행
             logger.error(f"Failed to get users weekly stats: {e}")
-            return {}
+            return {}, set()
 
     def _get_users_weekly_trend_chunk(
         self, user_ids: list[int]
@@ -230,33 +270,6 @@ class WeeklyNewsletterBatch:
             # 개인 트렌딩 조회 실패 시에도 계속 진행
             logger.error(f"Failed to get user weekly trends: {e}")
             return {}
-
-    def _get_expired_token_user_ids(self, user_ids: list[int]) -> set[int]:
-        """user_ids에 대한 토큰 만료 유저 목록 조회"""
-        try:
-            # 오늘 날짜에 통계 데이터가 없는 사용자를 만료된 토큰 사용자로 간주
-            active_user_ids = (
-                PostDailyStatistics.objects.filter(
-                    post__user_id__in=user_ids, date=get_local_now().date()
-                )
-                .values_list("post__user_id", flat=True)
-                .distinct()
-            )
-
-            expired_user_ids = set(user_ids) - set(active_user_ids)
-
-            if expired_user_ids:
-                logger.info(
-                    f"Found {len(expired_user_ids)} users with expired tokens"
-                    f"Expired user ids: {expired_user_ids}"
-                )
-
-            return expired_user_ids
-
-        except Exception as e:
-            # 토큰 만료 유저 조회 실패 시에도 계속 진행
-            logger.error(f"Failed to get expired token users: {e}")
-            return set()
 
     def _get_personalized_newsletter_html(
         self,
@@ -316,10 +329,9 @@ class WeeklyNewsletterBatch:
             users_weekly_trends_chunk = self._get_users_weekly_trend_chunk(
                 user_ids
             )
-            users_weekly_stats_chunk = self._get_users_weekly_stats_chunk(
-                user_ids
+            users_weekly_stats_chunk, expired_token_user_ids = (
+                self._get_users_weekly_stats_chunk(user_ids)
             )
-            expired_token_user_ids = self._get_expired_token_user_ids(user_ids)
 
             for user in user_chunk:
                 try:
@@ -328,7 +340,7 @@ class WeeklyNewsletterBatch:
                         user["id"]
                     )
                     user_weekly_stats = users_weekly_stats_chunk.get(
-                        user["id"], {"posts": 0, "views": 0, "likes": 0}
+                        user["id"]
                     )
                     is_expired = user["id"] in expired_token_user_ids
 
