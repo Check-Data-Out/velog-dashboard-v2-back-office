@@ -25,9 +25,8 @@ class WeeklyTrendContext:
 class UserWeeklyTrendContext:
     user: dict[str, str]  # username
     user_weekly_stats: dict[str, int] | None  # posts, views, likes
-    reminder: (
-        dict[str, str] | None
-    )  # title, days_ago (주간 글 미작성 유저 리마인드)
+    # 주간 글 미작성 유저 리마인드 (title, days_ago)
+    reminder: dict[str, str] | None
     insight: WeeklyTrendInsight | None
 
 

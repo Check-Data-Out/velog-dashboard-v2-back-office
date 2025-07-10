@@ -286,12 +286,11 @@ class WeeklyNewsletterBatch:
                 .distinct("user_id")
             )
 
+            now = get_local_now()
             users_reminder_dict = {
                 reminder["user_id"]: {
                     "title": reminder["title"],
-                    "days_ago": (
-                        get_local_now() - reminder["released_at"]
-                    ).days,
+                    "days_ago": (now - reminder["released_at"]).days,
                 }
                 for reminder in reminders
             }
@@ -306,43 +305,51 @@ class WeeklyNewsletterBatch:
             logger.error(f"Failed to get users reminder: {e}")
             return {}
 
-    def _get_personalized_newsletter_html(
+    def _get_user_weekly_trend_html(
         self,
         user: dict,
-        weekly_trend_html: str,
         user_weekly_trend: UserWeeklyTrend | None,
         user_weekly_stats: dict[str, int] | None,
         reminder: dict[str, str] | None,
-        is_expired: bool,
     ) -> str:
-        """개별 사용자의 뉴스레터 HTML 렌더링"""
+        """유저 개인 트렌드 렌더링, 토큰 정상 유저만 수행"""
         try:
-            user_weekly_trend_html = None
+            user_weekly_trend_html = render_to_string(
+                "insights/user_weekly_trend.html",
+                to_dict(
+                    UserWeeklyTrendContext(
+                        user=user,
+                        user_weekly_stats=user_weekly_stats,
+                        insight=parse_json(user_weekly_trend.insight)
+                        if user_weekly_trend
+                        else None,
+                        reminder=reminder,
+                    )
+                ),
+            )
 
-            # 토큰 정상 유저만 개인 렌더링
-            if not is_expired:
-                user_weekly_trend_html = render_to_string(
-                    "insights/user_weekly_trend.html",
-                    to_dict(
-                        UserWeeklyTrendContext(
-                            user=user,
-                            user_weekly_stats=user_weekly_stats,
-                            insight=parse_json(user_weekly_trend.insight)
-                            if user_weekly_trend
-                            else None,
-                            reminder=reminder,
-                        )
-                    ),
-                )
+            return user_weekly_trend_html
+        except Exception as e:
+            logger.error(
+                f"Failed to render newsletter for user {user.get('id')}: {e}"
+            )
+            raise e from e
 
-            # 뉴스레터 최종 렌더링
+    def _get_newsletter_html(
+        self,
+        is_expired_token_user: bool,
+        weekly_trend_html: str,
+        user_weekly_trend_html: str | None,
+    ) -> str:
+        """최종 뉴스레터 렌더링"""
+        try:
             newsletter_html = render_to_string(
                 "insights/index.html",
                 to_dict(
                     NewsletterContext(
                         s_date=self.weekly_info["s_date"],
                         e_date=self.weekly_info["e_date"],
-                        is_expired_token_user=is_expired,
+                        is_expired_token_user=is_expired_token_user,
                         weekly_trend_html=weekly_trend_html,
                         user_weekly_trend_html=user_weekly_trend_html,
                     )
@@ -351,9 +358,7 @@ class WeeklyNewsletterBatch:
 
             return newsletter_html
         except Exception as e:
-            logger.error(
-                f"Failed to render newsletter for user {user.get('id')}: {e}"
-            )
+            logger.error(f"Failed to render newsletter html: {e}")
             raise e from e
 
     def _build_newsletters(
@@ -389,17 +394,28 @@ class WeeklyNewsletterBatch:
                     user_weekly_stats = users_weekly_stats_chunk.get(
                         user["id"]
                     )
-                    is_expired = user["id"] in expired_token_user_ids
+                    is_expired_token_user = (
+                        user["id"] in expired_token_user_ids
+                    )
                     reminder = users_reminder_chunk.get(user["id"])
 
-                    # 뉴스레터 템플릿 렌더링
-                    html_body = self._get_personalized_newsletter_html(
-                        user=user,
+                    # 토큰 정상 사용자만 개인 트렌드 렌더링
+                    user_weekly_trend_html = None
+                    if not is_expired_token_user:
+                        user_weekly_trend_html = (
+                            self._get_user_weekly_trend_html(
+                                user=user,
+                                user_weekly_trend=user_weekly_trend,
+                                user_weekly_stats=user_weekly_stats,
+                                reminder=reminder,
+                            )
+                        )
+
+                    # 최종 뉴스레터 렌더링
+                    html_body = self._get_newsletter_html(
+                        is_expired_token_user=is_expired_token_user,
                         weekly_trend_html=weekly_trend_html,
-                        user_weekly_trend=user_weekly_trend,
-                        user_weekly_stats=user_weekly_stats,
-                        reminder=reminder,
-                        is_expired=is_expired,
+                        user_weekly_trend_html=user_weekly_trend_html,
                     )
                     text_body = strip_html_tags(html_body)
 
