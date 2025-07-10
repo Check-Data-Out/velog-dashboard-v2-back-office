@@ -91,17 +91,25 @@ async def run_weekly_user_trend_analysis(user, velog_client, week_start, week_en
             post = full_contents[i] if i < len(full_contents) else {}
             meta = post_meta[i] if i < len(post_meta) else {}
 
+            summary = "[요약 실패]"
+            key_points = []
+
             try:
                 result = analyze_user_posts([post], settings.OPENAI_API_KEY)
-                result_item = result[0] if result else {}
-                summary = result_item.get("summary", "") or "[요약 실패]"
-                key_points = result_item.get("key_points", [])
+                logger.info("run_weekly_user_trend_analysis LLM result:\n%s", result)
+
+                trending_summary = result.get("trending_summary", [])
+                if trending_summary and isinstance(trending_summary, list):
+                    first_summary = trending_summary[0]
+                    summary = first_summary.get("summary", "[요약 실패]")
+                    key_points = first_summary.get("key_points", [])
+                else:
+                    summary = "[요약 실패]"
+                    key_points = []
             except Exception as err:
                 logger.warning(
                     "[user_id=%s] LLM analysis failed for post index %d: %s", user_id, i, err
                 )
-                summary = "[요약 실패]"
-                key_points = []
 
             detailed_insight.append(
                 {
