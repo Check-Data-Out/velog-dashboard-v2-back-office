@@ -24,6 +24,8 @@ def analyze_trending_posts(posts: list, api_key: str) -> dict[Any, Any]:
             response_format={"type": "json_object"},
         )
 
+        logger.info("LLM raw result:\n%s", result)
+
         if isinstance(result, str):
             result = json.loads(result)
 
@@ -46,6 +48,8 @@ def analyze_user_posts(posts: list, api_key: str) -> dict[Any, Any]:
             temperature=0.1,
             response_format={"type": "json_object"},
         )
+
+        logger.info("LLM raw result:\n%s", result)
 
         if isinstance(result, str):
             result = json.loads(result)
