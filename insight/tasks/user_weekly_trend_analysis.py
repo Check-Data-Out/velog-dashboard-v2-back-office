@@ -11,7 +11,8 @@ import aiohttp
 import setup_django  # noqa
 from asgiref.sync import sync_to_async
 from django.conf import settings
-from django.db.models import OuterRef, Subquery
+from datetime import timedelta
+from collections import defaultdict
 from weekly_llm_analyzer import analyze_user_posts
 
 from insight.models import UserWeeklyTrend
@@ -28,21 +29,40 @@ async def run_weekly_user_trend_analysis(user, velog_client, week_start, week_en
     user_id = user["id"]
     try:
         # 1. 게시글 목록 + 최신 통계 정보 가져오기
-        latest_stats_subquery = PostDailyStatistics.objects.filter(
-            post=OuterRef("pk")
-        ).order_by("-date")
-
         posts = await sync_to_async(list)(
             Post.objects.filter(
-                user_id=user_id, 
-                released_at__range=(week_start, week_end)
-            )
-            .annotate(
-                latest_view_count=Subquery(latest_stats_subquery.values("daily_view_count")[:1]),
-                latest_like_count=Subquery(latest_stats_subquery.values("daily_like_count")[:1]),
-            )
-            .values("id", "title", "post_uuid", "latest_view_count", "latest_like_count")
+                user_id=user_id, released_at__range=(week_start, week_end)
+            ).values("id", "title", "post_uuid")
         )
+
+        if not posts:
+            logger.info("[user_id=%s] No posts found. Skipping.", user_id)
+            return None
+
+        post_ids = [p["id"] for p in posts]
+        prev_day = week_start - timedelta(days=1)
+
+        stats_qs = await sync_to_async(list)(
+            PostDailyStatistics.objects.filter(
+                post_id__in=post_ids, date__in=[prev_day, week_end]
+            ).values("post_id", "date", "daily_view_count", "daily_like_count")
+        )
+
+        stats_by_post = defaultdict(dict)
+        for stat in stats_qs:
+            stats_by_post[stat["post_id"]][stat["date"]] = {
+                "view": stat["daily_view_count"],
+                "like": stat["daily_like_count"],
+            }
+
+        for p in posts:
+            pid = p["id"]
+            stat_map = stats_by_post.get(pid, {})
+            today = stat_map.get(week_end, {})
+            before = stat_map.get(prev_day, {})
+
+            p["view_diff"] = (today.get("view") or 0) - (before.get("view") or 0)
+            p["like_diff"] = (today.get("like") or 0) - (before.get("like") or 0)
 
         if not posts:
             logger.info("[user_id=%s] No posts found. Skipping.", user_id)
@@ -51,8 +71,8 @@ async def run_weekly_user_trend_analysis(user, velog_client, week_start, week_en
         # 2. 단순 요약 문자열 생성
         simple_summary = (
             f"총 게시글 수: {len(posts)}, "
-            f"총 조회수: {sum(p['latest_view_count'] or 0 for p in posts)}, "
-            f"총 좋아요 수: {sum(p['latest_like_count'] or 0 for p in posts)}"
+            f"총 조회수: {sum(p['view_diff'] for p in posts)}, "
+            f"총 좋아요 수: {sum(p['like_diff'] for p in posts)}"
         )
 
         # 3. Velog 게시글 상세 조회
@@ -67,8 +87,8 @@ async def run_weekly_user_trend_analysis(user, velog_client, week_start, week_en
                         {
                             "제목": p["title"],
                             "내용": velog_post.body,
-                            "조회수": p["latest_view_count"] or 0,
-                            "좋아요 수": p["latest_like_count"] or 0,
+                            "조회수": p["view_diff"],
+                            "좋아요 수": p["like_diff"],
                         }
                     )
                     post_meta.append(
