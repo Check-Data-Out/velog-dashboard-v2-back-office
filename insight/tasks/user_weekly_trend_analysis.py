@@ -66,10 +66,6 @@ async def run_weekly_user_trend_analysis(
             p["view_diff"] = (today.get("view") or 0) - (before.get("view") or 0)
             p["like_diff"] = (today.get("like") or 0) - (before.get("like") or 0)
 
-        if not posts:
-            logger.info("[user_id=%s] No posts found. Skipping.", user_id)
-            return None
-
         # 2. 단순 요약 문자열 생성
         simple_summary = (
             f"총 게시글 수: {len(posts)}, "
