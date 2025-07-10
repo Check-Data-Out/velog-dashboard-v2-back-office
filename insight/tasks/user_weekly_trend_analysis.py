@@ -6,13 +6,13 @@
 
 import asyncio
 import logging
+from collections import defaultdict
+from datetime import timedelta
 
 import aiohttp
 import setup_django  # noqa
 from asgiref.sync import sync_to_async
 from django.conf import settings
-from datetime import timedelta
-from collections import defaultdict
 from weekly_llm_analyzer import analyze_user_posts
 
 from insight.models import UserWeeklyTrend
@@ -24,7 +24,9 @@ from utils.utils import get_previous_week_range
 logger = logging.getLogger("scraping")
 
 
-async def run_weekly_user_trend_analysis(user, velog_client, week_start, week_end):
+async def run_weekly_user_trend_analysis(
+    user, velog_client, week_start, week_end
+):
     """각 사용자에 대한 주간 통계 데이터를 바탕으로 요약 및 분석"""
     user_id = user["id"]
     try:
@@ -123,13 +125,8 @@ async def run_weekly_user_trend_analysis(user, velog_client, week_start, week_en
                     first_summary = trending_summary[0]
                     summary = first_summary.get("summary", "[요약 실패]")
                     key_points = first_summary.get("key_points", [])
-                else:
-                    summary = "[요약 실패]"
-                    key_points = []
             except Exception as err:
-                logger.warning(
-                    "[user_id=%s] LLM analysis failed for post index %d: %s", user_id, i, err
-                )
+                logger.warning("[user_id=%s] LLM analysis failed for post index %d: %s", user_id, i, err)
 
             detailed_insight.append(
                 {
