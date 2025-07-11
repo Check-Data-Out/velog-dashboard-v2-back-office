@@ -166,14 +166,17 @@ class WeeklyNewsletterBatch:
     ) -> tuple[dict[str, dict], list[int]]:
         """유저별 전체 글 주간 통계를 청크 단위로 일괄 조회후 매핑"""
         try:
-            # 오늘자 통계 조회
-            today_stats = (
+            # 오늘과 일주일 전 통계를 함께 조회
+            stats = (
                 Post.objects.filter(
                     user_id__in=user_ids,
-                    daily_statistics__date=self.today,
+                    daily_statistics__date__in=[
+                        self.today,
+                        self.before_a_week,
+                    ],
                     is_active=True,
                 )
-                .values("user_id")
+                .values("user_id", "daily_statistics__date")
                 .annotate(
                     posts=Count("id", distinct=True),
                     views=Sum("daily_statistics__daily_view_count"),
@@ -181,8 +184,20 @@ class WeeklyNewsletterBatch:
                 )
             )
 
+            # daily_statistics__date 기준으로 매핑
+            today_stats = {
+                s["user_id"]: s
+                for s in stats
+                if s["daily_statistics__date"] == self.today
+            }
+            before_a_week_stats = {
+                s["user_id"]: s
+                for s in stats
+                if s["daily_statistics__date"] == self.before_a_week
+            }
+
             # 오늘자 통계 없는 유저는 토큰 만료로 간주
-            active_user_ids = [stat["user_id"] for stat in today_stats]
+            active_user_ids = list(today_stats.keys())
             expired_user_ids = [
                 uid for uid in user_ids if uid not in active_user_ids
             ]
@@ -193,35 +208,19 @@ class WeeklyNewsletterBatch:
                     f"Expired user ids: {expired_user_ids}"
                 )
 
-            # 토큰 정상 사용자들의 일주일 전 통계 조회
-            before_a_week_stats = (
-                Post.objects.filter(
-                    user_id__in=active_user_ids,
-                    daily_statistics__date=self.before_a_week,
-                    is_active=True,
-                )
-                .values("user_id")
-                .annotate(
-                    posts=Count("id", distinct=True),
-                    views=Sum("daily_statistics__daily_view_count"),
-                    likes=Sum("daily_statistics__daily_like_count"),
-                )
-            )
-
             # 계산 편의성 및 가독성을 위해 딕셔너리로 변경
             before_stats_dict = {
-                stat["user_id"]: {
+                user_id: {
                     "posts": stat["posts"] or 0,
                     "views": stat["views"] or 0,
                     "likes": stat["likes"] or 0,
                 }
-                for stat in before_a_week_stats
+                for user_id, stat in before_a_week_stats.items()
             }
 
             # 일주일간의 변동값 계산 (오늘 통계 - 일주일 전 통계)
             users_weekly_stats_dict = {}
-            for stat in today_stats:
-                user_id = stat["user_id"]
+            for user_id, stat in today_stats.items():
                 before_stat = before_stats_dict.get(
                     user_id, {"posts": 0, "views": 0, "likes": 0}
                 )
