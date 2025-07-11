@@ -9,7 +9,6 @@
 """
 
 import logging
-import warnings
 from datetime import timedelta
 from time import sleep
 
@@ -29,9 +28,10 @@ from insight.schemas import (
 from modules.mail.schemas import AWSSESCredentials, EmailMessage
 from modules.mail.ses.client import SESClient
 from noti.models import NotiMailLog
-from posts.models import Post, PostDailyStatistics
+from posts.models import Post
 from users.models import User
 from utils.utils import (
+    get_local_date,
     get_local_now,
     parse_json,
     strip_html_tags,
@@ -39,9 +39,6 @@ from utils.utils import (
 )
 
 logger = logging.getLogger("newsletter")
-
-# naive datetime 경고 무시 (for _get_users_weekly_stats_chunk)
-warnings.filterwarnings("ignore", message=".*received a naive datetime.*")
 
 
 class WeeklyNewsletterBatch:
@@ -62,13 +59,15 @@ class WeeklyNewsletterBatch:
         self.ses_client = ses_client
         self.chunk_size = chunk_size
         self.max_retry_count = max_retry_count
-        self.before_a_week = get_local_now() - timedelta(weeks=1)
         # 주간 정보를 상태로 관리
         self.weekly_info = {
             "newsletter_id": None,
             "s_date": None,
             "e_date": None,
         }
+        # 배치 실행 시점 기준의 local 날짜 로드
+        self.before_a_week = get_local_date() - timedelta(weeks=1)
+        self.today = get_local_date()
 
     def _delete_old_maillogs(self) -> None:
         """7일 이전의 성공한 메일 발송 로그 삭제"""
@@ -164,27 +163,29 @@ class WeeklyNewsletterBatch:
 
     def _get_users_weekly_stats_chunk(
         self, user_ids: list[int]
-    ) -> tuple[dict[str, dict], set[int]]:
+    ) -> tuple[dict[str, dict], list[int]]:
         """유저별 전체 글 주간 통계를 청크 단위로 일괄 조회후 매핑"""
         try:
             # 오늘자 통계 조회
             today_stats = (
-                PostDailyStatistics.objects.filter(
-                    post__user_id__in=user_ids,
-                    date=get_local_now().date(),
+                Post.objects.filter(
+                    user_id__in=user_ids,
+                    daily_statistics__date=self.today,
+                    is_active=True,
                 )
-                .values("post__user_id")
+                .values("user_id")
                 .annotate(
-                    posts=Count("post", distinct=True),
-                    views=Sum("daily_view_count"),
-                    likes=Sum("daily_like_count"),
+                    posts=Count("id", distinct=True),
+                    views=Sum("daily_statistics__daily_view_count"),
+                    likes=Sum("daily_statistics__daily_like_count"),
                 )
             )
 
             # 오늘자 통계 없는 유저는 토큰 만료로 간주
-            expired_user_ids = set(user_ids) - set(
-                today_stats.values_list("post__user_id", flat=True)
-            )
+            active_user_ids = [stat["user_id"] for stat in today_stats]
+            expired_user_ids = [
+                uid for uid in user_ids if uid not in active_user_ids
+            ]
 
             if expired_user_ids:
                 logger.info(
@@ -194,21 +195,22 @@ class WeeklyNewsletterBatch:
 
             # 토큰 정상 사용자들의 일주일 전 통계 조회
             before_a_week_stats = (
-                PostDailyStatistics.objects.filter(
-                    post__user_id__in=set(user_ids) - expired_user_ids,
-                    date=self.before_a_week.date(),
+                Post.objects.filter(
+                    user_id__in=active_user_ids,
+                    daily_statistics__date=self.before_a_week,
+                    is_active=True,
                 )
-                .values("post__user_id")
+                .values("user_id")
                 .annotate(
-                    posts=Count("post", distinct=True),
-                    views=Sum("daily_view_count"),
-                    likes=Sum("daily_like_count"),
+                    posts=Count("id", distinct=True),
+                    views=Sum("daily_statistics__daily_view_count"),
+                    likes=Sum("daily_statistics__daily_like_count"),
                 )
             )
 
             # 계산 편의성 및 가독성을 위해 딕셔너리로 변경
             before_stats_dict = {
-                stat["post__user_id"]: {
+                stat["user_id"]: {
                     "posts": stat["posts"] or 0,
                     "views": stat["views"] or 0,
                     "likes": stat["likes"] or 0,
@@ -219,7 +221,7 @@ class WeeklyNewsletterBatch:
             # 일주일간의 변동값 계산 (오늘 통계 - 일주일 전 통계)
             users_weekly_stats_dict = {}
             for stat in today_stats:
-                user_id = stat["post__user_id"]
+                user_id = stat["user_id"]
                 before_stat = before_stats_dict.get(
                     user_id, {"posts": 0, "views": 0, "likes": 0}
                 )
@@ -238,7 +240,7 @@ class WeeklyNewsletterBatch:
         except Exception as e:
             # 개인 통계 조회 실패 시에도 계속 진행
             logger.error(f"Failed to get users weekly stats: {e}")
-            return {}, set()
+            return {}, []
 
     def _get_users_weekly_trend_chunk(
         self, user_ids: list[int]
@@ -548,7 +550,8 @@ class WeeklyNewsletterBatch:
     def run(self) -> None:
         """뉴스레터 배치 발송 메인 실행 로직"""
         logger.info(
-            f"Starting weekly newsletter batch process at {get_local_now().isoformat()}"
+            f"Starting weekly newsletter batch process at {get_local_now().isoformat()}. "
+            f"This week's date: {self.before_a_week} ~ {self.today}"
         )
         start_time = timezone.now()
         total_processed = 0
