@@ -106,7 +106,7 @@ class WeeklyNewsletterBatch:
 
         except Exception as e:
             logger.error(f"Failed to get target user chunks: {e}")
-            raise e from e
+            raise
 
     def _get_weekly_trend_html(self) -> str:
         """공통 WeeklyTrend 조회 및 템플릿 렌더링 (1회만 수행)"""
@@ -159,7 +159,7 @@ class WeeklyNewsletterBatch:
 
         except Exception as e:
             logger.error(f"Failed to get templated weekly trend: {e}")
-            raise e from e
+            raise
 
     def _get_users_weekly_stats_chunk(
         self, user_ids: list[int]
@@ -334,7 +334,7 @@ class WeeklyNewsletterBatch:
             logger.error(
                 f"Failed to render newsletter for user {user.get('id')}: {e}"
             )
-            raise e from e
+            raise
 
     def _get_newsletter_html(
         self,
@@ -360,7 +360,7 @@ class WeeklyNewsletterBatch:
             return newsletter_html
         except Exception as e:
             logger.error(f"Failed to render newsletter html: {e}")
-            raise e from e
+            raise
 
     def _build_newsletters(
         self, user_chunk: list[dict], weekly_trend_html: str
@@ -524,7 +524,7 @@ class WeeklyNewsletterBatch:
 
         except Exception as e:
             logger.error(f"Failed to update weekly trend result: {e}")
-            raise e from e
+            raise
 
     def _update_user_weekly_trend_results(
         self, success_user_ids: list[int]
@@ -645,7 +645,7 @@ class WeeklyNewsletterBatch:
 
         except Exception as e:
             logger.error(f"Newsletter batch process failed: {e}")
-            raise e from e
+            raise
 
 
 if __name__ == "__main__":
@@ -662,7 +662,7 @@ if __name__ == "__main__":
         logger.error(
             f"Failed to initialize SES client for sending newsletter: {e}"
         )
-        raise e from e
+        raise
 
     # 배치 실행
     WeeklyNewsletterBatch(ses_client=ses_client).run()
