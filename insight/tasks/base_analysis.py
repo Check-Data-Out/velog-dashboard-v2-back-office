@@ -2,7 +2,7 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generic, List, Optional, TypeVar
+from typing import Any, Generic, TypeVar
 
 import aiohttp
 
@@ -26,9 +26,9 @@ class AnalysisResult(Generic[T]):
     """분석 결과 래퍼"""
 
     success: bool
-    data: Optional[T] = None
-    error: Optional[Exception] = None
-    metadata: Dict[str, Any] = None
+    data: T | None = None
+    error: Exception | None = None
+    metadata: dict[str, Any] = None
 
 
 class BaseBatchAnalyzer(ABC, Generic[T]):
@@ -37,7 +37,7 @@ class BaseBatchAnalyzer(ABC, Generic[T]):
     def __init__(self):
         self.logger = logging.getLogger("newsletter")
 
-    async def run(self) -> AnalysisResult[List[T]]:
+    async def run(self) -> AnalysisResult[list[T]]:
         """메인 실행 메서드"""
         self.logger.info("Starting %s", self.__class__.__name__)
 
@@ -92,20 +92,20 @@ class BaseBatchAnalyzer(ABC, Generic[T]):
         )
 
     @abstractmethod
-    async def _fetch_data(self, context: AnalysisContext) -> List[Any]:
+    async def _fetch_data(self, context: AnalysisContext) -> list[Any]:
         """데이터 수집 (구현 필요)"""
         pass
 
     @abstractmethod
     async def _analyze_data(
-        self, raw_data: List[Any], context: AnalysisContext
-    ) -> List[T]:
+        self, raw_data: list[Any], context: AnalysisContext
+    ) -> list[T]:
         """데이터 분석 (구현 필요)"""
         pass
 
     @abstractmethod
     async def _save_results(
-        self, results: List[T], context: AnalysisContext
+        self, results: list[T], context: AnalysisContext
     ) -> None:
         """결과 저장 (구현 필요)"""
         pass

@@ -18,11 +18,23 @@ from asgiref.sync import sync_to_async
 from django.conf import settings
 
 from insight.models import TrendingItem, UserWeeklyTrend
+from insight.tasks.base_analysis import AnalysisContext, BaseBatchAnalyzer
+from insight.tasks.weekly_llm_analyzer import analyze_user_posts
 from posts.models import Post, PostDailyStatistics
 from users.models import User
 
-from .base_analysis import AnalysisContext, BaseBatchAnalyzer
-from .weekly_llm_analyzer import analyze_user_posts
+
+class TokenExpiredError(Exception):
+    """토큰 만료 예외"""
+
+    def __init__(
+        self,
+        user_id: int,
+        message: str = "Token expired or data inconsistency detected",
+    ):
+        self.user_id = user_id
+        self.message = message
+        super().__init__(message)
 
 
 @dataclass
@@ -58,32 +70,83 @@ class UserWeeklyResult:
 class UserWeeklyAnalyzer(BaseBatchAnalyzer[UserWeeklyResult]):
     """사용자별 주간 분석기"""
 
+    def __init__(self):
+        super().__init__()
+        self.expired_token_users = set()  # 토큰 만료된 사용자 추적
+        self.successful_users = set()  # 성공한 사용자 추적
+
     async def _fetch_data(
         self, context: AnalysisContext
     ) -> list[UserPostData]:
-        """사용자별 게시글 데이터 수집"""
+        """사용자별 게시글 데이터 수집 - 토큰 만료 사용자 제외"""
         try:
             # 활성 사용자 목록 조회
             users = await sync_to_async(list)(
-                User.objects.filter(email__isnull=False, is_active=True)
+                User.objects.filter(
+                    email__isnull=False,
+                    is_active=True,
+                    id__in=[
+                        244,
+                        167,
+                        77,
+                        8,
+                        1,
+                    ],
+                )
                 .exclude(email="")
-                .values("id", "username", "access_token", "refresh_token")
+                .values("id", "username")
             )
 
             all_user_posts = []
+            total_users = len(users)
+
+            self.logger.info("Starting analysis for %d users", total_users)
 
             for user in users:
                 user_id = user["id"]
                 try:
                     user_posts = await self._fetch_user_posts(user_id, context)
-                    all_user_posts.extend(user_posts)
+                    if user_posts:  # 게시글이 있는 사용자만 추가
+                        all_user_posts.extend(user_posts)
+                        self.successful_users.add(user_id)
+                        self.logger.debug(
+                            "Successfully fetched %d posts for user %s",
+                            len(user_posts),
+                            user_id,
+                        )
+
+                except TokenExpiredError:
+                    # 토큰 만료된 사용자는 expired_token_users에 추가
+                    self.expired_token_users.add(user_id)
+                    self.logger.warning(
+                        "Token expired for user %s, excluding from analysis",
+                        user_id,
+                    )
+                    continue
+
                 except Exception as e:
                     self.logger.warning(
                         "Failed to fetch posts for user %s: %s", user_id, e
                     )
                     continue
 
-            self.logger.info("Fetched posts for %d users", len(users))
+            # 최종 통계 로깅
+            successful_count = len(self.successful_users)
+            expired_count = len(self.expired_token_users)
+            failed_count = total_users - successful_count - expired_count
+
+            self.logger.info(
+                "Data collection completed: %d total users, %d successful (%.1f%%), "
+                "%d token expired (%.1f%%), %d other failures (%.1f%%)",
+                total_users,
+                successful_count,
+                successful_count / total_users * 100,
+                expired_count,
+                expired_count / total_users * 100,
+                failed_count,
+                failed_count / total_users * 100,
+            )
+
             return all_user_posts
 
         except Exception as e:
@@ -93,7 +156,10 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[UserWeeklyResult]):
     async def _fetch_user_posts(
         self, user_id: int, context: AnalysisContext
     ) -> list[UserPostData]:
-        """특정 사용자의 게시글 데이터 수집"""
+        """특정 사용자의 게시글 데이터 수집 - 토큰 만료 시 예외 발생"""
+
+        print(context.week_start, context.week_end)
+
         # 해당 주간의 게시글 조회
         posts = await sync_to_async(list)(
             Post.objects.filter(
@@ -106,16 +172,17 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[UserWeeklyResult]):
         )
 
         if not posts:
+            # 게시글이 없는 것은 정상 상황 (빈 리스트 반환)
             return []
 
         # 통계 데이터 조회
         post_ids = [p["id"] for p in posts]
-        prev_day = context.week_start - timedelta(days=1)
+        week_start_prev_day = context.week_start - timedelta(days=1)
 
         stats_qs = await sync_to_async(list)(
             PostDailyStatistics.objects.filter(
                 post_id__in=post_ids,
-                date__in=[prev_day.date(), context.week_end.date()],
+                date__in=[week_start_prev_day.date(), context.week_end.date()],
             ).values("post_id", "date", "daily_view_count", "daily_like_count")
         )
 
@@ -127,17 +194,37 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[UserWeeklyResult]):
                 "like": stat["daily_like_count"],
             }
 
-        # Velog 게시글 본문 조회 및 UserPostData 생성
+        # 토큰 만료 검사를 위한 사전 체크
+        for post_data in posts:
+            post_id = post_data["id"]
+
+            # 조회수/좋아요 증가분 계산
+            stat_map = stats_by_post.get(post_id, {})
+            today_stats = stat_map.get(context.week_end.date(), {})
+            prev_stats = stat_map.get(week_start_prev_day.date(), {})
+
+            view_diff = (today_stats.get("view", 0)) - (
+                prev_stats.get("view", 0)
+            )
+            like_diff = (today_stats.get("like", 0)) - (
+                prev_stats.get("like", 0)
+            )
+
+            # 토큰 만료 감지 시 즉시 예외 발생 (해당 사용자 전체 제외)
+            if view_diff < 0 or like_diff < 0:
+                raise TokenExpiredError(user_id=user_id)
+
+        # 모든 게시글이 토큰 만료 검사를 통과한 경우에만 Velog 본문 조회
         user_posts = []
         for post_data in posts:
             post_id = post_data["id"]
             post_uuid = post_data["post_uuid"]
             username = post_data["user__username"]
 
-            # 조회수/좋아요 증가분 계산
+            # 이미 검사된 통계 데이터 재사용
             stat_map = stats_by_post.get(post_id, {})
             today_stats = stat_map.get(context.week_end.date(), {})
-            prev_stats = stat_map.get(prev_day.date(), {})
+            prev_stats = stat_map.get(week_start_prev_day.date(), {})
 
             view_diff = (today_stats.get("view", 0)) - (
                 prev_stats.get("view", 0)
@@ -169,6 +256,7 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[UserWeeklyResult]):
                 user_posts.append(user_post)
 
             except Exception as e:
+                # Velog API 호출 실패는 해당 게시글만 제외 (사용자 전체는 유지)
                 self.logger.warning(
                     "Failed to fetch Velog post %s for user %s: %s",
                     post_uuid,
@@ -182,25 +270,38 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[UserWeeklyResult]):
     async def _analyze_data(
         self, raw_data: list[UserPostData], context: AnalysisContext
     ) -> list[UserWeeklyResult]:
-        """사용자별 데이터 분석"""
+        """사용자별 데이터 분석 - 토큰 만료 사용자는 이미 제외됨"""
+
         # 사용자별로 데이터 그룹핑
         user_posts_map = defaultdict(list)
         for user_post in raw_data:
             user_posts_map[user_post.user_id].append(user_post)
 
         results = []
+        analyzed_users = len(user_posts_map)
+
+        self.logger.info(
+            "Starting analysis for %d users with valid data", analyzed_users
+        )
 
         for user_id, user_posts in user_posts_map.items():
             try:
                 result = await self._analyze_user_posts(user_id, user_posts)
                 if result:
                     results.append(result)
+                    self.logger.debug("Successfully analyzed user %s", user_id)
+
             except Exception as e:
                 self.logger.error(
                     "Failed to analyze posts for user %s: %s", user_id, e
                 )
                 continue
 
+        self.logger.info(
+            "Analysis completed: %d/%d users successfully analyzed",
+            len(results),
+            analyzed_users,
+        )
         return results
 
     async def _analyze_user_posts(
@@ -210,7 +311,7 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[UserWeeklyResult]):
         if not user_posts:
             return None
 
-        # 간단한 통계 요약
+        # 통계 요약
         total_posts = len(user_posts)
         total_views = sum(post.view_diff for post in user_posts)
         total_likes = sum(post.like_diff for post in user_posts)
@@ -269,7 +370,8 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[UserWeeklyResult]):
     async def _save_results(
         self, results: list[UserWeeklyResult], context: AnalysisContext
     ) -> None:
-        """결과를 데이터베이스에 저장"""
+        """결과를 데이터베이스에 저장 - 토큰 만료 사용자는 저장하지 않음"""
+
         for result in results:
             try:
                 insight_data = {
@@ -298,7 +400,43 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[UserWeeklyResult]):
                 )
                 continue
 
-        self.logger.info("Saved %d user weekly trends", len(results))
+        # 최종 결과 로깅
+        saved_count = len(results)
+        expired_count = len(self.expired_token_users)
+
+        self.logger.info(
+            "Batch completed: %d UserWeeklyTrend records saved, %d users skipped due to token expiry",
+            saved_count,
+            expired_count,
+        )
+
+        # 토큰 만료 사용자 목록 로깅 (디버깅용)
+        if self.expired_token_users:
+            self.logger.debug(
+                "Expired token users: %s", list(self.expired_token_users)
+            )
+
+    async def run(self):
+        """배치 실행 - 토큰 만료 통계 포함"""
+        result = await super().run()
+
+        # 메타데이터에 토큰 만료 정보 추가
+        if result.metadata is None:
+            result.metadata = {}
+
+        result.metadata.update(
+            {
+                "expired_token_users": len(self.expired_token_users),
+                "successful_users": len(self.successful_users),
+                "expired_user_ids": (
+                    list(self.expired_token_users)
+                    if self.expired_token_users
+                    else []
+                ),
+            }
+        )
+
+        return result
 
 
 async def main():
@@ -307,7 +445,18 @@ async def main():
     result = await analyzer.run()
 
     if result.success:
-        print(f"✅ 사용자 주간 분석 완료: {result.metadata}")
+        metadata = result.metadata or {}
+        successful = metadata.get("successful_users", 0)
+        expired = metadata.get("expired_token_users", 0)
+
+        print("✅ 사용자 주간 분석 완료")
+        print(f"   - 성공: {successful}명")
+        print(f"   - 토큰 만료: {expired}명")
+
+        if expired > 0:
+            print(
+                f"   ⚠️  토큰 만료 사용자: {metadata.get('expired_user_ids', [])}"
+            )
     else:
         print(f"❌ 사용자 주간 분석 실패: {result.error}")
         return 1

@@ -16,10 +16,9 @@ from asgiref.sync import sync_to_async
 from django.conf import settings
 
 from insight.models import TrendAnalysis, TrendingItem, WeeklyTrend
+from insight.tasks.base_analysis import AnalysisContext, BaseBatchAnalyzer
+from insight.tasks.weekly_llm_analyzer import analyze_trending_posts
 from scraping.velog.schemas import Post
-
-from .base_analysis import AnalysisContext, BaseBatchAnalyzer
-from .weekly_llm_analyzer import analyze_trending_posts
 
 
 @dataclass
@@ -177,7 +176,7 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendResult]):
                 "trend_analysis": result.trend_analysis.to_dict(),
             }
 
-            await sync_to_async(WeeklyTrend.objects.update_or_create)(
+            await sync_to_async(WeeklyTrend.objects.create)(
                 week_start_date=context.week_start.date(),
                 week_end_date=context.week_end.date(),
                 defaults={
