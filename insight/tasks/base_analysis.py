@@ -28,7 +28,7 @@ class AnalysisResult(Generic[T]):
     success: bool
     data: T | None = None
     error: Exception | None = None
-    metadata: dict[str, Any] = None
+    metadata: dict[str, Any] | None = None
 
 
 class BaseBatchAnalyzer(ABC, Generic[T]):
