@@ -125,7 +125,7 @@ class OpenAIClient(LLMClient[OpenAI]):
         self,
         prompt: str,
         system_prompt: str = "당신은 친절한 만능해결사 입니다. 사용자가 요청하는 모든 것을 처리해주세요",
-        model: str = "gpt-4o",
+        model: str = "gpt-4o-mini",
         **kwargs: Any,
     ) -> str:
         """
