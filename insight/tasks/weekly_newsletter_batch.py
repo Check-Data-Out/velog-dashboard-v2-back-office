@@ -176,6 +176,7 @@ class WeeklyNewsletterBatch:
                     ],
                     is_active=True,
                 )
+                .select_related("daily_statistics")
                 .values("user_id", "daily_statistics__date")
                 .annotate(
                     posts=Count("id", distinct=True),
