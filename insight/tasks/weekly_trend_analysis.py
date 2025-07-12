@@ -179,11 +179,9 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendResult]):
             await sync_to_async(WeeklyTrend.objects.create)(
                 week_start_date=context.week_start.date(),
                 week_end_date=context.week_end.date(),
-                defaults={
-                    "insight": insight_data,
-                    "is_processed": True,
-                    "processed_at": context.week_start,
-                },
+                insight=insight_data,
+                is_processed=False,
+                processed_at=context.week_start,
             )
 
             self.logger.info("WeeklyTrend saved successfully")

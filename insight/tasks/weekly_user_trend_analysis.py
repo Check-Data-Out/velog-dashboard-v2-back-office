@@ -10,17 +10,18 @@
 import asyncio
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import timedelta
 from typing import Any
 
 import setup_django  # noqa
 from asgiref.sync import sync_to_async
 from django.conf import settings
+from django.db.models import Q
 
 from insight.models import TrendingItem, UserWeeklyTrend
 from insight.tasks.base_analysis import AnalysisContext, BaseBatchAnalyzer
 from insight.tasks.weekly_llm_analyzer import analyze_user_posts
 from posts.models import Post, PostDailyStatistics
+from scraping.velog.schemas import Post as VelogPost
 from users.models import User
 
 
@@ -43,7 +44,7 @@ class UserPostData:
 
     user_id: int
     username: str
-    post: Post
+    post: VelogPost
     body: str
     view_diff: int
     like_diff: int
@@ -158,8 +159,6 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[UserWeeklyResult]):
     ) -> list[UserPostData]:
         """특정 사용자의 게시글 데이터 수집 - 토큰 만료 시 예외 발생"""
 
-        print(context.week_start, context.week_end)
-
         # 해당 주간의 게시글 조회
         posts = await sync_to_async(list)(
             Post.objects.filter(
@@ -175,16 +174,17 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[UserWeeklyResult]):
             # 게시글이 없는 것은 정상 상황 (빈 리스트 반환)
             return []
 
-        # 통계 데이터 조회
+        # 통계 데이터 조회, where 절 순서 명확성을 위해 Q 객체 사용
         post_ids = [p["id"] for p in posts]
-        week_start_prev_day = context.week_start - timedelta(days=1)
-
         stats_qs = await sync_to_async(list)(
             PostDailyStatistics.objects.filter(
-                post_id__in=post_ids,
-                date__in=[week_start_prev_day.date(), context.week_end.date()],
-            ).values("post_id", "date", "daily_view_count", "daily_like_count")
+                Q(post_id__in=post_ids)
+                & Q(date__in=[context.week_start, context.week_end])
+            )
+            .values("post_id", "date", "daily_view_count", "daily_like_count")
+            .order_by("id")
         )
+        # 절대 명심, stats_qs 는 무조건 2개거나 1개임!!!
 
         # 통계 데이터 매핑
         stats_by_post = defaultdict(dict)
@@ -194,27 +194,6 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[UserWeeklyResult]):
                 "like": stat["daily_like_count"],
             }
 
-        # 토큰 만료 검사를 위한 사전 체크
-        for post_data in posts:
-            post_id = post_data["id"]
-
-            # 조회수/좋아요 증가분 계산
-            stat_map = stats_by_post.get(post_id, {})
-            today_stats = stat_map.get(context.week_end.date(), {})
-            prev_stats = stat_map.get(week_start_prev_day.date(), {})
-
-            view_diff = (today_stats.get("view", 0)) - (
-                prev_stats.get("view", 0)
-            )
-            like_diff = (today_stats.get("like", 0)) - (
-                prev_stats.get("like", 0)
-            )
-
-            # 토큰 만료 감지 시 즉시 예외 발생 (해당 사용자 전체 제외)
-            if view_diff < 0 or like_diff < 0:
-                raise TokenExpiredError(user_id=user_id)
-
-        # 모든 게시글이 토큰 만료 검사를 통과한 경우에만 Velog 본문 조회
         user_posts = []
         for post_data in posts:
             post_id = post_data["id"]
@@ -223,15 +202,23 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[UserWeeklyResult]):
 
             # 이미 검사된 통계 데이터 재사용
             stat_map = stats_by_post.get(post_id, {})
-            today_stats = stat_map.get(context.week_end.date(), {})
-            prev_stats = stat_map.get(week_start_prev_day.date(), {})
+            today_stats = stat_map.get(context.week_end, {})
+            prev_stats = stat_map.get(context.week_start, {})
 
-            view_diff = (today_stats.get("view", 0)) - (
-                prev_stats.get("view", 0)
-            )
-            like_diff = (today_stats.get("like", 0)) - (
-                prev_stats.get("like", 0)
-            )
+            if not prev_stats:
+                view_diff = today_stats.get("view", 0)
+                like_diff = today_stats.get("like", 0)
+            else:
+                view_diff = (today_stats.get("view", 0)) - (
+                    prev_stats.get("view", 0)
+                )
+                like_diff = (today_stats.get("like", 0)) - (
+                    prev_stats.get("like", 0)
+                )
+
+            # 토큰 만료 감지 시 즉시 예외 발생 (해당 사용자 분석 제외)
+            if view_diff < 0 or like_diff < 0:
+                raise TokenExpiredError(user_id=user_id)
 
             try:
                 # Velog에서 게시글 본문 조회
@@ -242,13 +229,10 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[UserWeeklyResult]):
                     velog_post.body if velog_post and velog_post.body else ""
                 )
 
-                # Post 객체 생성 (simplified)
-                post_obj = Post(post_uuid=post_uuid, title=post_data["title"])
-
                 user_post = UserPostData(
                     user_id=user_id,
                     username=username,
-                    post=post_obj,
+                    post=velog_post,
                     body=body,
                     view_diff=view_diff,
                     like_diff=like_diff,
@@ -338,8 +322,8 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[UserWeeklyResult]):
                         summary=first_summary.get("summary", "[요약 실패]"),
                         key_points=first_summary.get("key_points", []),
                         username=user_post.username,
-                        thumbnail="",  # UserPostData에서는 썸네일 정보 없음
-                        slug="",  # UserPostData에서는 슬러그 정보 없음
+                        thumbnail=user_post.post.thumbnail,
+                        slug=user_post.post.url_slug,
                     )
                     trending_items.append(trending_item)
 
@@ -347,7 +331,7 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[UserWeeklyResult]):
                 self.logger.warning(
                     "LLM analysis failed for user %s post %s: %s",
                     user_id,
-                    user_post.post.post_uuid,
+                    user_post.post.id,
                     e,
                 )
                 # 분석 실패 시 기본 아이템 추가
@@ -381,15 +365,13 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[UserWeeklyResult]):
                     "trend_analysis": {"summary": result.simple_summary},
                 }
 
-                await sync_to_async(UserWeeklyTrend.objects.update_or_create)(
+                await sync_to_async(UserWeeklyTrend.objects.create)(
                     user_id=result.user_id,
                     week_start_date=context.week_start.date(),
                     week_end_date=context.week_end.date(),
-                    defaults={
-                        "insight": insight_data,
-                        "is_processed": True,
-                        "processed_at": context.week_start,
-                    },
+                    insight=insight_data,
+                    is_processed=False,
+                    processed_at=context.week_start,
                 )
 
             except Exception as e:
