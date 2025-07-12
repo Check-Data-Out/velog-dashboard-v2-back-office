@@ -9,12 +9,11 @@
 """
 
 import logging
-import warnings
 from datetime import timedelta
 from time import sleep
 
-import environ
 import setup_django  # noqa
+from django.conf import settings
 from django.db.models import Count, Sum
 from django.template.loader import render_to_string
 from django.utils import timezone
@@ -29,9 +28,10 @@ from insight.schemas import (
 from modules.mail.schemas import AWSSESCredentials, EmailMessage
 from modules.mail.ses.client import SESClient
 from noti.models import NotiMailLog
-from posts.models import PostDailyStatistics
+from posts.models import Post
 from users.models import User
 from utils.utils import (
+    get_local_date,
     get_local_now,
     parse_json,
     strip_html_tags,
@@ -39,9 +39,6 @@ from utils.utils import (
 )
 
 logger = logging.getLogger("newsletter")
-
-# naive datetime 경고 무시 (for _get_expired_token_user_ids)
-warnings.filterwarnings("ignore", message=".*received a naive datetime.*")
 
 
 class WeeklyNewsletterBatch:
@@ -59,17 +56,18 @@ class WeeklyNewsletterBatch:
             chunk_size: 한 번에 처리할 사용자 수
             max_retry_count: 메일 발송 실패 시 최대 재시도 횟수
         """
-        self.env = environ.Env()
         self.ses_client = ses_client
         self.chunk_size = chunk_size
         self.max_retry_count = max_retry_count
-        self.before_a_week = get_local_now() - timedelta(weeks=1)
         # 주간 정보를 상태로 관리
         self.weekly_info = {
             "newsletter_id": None,
             "s_date": None,
             "e_date": None,
         }
+        # 배치 실행 시점 기준의 local 날짜 로드
+        self.before_a_week = get_local_date() - timedelta(weeks=1)
+        self.today = get_local_date()
 
     def _delete_old_maillogs(self) -> None:
         """7일 이전의 성공한 메일 발송 로그 삭제"""
@@ -108,7 +106,7 @@ class WeeklyNewsletterBatch:
 
         except Exception as e:
             logger.error(f"Failed to get target user chunks: {e}")
-            raise e from e
+            raise
 
     def _get_weekly_trend_html(self) -> str:
         """공통 WeeklyTrend 조회 및 템플릿 렌더링 (1회만 수행)"""
@@ -161,45 +159,88 @@ class WeeklyNewsletterBatch:
 
         except Exception as e:
             logger.error(f"Failed to get templated weekly trend: {e}")
-            raise e from e
+            raise
 
     def _get_users_weekly_stats_chunk(
         self, user_ids: list[int]
-    ) -> dict[int, dict]:
-        """여러 유저의 주간 통계를 일괄 조회후 매핑"""
+    ) -> tuple[dict[str, dict], list[int]]:
+        """유저별 전체 글 주간 통계를 청크 단위로 일괄 조회후 매핑"""
         try:
-            users_weekly_stats = (
-                PostDailyStatistics.objects.filter(
-                    post__user_id__in=user_ids,
-                    date__gte=self.before_a_week,
+            # 오늘과 일주일 전 통계를 함께 조회
+            stats = (
+                Post.objects.filter(
+                    user_id__in=user_ids,
+                    daily_statistics__date__in=[
+                        self.today,
+                        self.before_a_week,
+                    ],
+                    is_active=True,
                 )
-                .values("post__user_id")
+                .select_related("daily_statistics")
+                .values("user_id", "daily_statistics__date")
                 .annotate(
-                    posts=Count("post", distinct=True),
-                    views=Sum("daily_view_count"),
-                    likes=Sum("daily_like_count"),
+                    posts=Count("id", distinct=True),
+                    views=Sum("daily_statistics__daily_view_count"),
+                    likes=Sum("daily_statistics__daily_like_count"),
                 )
             )
 
-            # user_id를 키로 하는 딕셔너리로 변환 (매핑)
-            users_weekly_stats_dict = {
-                s["post__user_id"]: {
-                    "posts": s["posts"] or 0,
-                    "views": s["views"] or 0,
-                    "likes": s["likes"] or 0,
-                }
-                for s in users_weekly_stats
+            # daily_statistics__date 기준으로 매핑
+            today_stats = {
+                s["user_id"]: s
+                for s in stats
+                if s["daily_statistics__date"] == self.today
             }
+            before_a_week_stats = {
+                s["user_id"]: s
+                for s in stats
+                if s["daily_statistics__date"] == self.before_a_week
+            }
+
+            # 오늘자 통계 없는 유저는 토큰 만료로 간주
+            active_user_ids = list(today_stats.keys())
+            expired_user_ids = [
+                uid for uid in user_ids if uid not in active_user_ids
+            ]
+
+            if expired_user_ids:
+                logger.info(
+                    f"Found {len(expired_user_ids)} users with expired tokens"
+                    f"Expired user ids: {expired_user_ids}"
+                )
+
+            # 계산 편의성 및 가독성을 위해 딕셔너리로 변경
+            before_stats_dict = {
+                user_id: {
+                    "posts": stat["posts"] or 0,
+                    "views": stat["views"] or 0,
+                    "likes": stat["likes"] or 0,
+                }
+                for user_id, stat in before_a_week_stats.items()
+            }
+
+            # 일주일간의 변동값 계산 (오늘 통계 - 일주일 전 통계)
+            users_weekly_stats_dict = {}
+            for user_id, stat in today_stats.items():
+                before_stat = before_stats_dict.get(
+                    user_id, {"posts": 0, "views": 0, "likes": 0}
+                )
+                users_weekly_stats_dict[user_id] = {
+                    "posts": stat["posts"] - before_stat["posts"],
+                    "views": stat["views"] - before_stat["views"],
+                    "likes": stat["likes"] - before_stat["likes"],
+                }
 
             logger.info(
                 f"Fetched weekly stats for {len(users_weekly_stats_dict)} users out of {len(user_ids)}"
             )
-            return users_weekly_stats_dict
+
+            return users_weekly_stats_dict, expired_user_ids
 
         except Exception as e:
             # 개인 통계 조회 실패 시에도 계속 진행
             logger.error(f"Failed to get users weekly stats: {e}")
-            return {}
+            return {}, []
 
     def _get_users_weekly_trend_chunk(
         self, user_ids: list[int]
@@ -232,66 +273,85 @@ class WeeklyNewsletterBatch:
             logger.error(f"Failed to get user weekly trends: {e}")
             return {}
 
-    def _get_expired_token_user_ids(self, user_ids: list[int]) -> set[int]:
-        """user_ids에 대한 토큰 만료 유저 목록 조회"""
+    def _get_users_reminder_chunk(
+        self, user_ids: list[int]
+    ) -> dict[int, dict]:
+        """여러 유저의 가장 최근 글 일괄 조회 후 리마인더로 매핑"""
         try:
-            # 오늘 날짜에 통계 데이터가 없는 사용자를 만료된 토큰 사용자로 간주
-            active_user_ids = (
-                PostDailyStatistics.objects.filter(
-                    post__user_id__in=user_ids, date=get_local_now().date()
+            reminders = (
+                Post.objects.filter(
+                    user_id__in=user_ids,
+                    is_active=True,
                 )
-                .values_list("post__user_id", flat=True)
-                .distinct()
+                .values("user_id", "title", "released_at")
+                .order_by("user_id", "-released_at")
+                .distinct("user_id")
             )
 
-            expired_user_ids = set(user_ids) - set(active_user_ids)
+            now = get_local_now()
+            users_reminder_dict = {
+                reminder["user_id"]: {
+                    "title": reminder["title"],
+                    "days_ago": (now - reminder["released_at"]).days,
+                }
+                for reminder in reminders
+            }
 
-            if expired_user_ids:
-                logger.info(
-                    f"Found {len(expired_user_ids)} users with expired tokens"
-                    f"Expired user ids: {expired_user_ids}"
-                )
-
-            return expired_user_ids
+            logger.info(
+                f"Found {len(users_reminder_dict)} user reminders out of {len(user_ids)}"
+            )
+            return users_reminder_dict
 
         except Exception as e:
-            # 토큰 만료 유저 조회 실패 시에도 계속 진행
-            logger.error(f"Failed to get expired token users: {e}")
-            return set()
+            # 리마인드 조회 실패 시에도 계속 진행
+            logger.error(f"Failed to get users reminder: {e}")
+            return {}
 
-    def _get_personalized_newsletter_html(
+    def _get_user_weekly_trend_html(
         self,
         user: dict,
-        weekly_trend_html: str,
         user_weekly_trend: UserWeeklyTrend | None,
-        user_weekly_stats: dict,
-        is_expired: bool,
+        user_weekly_stats: dict[str, int] | None,
+        reminder: dict[str, str] | None,
     ) -> str:
-        """개별 사용자의 뉴스레터 HTML 렌더링"""
+        """유저 개인 트렌드 렌더링, 토큰 정상 유저만 수행"""
         try:
-            user_weekly_trend_html = None
+            user_weekly_trend_html = render_to_string(
+                "insights/user_weekly_trend.html",
+                to_dict(
+                    UserWeeklyTrendContext(
+                        user=user,
+                        user_weekly_stats=user_weekly_stats,
+                        insight=parse_json(user_weekly_trend.insight)
+                        if user_weekly_trend
+                        else None,
+                        reminder=reminder,
+                    )
+                ),
+            )
 
-            # 개인 인사이트 데이터 있으면 렌더링
-            if user_weekly_trend:
-                user_weekly_trend_html = render_to_string(
-                    "insights/user_weekly_trend.html",
-                    to_dict(
-                        UserWeeklyTrendContext(
-                            insight=parse_json(user_weekly_trend.insight),
-                            user=user,
-                            user_weekly_stats=user_weekly_stats,
-                        )
-                    ),
-                )
+            return user_weekly_trend_html
+        except Exception as e:
+            logger.error(
+                f"Failed to render newsletter for user {user.get('id')}: {e}"
+            )
+            raise
 
-            # 뉴스레터 최종 렌더링
+    def _get_newsletter_html(
+        self,
+        is_expired_token_user: bool,
+        weekly_trend_html: str,
+        user_weekly_trend_html: str | None,
+    ) -> str:
+        """최종 뉴스레터 렌더링"""
+        try:
             newsletter_html = render_to_string(
                 "insights/index.html",
                 to_dict(
                     NewsletterContext(
                         s_date=self.weekly_info["s_date"],
                         e_date=self.weekly_info["e_date"],
-                        is_expired_token_user=is_expired,
+                        is_expired_token_user=is_expired_token_user,
                         weekly_trend_html=weekly_trend_html,
                         user_weekly_trend_html=user_weekly_trend_html,
                     )
@@ -300,10 +360,8 @@ class WeeklyNewsletterBatch:
 
             return newsletter_html
         except Exception as e:
-            logger.error(
-                f"Failed to render newsletter for user {user.get('id')}: {e}"
-            )
-            raise e from e
+            logger.error(f"Failed to render newsletter html: {e}")
+            raise
 
     def _build_newsletters(
         self, user_chunk: list[dict], weekly_trend_html: str
@@ -317,10 +375,17 @@ class WeeklyNewsletterBatch:
             users_weekly_trends_chunk = self._get_users_weekly_trend_chunk(
                 user_ids
             )
-            users_weekly_stats_chunk = self._get_users_weekly_stats_chunk(
-                user_ids
+            users_weekly_stats_chunk, expired_token_user_ids = (
+                self._get_users_weekly_stats_chunk(user_ids)
             )
-            expired_token_user_ids = self._get_expired_token_user_ids(user_ids)
+
+            # 글 미작성 유저의 리마인드 일괄 조회
+            remind_target_user_ids = set(user_ids) - set(
+                users_weekly_trends_chunk.keys()
+            )
+            users_reminder_chunk = self._get_users_reminder_chunk(
+                remind_target_user_ids
+            )
 
             for user in user_chunk:
                 try:
@@ -329,17 +394,30 @@ class WeeklyNewsletterBatch:
                         user["id"]
                     )
                     user_weekly_stats = users_weekly_stats_chunk.get(
-                        user["id"], {"posts": 0, "views": 0, "likes": 0}
+                        user["id"]
                     )
-                    is_expired = user["id"] in expired_token_user_ids
+                    is_expired_token_user = (
+                        user["id"] in expired_token_user_ids
+                    )
+                    reminder = users_reminder_chunk.get(user["id"])
 
-                    # 뉴스레터 템플릿 렌더링
-                    html_body = self._get_personalized_newsletter_html(
-                        user=user,
+                    # 토큰 정상 사용자만 개인 트렌드 렌더링
+                    user_weekly_trend_html = None
+                    if not is_expired_token_user:
+                        user_weekly_trend_html = (
+                            self._get_user_weekly_trend_html(
+                                user=user,
+                                user_weekly_trend=user_weekly_trend,
+                                user_weekly_stats=user_weekly_stats,
+                                reminder=reminder,
+                            )
+                        )
+
+                    # 최종 뉴스레터 렌더링
+                    html_body = self._get_newsletter_html(
+                        is_expired_token_user=is_expired_token_user,
                         weekly_trend_html=weekly_trend_html,
-                        user_weekly_trend=user_weekly_trend,
-                        user_weekly_stats=user_weekly_stats,
-                        is_expired=is_expired,
+                        user_weekly_trend_html=user_weekly_trend_html,
                     )
                     text_body = strip_html_tags(html_body)
 
@@ -348,7 +426,7 @@ class WeeklyNewsletterBatch:
                         user_id=user["id"],
                         email_message=EmailMessage(  # SES 발송 객체
                             to=[user["email"]],
-                            from_email=self.env("DEFAULT_FROM_EMAIL"),
+                            from_email=settings.DEFAULT_FROM_EMAIL,
                             subject=f"벨로그 대시보드 주간 뉴스레터 #{self.weekly_info['newsletter_id']}",
                             text_body=text_body,
                             html_body=html_body,
@@ -447,7 +525,7 @@ class WeeklyNewsletterBatch:
 
         except Exception as e:
             logger.error(f"Failed to update weekly trend result: {e}")
-            raise e from e
+            raise
 
     def _update_user_weekly_trend_results(
         self, success_user_ids: list[int]
@@ -472,7 +550,8 @@ class WeeklyNewsletterBatch:
     def run(self) -> None:
         """뉴스레터 배치 발송 메인 실행 로직"""
         logger.info(
-            f"Starting weekly newsletter batch process at {get_local_now().isoformat()}"
+            f"Starting weekly newsletter batch process at {get_local_now().isoformat()}. "
+            f"This week's date: {self.before_a_week} ~ {self.today}"
         )
         start_time = timezone.now()
         total_processed = 0
@@ -503,8 +582,8 @@ class WeeklyNewsletterBatch:
             # ========================================================== #
             weekly_trend_html = self._get_weekly_trend_html()
 
-            # DEBUG 모드에선 뉴스레터 발송 건너뜀
-            if self.env.bool("DEBUG", False):
+            # 로컬 환경에선 뉴스레터 발송 건너뜀
+            if settings.DEBUG:
                 logger.info("DEBUG mode: Skipping newsletter sending")
                 return
 
@@ -567,17 +646,16 @@ class WeeklyNewsletterBatch:
 
         except Exception as e:
             logger.error(f"Newsletter batch process failed: {e}")
-            raise e from e
+            raise
 
 
 if __name__ == "__main__":
     # SES 클라이언트 초기화
     try:
-        env = environ.Env()
         aws_credentials = AWSSESCredentials(
-            aws_access_key_id=env("AWS_ACCESS_KEY_ID"),
-            aws_secret_access_key=env("AWS_SECRET_ACCESS_KEY"),
-            aws_region_name=env("AWS_REGION"),
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            aws_region_name=settings.AWS_REGION,
         )
 
         ses_client = SESClient.get_client(aws_credentials)
@@ -585,7 +663,7 @@ if __name__ == "__main__":
         logger.error(
             f"Failed to initialize SES client for sending newsletter: {e}"
         )
-        raise e from e
+        raise
 
     # 배치 실행
     WeeklyNewsletterBatch(ses_client=ses_client).run()

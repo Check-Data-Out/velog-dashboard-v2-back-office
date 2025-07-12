@@ -26,6 +26,13 @@ environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
 
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 
+AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID", default="")
+AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default="")
+AWS_REGION = env("AWS_REGION", default="ap-northeast-2")
+DEFAULT_FROM_EMAIL = env(
+    "DEFAULT_FROM_EMAIL", default="no-reply@velog-dashboard.kro.kr"
+)
+
 SENTRY_DSN = env("SENTRY_DSN", default="")
 SENTRY_ENVIRONMENT = env("SENTRY_ENVIRONMENT", default="prod")
 SENTRY_TRACES_SAMPLE_RATE = env.float("SENTRY_TRACES_SAMPLE_RATE", default=1.0)
