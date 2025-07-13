@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 
-from insight.models import WeeklyTrendInsight
 from modules.mail.schemas import EmailMessage
 
 
@@ -12,22 +11,6 @@ class NewsletterContext:
     is_expired_token_user: bool
     weekly_trend_html: str
     user_weekly_trend_html: str | None = None
-
-
-# templates/insight/weekly_trend.html 데이터 스키마
-@dataclass
-class WeeklyTrendContext:
-    insight: WeeklyTrendInsight
-
-
-# templates/insight/user_weekly_trend.html 데이터 스키마
-@dataclass
-class UserWeeklyTrendContext:
-    user: dict[str, str]  # username
-    user_weekly_stats: dict[str, int] | None  # posts, views, likes
-    # 주간 글 미작성 유저 리마인드 (title, days_ago)
-    reminder: dict[str, str] | None
-    insight: WeeklyTrendInsight | None
 
 
 @dataclass
