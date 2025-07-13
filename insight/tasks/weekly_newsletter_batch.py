@@ -20,16 +20,21 @@ from django.conf import settings
 from django.db import transaction
 from django.template.loader import render_to_string
 
-from insight.models import UserWeeklyTrend, WeeklyTrend, WeeklyTrendInsight
+from insight.models import (
+    UserWeeklyTrend,
+    WeeklyTrend,
+    WeeklyTrendInsight,
+    WeeklyUserTrendInsight,
+)
 from insight.schemas import Newsletter, NewsletterContext
 from modules.mail.schemas import AWSSESCredentials, EmailMessage
 from modules.mail.ses.client import SESClient
 from noti.models import NotiMailLog
 from users.models import User
 from utils.utils import (
+    from_dict,
     get_local_date,
     get_local_now,
-    parse_json,
     strip_html_tags,
     to_dict,
 )
@@ -83,6 +88,7 @@ class WeeklyNewsletterBatch:
         try:
             target_users = list(
                 User.objects.filter(
+                    id=1,
                     is_active=True,
                     email__isnull=False,
                 )
@@ -127,8 +133,10 @@ class WeeklyNewsletterBatch:
                 "s_date": weekly_trend["week_start_date"],
                 "e_date": weekly_trend["week_end_date"],
             }
-            weekly_trend_insight = WeeklyTrendInsight(
-                **weekly_trend["insight"]
+
+            # dataclass로 변환 & 벨리데이션
+            weekly_trend_insight = from_dict(
+                WeeklyTrendInsight, weekly_trend["insight"]
             )
             context = {"insight": weekly_trend_insight.to_dict()}
             weekly_trend_html = render_to_string(
@@ -158,24 +166,23 @@ class WeeklyNewsletterBatch:
 
     def _get_users_weekly_trend_chunk(
         self, user_ids: list[int]
-    ) -> dict[int, UserWeeklyTrend]:
+    ) -> dict[int, WeeklyUserTrendInsight]:
         """여러 유저의 UserWeeklyTrend 일괄 조회 후 매핑"""
         try:
             user_weekly_trends = UserWeeklyTrend.objects.filter(
                 week_end_date__gte=self.before_a_week,
                 user_id__in=user_ids,
                 is_processed=False,
-            ).values("id", "user_id", "insight")
+            ).values("user_id", "insight")
 
             # user_id를 키로 하는 딕셔너리로 변환 (매핑)
-            users_weekly_trends_dict = {
-                trend["user_id"]: UserWeeklyTrend(
-                    id=trend["id"],
-                    user_id=trend["user_id"],
-                    insight=trend["insight"],
+            users_weekly_trends_dict = {}
+            for trend in user_weekly_trends:
+                # dataclass로 변환
+                insight_data = from_dict(
+                    WeeklyUserTrendInsight, trend["insight"]
                 )
-                for trend in user_weekly_trends
-            }
+                users_weekly_trends_dict[trend["user_id"]] = insight_data
 
             logger.info(
                 f"Found {len(users_weekly_trends_dict)} user weekly trends out of {len(user_ids)}"
@@ -190,7 +197,7 @@ class WeeklyNewsletterBatch:
     def _get_user_weekly_trend_html(
         self,
         user: dict,
-        user_weekly_trend: UserWeeklyTrend | None,
+        user_weekly_trend: WeeklyUserTrendInsight | None,
     ) -> str:
         """유저 개인 트렌드 렌더링"""
         try:
@@ -198,9 +205,11 @@ class WeeklyNewsletterBatch:
                 "insights/user_weekly_trend.html",
                 {
                     "user": user,
-                    "insight": parse_json(user_weekly_trend.insight)
-                    if user_weekly_trend
-                    else None,
+                    "insight": (
+                        user_weekly_trend.to_dict()
+                        if user_weekly_trend
+                        else None
+                    ),
                 },
             )
 
@@ -246,7 +255,7 @@ class WeeklyNewsletterBatch:
             newsletters = []
 
             # 개인화를 위한 데이터 일괄 조회
-            # users_weekly_trends_chunk 의 index 가 user_pk & value 가 UserWeeklyTrend
+            # users_weekly_trends_chunk 의 index 가 user_pk & value 가 WeeklyUserTrendInsight
             users_weekly_trends_chunk = self._get_users_weekly_trend_chunk(
                 user_ids
             )
