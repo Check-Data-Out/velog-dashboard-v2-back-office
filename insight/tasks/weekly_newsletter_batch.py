@@ -88,7 +88,7 @@ class WeeklyNewsletterBatch:
         try:
             target_users = list(
                 User.objects.filter(
-                    id=1,
+                    id__in=[13, 1, 8, 77, 244],
                     is_active=True,
                     email__isnull=False,
                 )
@@ -462,10 +462,10 @@ class WeeklyNewsletterBatch:
             # ========================================================== #
             weekly_trend_html = self._get_weekly_trend_html()
 
-            # 로컬 환경에선 뉴스레터 발송 건너뜀
-            if settings.DEBUG:
-                logger.info("DEBUG mode: Skipping newsletter sending")
-                return
+            # # 로컬 환경에선 뉴스레터 발송 건너뜀
+            # if settings.DEBUG:
+            #     logger.info("DEBUG mode: Skipping newsletter sending")
+            #     return
 
             # ========================================================== #
             # STEP4: 청크별로 뉴스레터 발송 및 결과 저장
