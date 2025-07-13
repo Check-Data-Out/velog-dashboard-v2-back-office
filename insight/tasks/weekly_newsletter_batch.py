@@ -88,7 +88,6 @@ class WeeklyNewsletterBatch:
         try:
             target_users = list(
                 User.objects.filter(
-                    id__in=[13, 1, 8, 77, 244],
                     is_active=True,
                     email__isnull=False,
                 )
