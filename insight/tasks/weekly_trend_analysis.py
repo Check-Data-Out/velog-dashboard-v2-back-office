@@ -15,7 +15,12 @@ import setup_django  # noqa
 from asgiref.sync import sync_to_async
 from django.conf import settings
 
-from insight.models import TrendAnalysis, TrendingItem, WeeklyTrend
+from insight.models import (
+    TrendAnalysis,
+    TrendingItem,
+    WeeklyTrend,
+    WeeklyTrendInsight,
+)
 from insight.tasks.base_analysis import AnalysisContext, BaseBatchAnalyzer
 from insight.tasks.weekly_llm_analyzer import analyze_trending_posts
 from scraping.velog.schemas import Post
@@ -47,15 +52,7 @@ class TrendingPostData:
         }
 
 
-@dataclass
-class WeeklyTrendResult:
-    """주간 트렌드 분석 결과"""
-
-    trending_items: list[TrendingItem]
-    trend_analysis: TrendAnalysis
-
-
-class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendResult]):
+class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
     """주간 트렌드 분석기"""
 
     def __init__(self, trending_limit: int = 10):
@@ -105,7 +102,7 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendResult]):
 
     async def _analyze_data(
         self, raw_data: list[TrendingPostData], context: AnalysisContext
-    ) -> list[WeeklyTrendResult]:
+    ) -> list[WeeklyTrendInsight]:
         """LLM을 사용한 트렌드 분석"""
         try:
             # LLM 입력 데이터 준비
@@ -148,8 +145,8 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendResult]):
                 insights=trend_analysis_raw.get("insights", ""),
             )
 
-            result = WeeklyTrendResult(
-                trending_items=trending_items, trend_analysis=trend_analysis
+            result = WeeklyTrendInsight(
+                trending_summary=trending_items, trend_analysis=trend_analysis
             )
 
             return [result]  # 주간 트렌드는 하나의 결과만 생성
@@ -159,7 +156,7 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendResult]):
             raise
 
     async def _save_results(
-        self, results: list[WeeklyTrendResult], context: AnalysisContext
+        self, results: list[WeeklyTrendInsight], context: AnalysisContext
     ) -> None:
         """결과를 데이터베이스에 저장"""
         if not results:
@@ -171,7 +168,7 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendResult]):
             # WeeklyTrendInsight 형태로 변환
             insight_data = {
                 "trending_summary": [
-                    item.to_dict() for item in result.trending_items
+                    item.to_dict() for item in result.trending_summary
                 ],
                 "trend_analysis": result.trend_analysis.to_dict(),
             }

@@ -98,7 +98,7 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[UserWeeklyResult]):
                 .values("id", "username")
             )
 
-            all_user_posts = []
+            active_user_posts = []
             total_users = len(users)
 
             self.logger.info("Starting analysis for %d users", total_users)
@@ -108,7 +108,7 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[UserWeeklyResult]):
                 try:
                     user_posts = await self._fetch_user_posts(user_id, context)
                     if user_posts:  # 게시글이 있는 사용자만 추가
-                        all_user_posts.extend(user_posts)
+                        active_user_posts.extend(user_posts)
                         self.successful_users.add(user_id)
                         self.logger.debug(
                             "Successfully fetched %d posts for user %s",
@@ -148,7 +148,7 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[UserWeeklyResult]):
                 failed_count / total_users * 100,
             )
 
-            return all_user_posts
+            return active_user_posts
 
         except Exception as e:
             self.logger.error("Failed to fetch user data: %s", e)
