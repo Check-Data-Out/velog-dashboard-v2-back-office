@@ -2,7 +2,7 @@ import json
 import random
 import re
 from dataclasses import fields, is_dataclass
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any, Type, TypeVar, get_args, get_origin, no_type_check
 
 from django.utils import timezone
@@ -114,18 +114,23 @@ def from_dict(cls: Type[T], data: dict[str, Any]) -> T:
     return cls(**kwargs)
 
 
-def get_previous_week_range(today: date = None) -> tuple[datetime, datetime]:
-    """주간 트렌드/사용자 분석 배치 날짜 계산"""
-    today = today or get_local_now().date()
-    days_since_monday = today.weekday()
-    this_monday = today - timedelta(days=days_since_monday)
-    last_monday = this_monday - timedelta(days=7)
-    last_sunday = this_monday - timedelta(days=1)
+def get_previous_week_range(
+    today: datetime = None,
+) -> tuple[datetime, datetime]:
+    """지금 시간대를 유지하면서 7일 전과 오늘 00:00 까지 날짜 범위 계산"""
+    today = today or get_local_now()
 
+    # 7일 전 (week_start) - local timezone 유지
+    seven_days_ago = today - timedelta(days=7)
     week_start = timezone.make_aware(
-        datetime.combine(last_monday, datetime.min.time())
+        datetime.combine(seven_days_ago.date(), datetime.min.time()),
+        timezone=today.tzinfo,
     )
+
+    # 오늘 00:00:00 (week_end)
     week_end = timezone.make_aware(
-        datetime.combine(last_sunday, datetime.max.time())
+        datetime.combine(today.date(), datetime.min.time()),
+        timezone=today.tzinfo,
     )
+
     return week_start, week_end

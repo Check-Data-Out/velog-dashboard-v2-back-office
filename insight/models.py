@@ -30,20 +30,29 @@ class TrendAnalysis(SerializableMixin):
 @dataclass
 class WeeklyTrendInsight(SerializableMixin):
     trending_summary: list[TrendingItem] = field(default_factory=list)
-    trend_analysis: TrendAnalysis = None
-    """
-    user trend인 경우 아래 필드가 필요합니다.
-    (템플릿 의존성 존재, 현우님께서 작업하시면서 변경 가능)
-    reminder: {  // 해당하는 주에 작성한 글이 없는 경우
-        title: str
-        days_ago: int
-    }
-    user_weekly_stats: {  // 토큰 정상인 모든 유저가 갖고 있는 필드
-        posts: int
-        views: int
-        likes: int
-    }
-    """
+    trend_analysis: TrendAnalysis | None = None
+
+
+@dataclass
+class WeeklyUserStats(SerializableMixin):
+    posts: int  # 전체 게시글 수
+    new_posts: int  # 게시글 증가 수
+    views: int  # 조회수 증가 수
+    likes: int  # 좋아요 수 증가 수
+
+
+@dataclass
+class WeeklyUserReminder(SerializableMixin):
+    """해당하는 주에 작성한 글이 없는 경우"""
+
+    title: str  # 마지막 작성한 글 title
+    days_ago: int  # 마지막 작성한 글 작성일자
+
+
+@dataclass
+class WeeklyUserTrendInsight(WeeklyTrendInsight):
+    user_weekly_stats: WeeklyUserStats | None = None
+    user_weekly_reminder: WeeklyUserReminder | None = None
 
 
 class WeeklyTrend(TimeStampedModel):
@@ -54,7 +63,7 @@ class WeeklyTrend(TimeStampedModel):
     week_start_date = models.DateField(verbose_name="주 시작일")
     week_end_date = models.DateField(verbose_name="주 종료일")
 
-    # 인사이트 데이터
+    # 인사이트 데이터 - "WeeklyTrendInsight" 를 따라야 함
     insight = models.JSONField(
         verbose_name="핵심 키워드",
         help_text="주간 트렌드에 대한 핵심 키워드 및 인사이트 데이터, schema 변동에 유연하게 대응하기 위해 JSONField 사용",
@@ -96,7 +105,7 @@ class UserWeeklyTrend(TimeStampedModel):
     week_start_date = models.DateField(verbose_name="주 시작일")
     week_end_date = models.DateField(verbose_name="주 종료일")
 
-    # 인사이트 데이터
+    # 인사이트 데이터 - "WeeklyUserTrendInsight" 를 따라야 함
     insight = models.JSONField(
         verbose_name="핵심 키워드",
         help_text="주간 트렌드에 대한 핵심 키워드 및 인사이트 데이터, schema 변동에 유연하게 대응하기 위해 JSONField 사용",

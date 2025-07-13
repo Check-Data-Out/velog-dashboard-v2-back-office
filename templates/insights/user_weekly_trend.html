@@ -16,13 +16,13 @@
         <div style="background-color: #f8f9fa; border: 1px solid #e9ecef; padding: 20px; border-radius: 8px; margin: 30px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
             <p style="color: #383e43; margin: 0; line-height: 1.6;">
                 저번 주에는 
-                {% if insight.user_weekly_stats.posts > 0 %}
-                    <b>{{insight.user_weekly_stats.posts}}개</b>의 글을 작성하셨네요! 👏 <br>
+                {% if insight.user_weekly_stats.new_posts > 0 %}
+                    <b>{{insight.user_weekly_stats.new_posts}}개</b>의 글을 작성하셨네요! 👏 <br>
                 {% else %}
                     글을 작성하지 않으셨네요. 이번 주에는 멋진 글을 작성해보는 건 어떨까요? 화이팅! 💪 <br>
                 {% endif %}
                 {% if insight.user_weekly_stats.views > 0 %}
-                    <b>{{insight.user_weekly_stats.views}}명</b>이 
+                    <b>지난 한 주간 {{insight.user_weekly_stats.views}}명</b>이 
                     {% if user.username %}
                         {{user.username}}님의
                     {% else %}
@@ -31,19 +31,19 @@
                     포스트를 읽었어요. <br>
                 {% endif %}
                 {% if insight.user_weekly_stats.likes > 0 %}
-                    <b>{{insight.user_weekly_stats.likes}}개</b>의 좋아요를 받았어요.
+                    <b>그리고 {{insight.user_weekly_stats.likes}}개</b>의 좋아요를 받았어요.
                 {% endif %}
             </p>
         </div>
     {% endif %}
 
-    {% if insight.reminder %}
+    {% if insight.user_weekly_reminder %}
         <div style="background-color: #f0f9f7; border: 1px solid #cff2e8; padding: 15px; border-radius: 6px; margin: 30px 0;">
             <p style="font-size: 16px; font-weight: bold; color: #2d5a4f; margin: 0 0 10px 0;">
-                마지막으로 글을 작성하신지 {{insight.reminder.days_ago}}일이 지났어요 😭
+                마지막으로 글을 작성하신지 {{insight.user_weekly_reminder.days_ago}}일이 지났어요 😭
             </p>
             <p style="color: #2a463f; margin: 0;">
-                지난번엔 <b>"{{insight.reminder.title}}"</b> 라는 제목의 글을 작성하셨네요! <br>
+                지난번엔 <b>"{{insight.user_weekly_reminder.title}}"</b> 라는 제목의 글을 작성하셨네요! <br>
                 이번 주에 새로운 글을 발행하시면 저희가 분석해드려요. <br>
                 다음 주엔 꼭 분석해드리고 싶네요! 화이팅! 💪 <br>
                 <br>
