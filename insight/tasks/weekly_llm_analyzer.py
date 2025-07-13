@@ -2,9 +2,8 @@ import json
 import logging
 from typing import Any
 
+from insight.tasks.prompts import SYS_PROM, USER_TREND_PROM, WEEKLY_TREND_PROM
 from modules.llm.openai.client import OpenAIClient
-
-from .prompts import SYS_PROM, USER_TREND_PROM, WEEKLY_TREND_PROM
 
 logger = logging.getLogger("newsletter")
 
