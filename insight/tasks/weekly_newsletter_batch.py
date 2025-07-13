@@ -125,7 +125,6 @@ class WeeklyNewsletterBatch:
                 "e_date": weekly_trend["week_end_date"],
             }
 
-            # 렌더링. 관리를 위해 dataclass 사용
             context = {"insight": parse_json(weekly_trend["insight"])}
             weekly_trend_html = render_to_string(
                 "insights/weekly_trend.html", context
@@ -245,17 +244,15 @@ class WeeklyNewsletterBatch:
             users_weekly_trends_chunk = self._get_users_weekly_trend_chunk(
                 user_ids
             )
-            # insight_userweeklytrend 에 없는 유저는 토큰 만료 유저로 처리
-            expired_token_user_ids = [
-                uid
-                for uid in user_ids
-                if uid not in users_weekly_trends_chunk.keys()
-            ]
+            # insight_userweeklytrend가 없는 유저는 토큰 만료 유저로 간주
+            expired_token_user_ids = set(user_ids) - set(
+                users_weekly_trends_chunk.keys()
+            )
 
             if expired_token_user_ids:
                 logger.info(
                     f"Found {len(expired_token_user_ids)} users with expired tokens, "
-                    f"Expired user ids: {expired_token_user_ids}"
+                    f"Expired user ids: {list(expired_token_user_ids)}"
                 )
 
             # 유저별 뉴스레터 객체 생성
