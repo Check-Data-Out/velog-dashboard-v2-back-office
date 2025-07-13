@@ -5,7 +5,10 @@
 - Django 및 AWS SES 의존성 있는 배치입니다.
 - ./templates/insights/ 경로의 HTML 템플릿을 사용합니다.
 - 아래 커맨드로 실행합니다.
-  python ./insight/tasks/weekly_newsletter_batch.py
+- poetry run python ./insight/tasks/weekly_newsletter_batch.py
+
+[25.07.13] 뉴스레터 발송 배치 소소한 수정 (작성자: 정현우)
+- 전체적인 DTO 정리, 주간 사용자 분석 배치에서 만드는 데이터셋과 메일에 필요한 데이터셋 전체 통일
 """
 
 import logging
@@ -14,10 +17,10 @@ from time import sleep
 
 import setup_django  # noqa
 from django.conf import settings
+from django.db import transaction
 from django.template.loader import render_to_string
-from django.utils import timezone
 
-from insight.models import UserWeeklyTrend, WeeklyTrend
+from insight.models import UserWeeklyTrend, WeeklyTrend, WeeklyTrendInsight
 from insight.schemas import Newsletter, NewsletterContext
 from modules.mail.schemas import AWSSESCredentials, EmailMessage
 from modules.mail.ses.client import SESClient
@@ -124,8 +127,10 @@ class WeeklyNewsletterBatch:
                 "s_date": weekly_trend["week_start_date"],
                 "e_date": weekly_trend["week_end_date"],
             }
-
-            context = {"insight": parse_json(weekly_trend["insight"])}
+            weekly_trend_insight = WeeklyTrendInsight(
+                **weekly_trend["insight"]
+            )
+            context = {"insight": weekly_trend_insight.to_dict()}
             weekly_trend_html = render_to_string(
                 "insights/weekly_trend.html", context
             )
@@ -241,9 +246,11 @@ class WeeklyNewsletterBatch:
             newsletters = []
 
             # 개인화를 위한 데이터 일괄 조회
+            # users_weekly_trends_chunk 의 index 가 user_pk & value 가 UserWeeklyTrend
             users_weekly_trends_chunk = self._get_users_weekly_trend_chunk(
                 user_ids
             )
+
             # insight_userweeklytrend가 없는 유저는 토큰 만료 유저로 간주
             expired_token_user_ids = set(user_ids) - set(
                 users_weekly_trends_chunk.keys()
@@ -351,7 +358,7 @@ class WeeklyNewsletterBatch:
                         subject=newsletter.email_message.subject,
                         body=newsletter.email_message.text_body,
                         is_success=success,
-                        sent_at=timezone.now(),
+                        sent_at=get_local_now(),
                         error_message=error_message if not success else "",
                     )
                 )
@@ -380,7 +387,7 @@ class WeeklyNewsletterBatch:
                 id=self.weekly_info["newsletter_id"],
             ).update(
                 is_processed=True,
-                processed_at=timezone.now(),
+                processed_at=get_local_now(),
             )
             logger.info(
                 f"Updated WeeklyTrend #{self.weekly_info['newsletter_id']} as processed"
@@ -395,15 +402,16 @@ class WeeklyNewsletterBatch:
     ) -> None:
         """개별 부분(UserWeeklyTrend) 발송 결과 일괄 저장"""
         try:
-            UserWeeklyTrend.objects.filter(
-                user_id__in=success_user_ids,
-                week_end_date__gte=self.before_a_week,
-            ).update(
-                is_processed=True,
-                processed_at=timezone.now(),
-            )
+            with transaction.atomic():
+                updated_count = UserWeeklyTrend.objects.filter(
+                    user_id__in=success_user_ids,
+                    week_end_date__gte=self.before_a_week,
+                ).update(
+                    is_processed=True,
+                    processed_at=get_local_now(),
+                )
             logger.info(
-                f"Updated {len(success_user_ids)} UserWeeklyTrend records as processed"
+                f"Updated {updated_count} UserWeeklyTrend records as processed"
             )
 
         except Exception as e:
@@ -416,7 +424,7 @@ class WeeklyNewsletterBatch:
             f"Starting weekly newsletter batch process at {get_local_now().isoformat()}. "
             f"This week's date: {self.before_a_week} ~ {self.today}"
         )
-        start_time = timezone.now()
+        start_time = get_local_now()
         total_processed = 0
         total_failed = 0
 
@@ -460,6 +468,7 @@ class WeeklyNewsletterBatch:
 
                 try:
                     # 해당 청크에 대한 뉴스레터 객체 일괄 생성
+                    # 토큰 만료로 판단되는 경우 user_weekly_trend_html 가 None
                     newsletters = self._build_newsletters(
                         user_chunk, weekly_trend_html
                     )
@@ -497,12 +506,12 @@ class WeeklyNewsletterBatch:
                 # 과반수 이상 성공시에만 processed로 마킹
                 self._update_weekly_trend_result()
                 logger.info(
-                    f"Newsletter batch process completed successfully in {(timezone.now() - start_time).total_seconds()} seconds. "
+                    f"Newsletter batch process completed successfully in {(get_local_now() - start_time).total_seconds()} seconds. "
                     f"Processed: {total_processed}, Failed: {total_failed}, Success Rate: {success_rate:.2%}"
                 )
             else:
                 logger.warning(
-                    f"Newsletter batch process failed to meet success criteria in {(timezone.now() - start_time).total_seconds()} seconds. "
+                    f"Newsletter batch process failed to meet success criteria in {(get_local_now() - start_time).total_seconds()} seconds. "
                     f"Processed: {total_processed}, Failed: {total_failed}, Success Rate: {success_rate:.2%}. "
                     f"WeeklyTrend remains unprocessed due to low success rate (< 50%)"
                 )
