@@ -24,6 +24,12 @@ def get_local_now() -> datetime:
     return local_now
 
 
+def get_local_date() -> datetime:
+    """django timezone 을 기반으로 하는 실제 local의 now date"""
+    local_now = get_local_now()
+    return local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 def parse_json(data: Any, default: dict | None = None) -> dict[Any, Any]:
     """데이터를 JSON 형식으로 안전하게 파싱"""
     if default is None:

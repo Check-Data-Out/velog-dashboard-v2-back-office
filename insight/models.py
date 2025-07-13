@@ -31,6 +31,19 @@ class TrendAnalysis(SerializableMixin):
 class WeeklyTrendInsight(SerializableMixin):
     trending_summary: list[TrendingItem] = field(default_factory=list)
     trend_analysis: TrendAnalysis = None
+    """
+    user trend인 경우 아래 필드가 필요합니다.
+    (템플릿 의존성 존재, 현우님께서 작업하시면서 변경 가능)
+    reminder: {  // 해당하는 주에 작성한 글이 없는 경우
+        title: str
+        days_ago: int
+    }
+    user_weekly_stats: {  // 토큰 정상인 모든 유저가 갖고 있는 필드
+        posts: int
+        views: int
+        likes: int
+    }
+    """
 
 
 class WeeklyTrend(TimeStampedModel):
