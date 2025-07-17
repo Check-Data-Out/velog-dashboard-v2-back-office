@@ -1,20 +1,12 @@
-# Django 설정 로드
-import os
+import sys
 import uuid
 from datetime import date, timedelta
 from unittest.mock import MagicMock
 
-import django
 import pytest
 from django.conf import settings
 from django.contrib.admin.sites import AdminSite
 from django.http import HttpRequest
-
-if not settings.configured:
-    os.environ.setdefault(
-        "DJANGO_SETTINGS_MODULE", "backoffice.settings.local"
-    )
-    django.setup()
 
 from insight.admin import UserWeeklyTrendAdmin, WeeklyTrendAdmin
 from insight.models import (
@@ -30,6 +22,15 @@ from insight.models import (
 from insight.schemas import Newsletter
 from modules.mail.schemas import EmailMessage
 from users.models import User
+
+
+@pytest.fixture
+def mock_setup_django():
+    """setup_django 모듈 모킹"""
+    sys.modules["setup_django"] = MagicMock()
+    yield sys.modules["setup_django"]
+    # 테스트 후 정리
+    del sys.modules["setup_django"]
 
 
 @pytest.fixture
@@ -224,13 +225,6 @@ def inactive_user_weekly_trend(
     insight_dict = sample_weekly_user_trend_insight.to_json_dict()
     insight_dict["trending_summary"] = None
     insight_dict["trend_analysis"] = None
-
-    # 사용자 인사이트는 제목을 조금 다르게 설정
-    if insight_dict["trending_summary"]:
-        insight_dict["trending_summary"][0]["title"] = "Django 모델 최적화하기"
-        insight_dict["trending_summary"][0]["summary"] = (
-            "Django ORM을 효율적으로 사용하는 방법"
-        )
 
     return UserWeeklyTrend.objects.create(
         user=user,

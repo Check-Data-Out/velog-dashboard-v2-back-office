@@ -9,17 +9,6 @@ from utils.utils import get_local_now
 
 
 @pytest.fixture
-def mock_setup_django():
-    """setup_django 모듈 모킹"""
-    import sys
-    from unittest.mock import MagicMock
-
-    # setup_django 모듈을 sys.modules에 추가
-    sys.modules["setup_django"] = MagicMock()
-    return sys.modules["setup_django"]
-
-
-@pytest.fixture
 def mock_ses_client():
     """SES 클라이언트 모킹"""
     from modules.mail.ses.client import SESClient
