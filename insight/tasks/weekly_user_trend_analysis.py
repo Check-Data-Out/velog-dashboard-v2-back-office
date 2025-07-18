@@ -476,7 +476,7 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
                     week_end_date=context.week_end.date(),
                     insight=insight_data,
                     is_processed=False,
-                    processed_at=context.week_start,
+                    processed_at=context.week_end,
                 )
 
             except Exception as e:

@@ -33,6 +33,9 @@
                 {% if insight.user_weekly_stats.likes > 0 %}
                     <b>그리고 {{insight.user_weekly_stats.likes}}개</b>의 좋아요를 받았어요.
                 {% endif %}
+                <small style="color: #6c757d; font-size: 12px; margin-left: 10px;">
+                    * 이번 주에 신규 가입을 하셨다면 총 누적 조회수로 계산됩니다.
+                </small><br>
             </p>
         </div>
     {% endif %}
@@ -47,7 +50,7 @@
                 이번 주에 새로운 글을 발행하시면 저희가 분석해드려요. <br>
                 다음 주엔 꼭 분석해드리고 싶네요! 화이팅! 💪 <br>
                 <br>
-                Tip💡: <a href="https://velog-dashboard.kro.kr/leaderboards?based=post&sort=viewCount&limit=10&dateRange=30" style="color: #63e6be; font-weight: bold;">리더보드</a>에서 인기 글을 참고해 작성해보시는 건 어떨까요?
+                Tip💡: <a href="https://velog-dashboard.kro.kr/leaderboards?based=post&sort=viewCount&limit=10&dateRange=30&utm_source=email&utm_medium=weekly_analysis" style="color: #63e6be; font-weight: bold;">리더보드</a>에서 인기 글을 참고해 작성해보시는 건 어떨까요?
             </p>
         </div>
     {% endif %}
