@@ -21,6 +21,14 @@
                                 </p>
                             </div>
 
+                            <div style="text-align: center; margin: 40px 0;">
+                                <a 
+                                    href="https://velog-dashboard.kro.kr/?utm_source=email&utm_medium=weekly_analysis&utm_campaign=dashboard_cta" 
+                                    style="display: inline-block; background: linear-gradient(135deg, #20c997 0%, #17a2b8 100%); color: white; text-decoration: none; padding: 16px 32px; border-radius: 50px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 15px rgba(32, 201, 151, 0.3); transition: all 0.3s ease; border: none;">
+                                    📊 velog dashboard에서 전체 통계 체크하기!
+                                </a>
+                            </div>
+
                             <div class="insights" style="color: #333333; font-size: 14px; line-height: 1.6;">
                                 {% if is_expired_token_user %}
                                     <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 6px; margin: 30px 0;">
@@ -29,7 +37,7 @@
                                         </p>
                                         <p style="color: #51441b; margin: 0;">
                                             토큰이 만료되면 더 이상 통계를 수집할 수 없어요. 토큰을 재발급 받으시려면 
-                                            <a href="https://velog-dashboard.kro.kr/" style="color: #63e6be; font-weight: bold;">여기</a>에서 재로그인 해주세요.
+                                            <a href="https://velog-dashboard.kro.kr/?utm_source=email&utm_medium=weekly_analysis&utm_campaign=token_expire" style="color: #63e6be; font-weight: bold;">여기</a>에서 재로그인 해주세요.
                                         </p>
                                     </div>
                                 {% endif %}
@@ -46,7 +54,7 @@
                             <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
 
                             <div class="footer" style="margin-top: 20px; text-align: center;">
-                                <a href="https://velog-dashboard.kro.kr/main" style="color: #63e6be; font-size: 12px; margin: 0 5px; text-decoration: none;">
+                                <a href="https://velog-dashboard.kro.kr/main?utm_source=email&utm_medium=weekly_analysis&utm_campaign=dashboard_cta" style="color: #63e6be; font-size: 12px; margin: 0 5px; text-decoration: none;">
                                     대시보드 보러가기
                                 </a>
                                 <a href="https://nuung.notion.site/terms-of-service" style="color: #666; font-size: 12px; margin: 0 5px; text-decoration: none;">
