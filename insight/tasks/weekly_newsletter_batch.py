@@ -71,10 +71,10 @@ class WeeklyNewsletterBatch:
         self.today = get_local_date()
 
     def _delete_old_maillogs(self) -> None:
-        """7일 이전의 성공한 메일 발송 로그 삭제"""
+        """이전 뉴스레터의 성공한 메일 발송 로그 삭제"""
         try:
             deleted_count = NotiMailLog.objects.filter(
-                created_at__lt=self.before_a_week,
+                sent_at__lt=self.before_a_week + timedelta(days=1),
                 is_success=True,
             ).delete()[0]
 

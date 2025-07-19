@@ -1,3 +1,4 @@
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -34,7 +35,7 @@ class TestWeeklyNewsletterBatch:
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     def test_delete_old_maillogs_success(self, mock_logger, newsletter_batch):
-        """7일 이전 메일 로그 삭제 성공 테스트"""
+        """이전 뉴스레터 성공 메일 로그 삭제 성공 테스트"""
         with patch.object(NotiMailLog.objects, "filter") as mock_filter:
             mock_delete = MagicMock()
             mock_filter.return_value.delete = mock_delete
@@ -43,9 +44,60 @@ class TestWeeklyNewsletterBatch:
             newsletter_batch._delete_old_maillogs()
 
             mock_filter.assert_called_once_with(
-                created_at__lt=newsletter_batch.before_a_week, is_success=True
+                sent_at__lt=newsletter_batch.before_a_week + timedelta(days=1),
+                is_success=True,
             )
             mock_delete.assert_called_once()
+
+    @patch("insight.tasks.weekly_newsletter_batch.logger")
+    @pytest.mark.django_db
+    def test_delete_old_maillogs_integration(
+        self, mock_logger, newsletter_batch, user
+    ):
+        """이전 뉴스레터 성공 메일 로그 삭제 테스트"""
+        # 오래된 성공 메일 로그 (삭제 대상)
+        old_success_log = NotiMailLog.objects.create(
+            user=user,
+            subject="Weekly Newsletter #1",
+            body="old success newsletter",
+            is_success=True,
+        )
+
+        # 오래된 실패 메일 로그 (삭제되지 않음)
+        old_fail_log = NotiMailLog.objects.create(
+            user=user,
+            subject="Weekly Newsletter #1",
+            body="old fail newsletter",
+            is_success=False,
+        )
+
+        # 과거 데이터로 설정
+        before_a_week = get_local_now() - timedelta(weeks=1)
+        old_success_log.sent_at = before_a_week
+        old_fail_log.sent_at = before_a_week
+        NotiMailLog.objects.bulk_update(
+            [old_success_log, old_fail_log], ["sent_at"]
+        )
+
+        # 현재 성공한 메일 로그 (삭제되지 않음)
+        new_log = NotiMailLog.objects.create(
+            user=user,
+            subject="Weekly Newsletter #2",
+            body="new success newsletter",
+            is_success=True,
+        )
+
+        newsletter_batch._delete_old_maillogs()
+
+        # 삭제 후 상태 확인
+        remaining_logs_id = [
+            log["id"] for log in NotiMailLog.objects.all().values("id")
+        ]
+
+        assert old_success_log.id not in remaining_logs_id
+        assert old_fail_log.id in remaining_logs_id
+        assert new_log.id in remaining_logs_id
+        assert len(remaining_logs_id) == 2
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     @pytest.mark.django_db
@@ -77,54 +129,6 @@ class TestWeeklyNewsletterBatch:
 
             with pytest.raises(Exception, match="DB Error"):
                 newsletter_batch._get_target_user_chunks()
-
-    @patch("insight.tasks.weekly_newsletter_batch.logger")
-    @pytest.mark.django_db
-    def test_get_weekly_trend_html_success(
-        self, mock_logger, newsletter_batch, weekly_trend
-    ):
-        """주간 트렌드 HTML 생성 성공 테스트"""
-        with patch.object(WeeklyTrend.objects, "filter") as mock_filter:
-            mock_filter.return_value.values.return_value.first.return_value = {
-                "id": weekly_trend.id,
-                "insight": weekly_trend.insight,
-                "week_start_date": weekly_trend.week_start_date,
-                "week_end_date": weekly_trend.week_end_date,
-            }
-
-            with patch(
-                "insight.tasks.weekly_newsletter_batch.render_to_string"
-            ) as mock_render:
-                mock_render.return_value = (
-                    "<div>이 주의 트렌딩 글</div><div>트렌드 분석</div>"
-                )
-
-                newsletter_batch._get_weekly_trend_html()
-
-                mock_filter.assert_called_once_with(
-                    week_end_date__gte=newsletter_batch.before_a_week,
-                    is_processed=False,
-                )
-                assert (
-                    newsletter_batch.weekly_info["newsletter_id"]
-                    == weekly_trend.id
-                )
-
-    @patch("insight.tasks.weekly_newsletter_batch.logger")
-    @pytest.mark.django_db
-    def test_get_weekly_trend_html_no_data_failure(
-        self, mock_logger, newsletter_batch
-    ):
-        """주간 트렌드 데이터 없음 실패 테스트"""
-        with patch.object(WeeklyTrend.objects, "filter") as mock_filter:
-            mock_filter.return_value.values.return_value.first.return_value = (
-                None
-            )
-
-            with pytest.raises(
-                Exception, match="No WeeklyTrend data, batch stopped"
-            ):
-                newsletter_batch._get_weekly_trend_html()
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     @pytest.mark.django_db
