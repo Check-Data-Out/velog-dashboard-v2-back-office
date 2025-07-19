@@ -1,6 +1,5 @@
 import sys
 import uuid
-from datetime import date, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -22,15 +21,18 @@ from insight.models import (
 from insight.schemas import Newsletter
 from modules.mail.schemas import EmailMessage
 from users.models import User
+from utils.utils import get_previous_week_range
 
 
 @pytest.fixture
 def mock_setup_django():
     """setup_django 모듈 모킹"""
     sys.modules["setup_django"] = MagicMock()
-    yield sys.modules["setup_django"]
-    # 테스트 후 정리
-    del sys.modules["setup_django"]
+    try:
+        yield sys.modules["setup_django"]
+    finally:
+        # 테스트 후 정리
+        del sys.modules["setup_django"]
 
 
 @pytest.fixture
@@ -175,9 +177,7 @@ def weekly_trend(
     db, sample_weekly_trend_insight: WeeklyTrendInsight
 ) -> WeeklyTrend:
     """주간 트렌드 생성"""
-    today = date.today()
-    week_start = today - timedelta(days=today.weekday())
-    week_end = week_start + timedelta(days=6)
+    week_start, week_end = get_previous_week_range()
 
     return WeeklyTrend.objects.create(
         week_start_date=week_start,
@@ -191,9 +191,7 @@ def user_weekly_trend(
     db, user, sample_weekly_user_trend_insight: WeeklyUserTrendInsight
 ) -> UserWeeklyTrend:
     """사용자 주간 트렌드 생성"""
-    today = date.today()
-    week_start = today - timedelta(days=today.weekday())
-    week_end = week_start + timedelta(days=6)
+    week_start, week_end = get_previous_week_range()
 
     insight_dict = sample_weekly_user_trend_insight.to_json_dict()
     insight_dict["user_weekly_reminder"] = None  # 주간 글 작성 사용자
@@ -218,9 +216,7 @@ def inactive_user_weekly_trend(
     db, user, sample_weekly_user_trend_insight: WeeklyUserTrendInsight
 ):
     """주간 글 미작성 사용자 주간 트렌드 생성"""
-    today = date.today()
-    week_start = today - timedelta(days=today.weekday())
-    week_end = week_start + timedelta(days=6)
+    week_start, week_end = get_previous_week_range()
 
     insight_dict = sample_weekly_user_trend_insight.to_json_dict()
     insight_dict["trending_summary"] = None
@@ -237,9 +233,7 @@ def inactive_user_weekly_trend(
 @pytest.fixture
 def empty_insight_weekly_trend(db):
     """빈 인사이트를 가진 주간 트렌드"""
-    today = date.today()
-    week_start = today - timedelta(days=today.weekday())
-    week_end = week_start + timedelta(days=6)
+    week_start, week_end = get_previous_week_range()
 
     return WeeklyTrend.objects.create(
         week_start_date=week_start, week_end_date=week_end, insight={}
