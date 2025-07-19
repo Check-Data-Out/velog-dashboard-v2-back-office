@@ -74,6 +74,7 @@ class WeeklyNewsletterBatch:
         """이전 뉴스레터의 성공한 메일 발송 로그 삭제"""
         try:
             deleted_count = NotiMailLog.objects.filter(
+                # 느슨한 시간 적용
                 sent_at__lt=self.before_a_week + timedelta(days=1),
                 is_success=True,
             ).delete()[0]

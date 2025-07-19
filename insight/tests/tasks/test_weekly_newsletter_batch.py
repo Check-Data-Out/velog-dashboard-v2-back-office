@@ -44,6 +44,7 @@ class TestWeeklyNewsletterBatch:
             newsletter_batch._delete_old_maillogs()
 
             mock_filter.assert_called_once_with(
+                # 느슨한 시간 적용
                 sent_at__lt=newsletter_batch.before_a_week + timedelta(days=1),
                 is_success=True,
             )
