@@ -44,6 +44,7 @@ def user(db):
         refresh_token="test-refresh-token",
         group_id=1,
         email="test@example.com",
+        username="test_user",
         is_active=True,
     )
 
@@ -194,7 +195,7 @@ def user_weekly_trend(
     week_start, week_end = get_previous_week_range()
 
     insight_dict = sample_weekly_user_trend_insight.to_json_dict()
-    insight_dict["user_weekly_reminder"] = None  # 주간 글 작성 사용자
+    insight_dict["user_weekly_reminder"] = {}  # 주간 글 작성 사용자
 
     # 사용자 인사이트는 제목을 조금 다르게 설정
     if insight_dict["trending_summary"]:
@@ -219,8 +220,9 @@ def inactive_user_weekly_trend(
     week_start, week_end = get_previous_week_range()
 
     insight_dict = sample_weekly_user_trend_insight.to_json_dict()
-    insight_dict["trending_summary"] = None
-    insight_dict["trend_analysis"] = None
+    insight_dict["trending_summary"] = []
+    insight_dict["trend_analysis"] = {}
+    insight_dict["user_weekly_stats"]["new_posts"] = 0
 
     return UserWeeklyTrend.objects.create(
         user=user,
