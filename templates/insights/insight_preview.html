@@ -1,4 +1,14 @@
 <div class="module aligned">
+    {% if user and insight.user_weekly_stats %}
+        <h2 style="margin-top: 20px;">사용자 주간 통계</h2>
+        <div style="margin-left: 15px;">
+            <p><strong>전체 게시글 수:</strong> {{ insight.user_weekly_stats.posts }}</p>
+            <p><strong>새 게시글 수:</strong> {{ insight.user_weekly_stats.new_posts }}</p>
+            <p><strong>조회수 증가:</strong> {{ insight.user_weekly_stats.views }}</p>
+            <p><strong>좋아요 증가:</strong> {{ insight.user_weekly_stats.likes }}</p>
+        </div>
+    {% endif %}
+
     {% if insight.trend_analysis %}
         <h2 style="margin-top: 10px;">트렌드 분석</h2>
         <div style="margin-left: 15px;">
@@ -28,16 +38,27 @@
 
     {% if insight.trending_summary %}
         <h2 style="margin-top: 20px;">{% if user %}작성 게시글 요약{% else %}트렌딩 요약{% endif %}</h2>
-        {% for summary in insight.trending_summary %}
+        {% for item in insight.trending_summary %}
             <div style="margin: 15px 0; padding-left: 15px; border-left: 3px solid #ddd;">
-                <h3 style="margin-bottom: 5px;">{{ forloop.counter }}. {{ summary.title }}</h3>
-                <p style="line-height: 1.5; margin-bottom: 8px;">{{ summary.summary }}</p>
-                {% if summary.key_points %}
-                    <p><strong>핵심 포인트:</strong> {{ summary.key_points|join:", " }}</p>
+                <h3 style="margin-bottom: 5px;">{{ forloop.counter }}. {{ item.title }}</h3>
+                <p style="line-height: 1.5; margin-bottom: 8px;">{{ item.summary }}</p>
+                {% if item.key_points %}
+                    <p><strong>핵심 키워드:</strong> {{ item.key_points|join:", " }}</p>
                 {% endif %}
+                    <p><strong>작성자:</strong> {{ item.username }}</p>
+                    <p><strong>URL:</strong> <a href="https://velog.io/@{{item.username}}/{{item.slug}}" target="_blank">https://velog.io/@{{item.username}}/{{item.slug}}</a></p>
+                    {% if item.thumbnail %}
+                        <p><strong>썸네일:</strong> <img src="{{item.thumbnail}}" alt="썸네일" style="width: 150px;"></p>
+                    {% endif %}
             </div>
         {% endfor %}
-    {% else %}
-        <p>요약 데이터 없음</p>
+    {% endif %}
+
+    {% if user and insight.user_weekly_reminder %}
+        <h2 style="margin-top: 20px;">리마인더</h2>
+        <div style="margin-left: 15px;">
+            <p><strong>마지막 작성 글:</strong> {{ insight.user_weekly_reminder.title }}</p>
+            <p><strong>마지막 작성일:</strong> {{ insight.user_weekly_reminder.days_ago }}일 전</p>
+        </div>
     {% endif %}
 </div>

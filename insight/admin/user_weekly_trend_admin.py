@@ -23,7 +23,7 @@ class UserWeeklyTrendAdmin(
         "created_at",
     )
     list_filter = ("is_processed", "week_start_date")
-    search_fields = ("user__email", "insight")
+    search_fields = ("user__username", "insight")
     readonly_fields = (
         "processed_at",
         "formatted_insight",
@@ -68,7 +68,7 @@ class UserWeeklyTrendAdmin(
         return format_html(
             '<a href="{}" target="_blank">{}</a>',
             user_url,
-            obj.user.email or f"사용자 {obj.user.id}",
+            obj.user.username or f"사용자 {obj.user.id}",
         )
 
     @admin.action(description="선택된 항목을 처리 완료로 표시하기")

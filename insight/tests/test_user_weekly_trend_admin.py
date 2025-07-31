@@ -29,7 +29,7 @@ class TestUserWeeklyTrendAdmin:
             )
             result = user_weekly_trend_admin.user_info(user_weekly_trend)
 
-        assert user_weekly_trend.user.email in result
+        assert user_weekly_trend.user.username in result
 
     def test_week_range(
         self, user_weekly_trend_admin, user_weekly_trend: UserWeeklyTrend
