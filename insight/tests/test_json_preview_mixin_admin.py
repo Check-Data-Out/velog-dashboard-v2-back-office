@@ -18,6 +18,12 @@ class TestJsonPreviewMixin:
         # 길이 제한으로 인해 원본보다 짧은지 확인
         assert len(preview) < len(str(weekly_trend.insight))
 
+    def test_get_json_preview_empty(self, empty_insight_weekly_trend):
+        """빈 JSON 데이터에 대한 get_json_preview 테스트"""
+        mixin = JsonPreviewMixin()
+        preview = mixin.get_json_preview(empty_insight_weekly_trend, "insight")
+        assert preview == "-"
+
     def test_formatted_insight_weekly_trend(
         self, weekly_trend: WeeklyTrend, sample_trend_analysis
     ):
@@ -49,7 +55,7 @@ class TestJsonPreviewMixin:
     def test_formatted_insight_user_weekly_trend_with_reminder(
         self, inactive_user_weekly_trend: UserWeeklyTrend
     ):
-        """UserWeeklyTrend의 formatted_insight 테스트"""
+        """주간 글 미작성 UserWeeklyTrend의 formatted_insight 테스트"""
         mixin = JsonPreviewMixin()
         result = mixin.formatted_insight(inactive_user_weekly_trend)
 
@@ -58,3 +64,9 @@ class TestJsonPreviewMixin:
         assert "트렌드 분석" not in result
         assert "핵심 키워드" not in result
         assert "작성 게시글 요약" not in result
+
+    def test_formatted_insight_empty(self, empty_insight_weekly_trend):
+        """빈 인사이트 데이터에 대한 formatted_insight 테스트"""
+        mixin = JsonPreviewMixin()
+        result = mixin.formatted_insight(empty_insight_weekly_trend)
+        assert result == "-"

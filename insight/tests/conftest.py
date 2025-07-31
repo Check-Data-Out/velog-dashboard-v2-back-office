@@ -230,3 +230,13 @@ def inactive_user_weekly_trend(
         week_end_date=week_end,
         insight=insight_dict,
     )
+
+
+@pytest.fixture
+def empty_insight_weekly_trend(db):
+    """빈 인사이트를 가진 주간 트렌드"""
+    week_start, week_end = get_previous_week_range()
+
+    return WeeklyTrend.objects.create(
+        week_start_date=week_start, week_end_date=week_end, insight={}
+    )
