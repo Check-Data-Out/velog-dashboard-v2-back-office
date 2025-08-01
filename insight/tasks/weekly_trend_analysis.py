@@ -149,6 +149,7 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
                 trending_summary=trending_items, trend_analysis=trend_analysis
             )
 
+            self.logger.info("Trend analysis completed: %s items", len(trending_items))
             return [result]  # 주간 트렌드는 하나의 결과만 생성
 
         except Exception as e:
