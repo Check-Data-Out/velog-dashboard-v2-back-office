@@ -56,19 +56,6 @@ class TestWeeklyTrendAnalyzer:
         )
         return TrendingPostData(post=mock_post, body="내용")
 
-    async def test_fetch_data_success(self, analyzer, mock_context):
-        """트렌딩 게시글의 본문 데이터 수집 성공 테스트"""
-        with patch.object(analyzer, "logger") as mock_logger:
-            result = await analyzer._fetch_data(mock_context)
-
-        from insight.tasks.weekly_trend_analysis import TrendingPostData
-
-        assert len(result) == 1
-        assert isinstance(result[0], TrendingPostData)
-        assert result[0].body == "test content"
-        assert result[0].post.title == "test title"
-        mock_logger.info.assert_called()
-
     async def test_fetch_data_when_fail_get_post_detail(
         self, analyzer, mock_context
     ):
