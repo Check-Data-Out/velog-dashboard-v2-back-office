@@ -76,10 +76,8 @@ class TestUserWeeklyAnalyzer:
         self, mock_stats, mock_posts, analyzer, mock_context
     ):
         """사용자 주간 전체 통계 계산 성공 테스트"""
-        mock_posts.filter.side_effect = [
-            MagicMock(values_list=MagicMock(return_value=[1, 2])),
-            MagicMock(count=MagicMock(return_value=1)),
-        ]
+        mock_posts.filter.return_value.values_list.return_value = [1, 2]
+        mock_posts.filter.return_value.count.return_value = 1
         mock_stats.filter.return_value.values.return_value = [
             {
                 "post_id": 1,
@@ -110,10 +108,8 @@ class TestUserWeeklyAnalyzer:
         self, mock_stats, mock_posts, analyzer, mock_context
     ):
         """통계가 누락된 경우, 조회수와 좋아요 수가 0으로 처리되는지 테스트"""
-        mock_posts.filter.side_effect = [
-            MagicMock(values_list=MagicMock(return_value=[1])),
-            MagicMock(count=MagicMock(return_value=1)),
-        ]
+        mock_posts.filter.return_value.values_list.return_value = [1]
+        mock_posts.filter.return_value.count.return_value = 1
         mock_stats.filter.return_value.values.return_value = []
 
         stats = await analyzer._calculate_user_weekly_total_stats(
@@ -128,10 +124,8 @@ class TestUserWeeklyAnalyzer:
         self, mock_stats, mock_posts, analyzer, mock_context
     ):
         """조회수나 좋아요 수가 감소한 경우, 0으로 처리하여 음수 결과를 방지하는지 테스트"""
-        mock_posts.filter.side_effect = [
-            MagicMock(values_list=MagicMock(return_value=[1])),
-            MagicMock(count=MagicMock(return_value=1)),
-        ]
+        mock_posts.filter.return_value.values_list.return_value = [1]
+        mock_posts.filter.return_value.count.return_value = 1
         mock_stats.filter.return_value.values.return_value = [
             {
                 "post_id": 1,
