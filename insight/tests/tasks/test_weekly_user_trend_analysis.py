@@ -70,6 +70,24 @@ class TestUserWeeklyAnalyzer:
             assert is_valid is False
             mock_logger.warning.assert_called_once()
 
+    async def test_token_expired_error_by_today_stats_missing(
+        self, analyzer, mock_context
+    ):
+        """오늘자 통계가 없을 경우 TokenExpiredError 발생 여부 테스트"""
+        with (
+            patch("insight.tasks.weekly_user_trend_analysis.Post.objects") as mock_posts,
+            patch("insight.tasks.weekly_user_trend_analysis.PostDailyStatistics.objects") as mock_stats
+        ):
+            mock_posts.filter.return_value.values_list.return_value = [123]
+            mock_stats.filter.return_value.count.return_value = 0
+
+            with patch.object(analyzer, "logger") as mock_logger:
+                is_valid = await analyzer._check_user_token_validity(123, mock_context)
+                assert is_valid is False
+                mock_logger.warning.assert_called_with(
+                    "User %s token expired - no today stats", 123
+                )
+
     @patch("insight.tasks.weekly_user_trend_analysis.Post.objects")
     @patch("insight.tasks.weekly_user_trend_analysis.PostDailyStatistics.objects")
     async def test_calculate_user_weekly_total_stats_success(
