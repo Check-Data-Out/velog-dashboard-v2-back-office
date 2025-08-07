@@ -1,74 +1,268 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Velog Dashboard Weekly</title>
-</head>
-<body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: Arial, sans-serif;">
-    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5;">
-        <tr>
-            <td align="center" style="padding: 20px;">
-                <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);">
-                    <tr>
-                        <td style="padding: 30px;">
-                            <div class="header" style="text-align: center; margin-bottom: 20px;">
-                                <h1 style="text-decoration: underline; margin-bottom: 0; font-size: 32px; color: #333333;">
-                                    <span style="color: #63e6be;">Velog Dashboard</span> Weekly
-                                </h1>
-                                <p style="font-size: 14px; color: #666;">
-                                    {{s_date}} ~ {{e_date}} 사이의 트렌드를 전달해드려요.
-                                </p>
-                            </div>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Velog Dashboard Weekly Report</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap");
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: "Noto Sans KR", sans-serif;
+        background-color: #ebebeb;
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body
+    style="
+      margin: 0;
+      padding: 0;
+      background-color: #ebebeb;
+      font-family: 'Noto Sans KR', sans-serif;
+    "
+  >
+    <table
+      width="100%"
+      cellpadding="0"
+      cellspacing="0"
+      style="background-color: #ebebeb"
+    >
+      <tr>
+        <td align="center" style="padding: 30px 20px">
+          <table
+            width="100%"
+            cellpadding="0"
+            cellspacing="0"
+            style="
+              max-width: 600px;
+              background-color: #ffffff;
+              border-radius: 8px;
+              box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            "
+          >
+            <tr>
+              <td style="padding: 50px 25px">
+                <!-- Header -->
+                <div
+                  class="header"
+                  style="text-align: center; margin-bottom: 30px"
+                >
+                  <div style="margin-bottom: 8px">
+                    <div>
+                      <h2
+                        style="
+                          font-size: 24px;
+                          font-weight: 900;
+                          color: #acacac;
+                          margin: 0;
+                          letter-spacing: 0;
+                        "
+                      >
+                        Velog Dashboard
+                      </h2>
+                    </div>
+                    <h1
+                      style="
+                        font-size: 32px;
+                        font-weight: 900;
+                        color: #000000;
+                        margin: 0;
+                        letter-spacing: 0;
+                      "
+                    >
+                      Weekly Report
+                    </h1>
+                  </div>
+                  <p
+                    style="
+                      font-size: 12px;
+                      font-weight: 400;
+                      color: #acacac;
+                      margin: 0;
+                      letter-spacing: 0;
+                    "
+                  >
+                    {{s_date}} ~ {{e_date}} 사이의 트렌드를 전달해드려요
+                  </p>
+                </div>
 
-                            <div style="text-align: center; margin: 40px 0;">
-                                <a 
-                                    href="https://velog-dashboard.kro.kr/?utm_source=email&utm_medium=weekly_analysis&utm_campaign=dashboard_cta" 
-                                    style="display: inline-block; background: linear-gradient(135deg, #20c997 0%, #17a2b8 100%); color: white; text-decoration: none; padding: 16px 32px; border-radius: 50px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 15px rgba(32, 201, 151, 0.3); transition: all 0.3s ease; border: none;">
-                                    📊 velog dashboard에서 전체 통계 체크하기!
-                                </a>
-                            </div>
+                <!-- CTA Button -->
+                <div style="text-align: center; margin: 30px 0">
+                  <a
+                    href="https://velog-dashboard.kro.kr/?utm_source=email&utm_medium=weekly_analysis&utm_campaign=dashboard_cta"
+                    style="
+                      display: inline-block;
+                      background: linear-gradient(
+                        90deg,
+                        #63e6be 0%,
+                        #7abbec 100%
+                      );
+                      color: #ffffff;
+                      text-decoration: none;
+                      padding: 16px 32px;
+                      border-radius: 100px;
+                      font-weight: 700;
+                      font-size: 12px;
+                      letter-spacing: 0;
+                      line-height: 14.4px;
+                    "
+                  >
+                    Velog Dashboard에서 전체 통계 체크하기!
+                  </a>
+                </div>
 
-                            <div class="insights" style="color: #333333; font-size: 14px; line-height: 1.6;">
-                                {% if is_expired_token_user %}
-                                    <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 6px; margin: 30px 0;">
-                                        <p style="font-size: 16px; font-weight: bold; color: #574202; margin: 0 0 10px 0;">
-                                            🚨 잠깐, 토큰이 만료 되신 것 같아요!
-                                        </p>
-                                        <p style="color: #51441b; margin: 0;">
-                                            토큰이 만료되면 더 이상 통계를 수집할 수 없어요. 토큰을 재발급 받으시려면 
-                                            <a href="https://velog-dashboard.kro.kr/?utm_source=email&utm_medium=weekly_analysis&utm_campaign=token_expire" style="color: #63e6be; font-weight: bold;">여기</a>에서 재로그인 해주세요.
-                                        </p>
-                                    </div>
-                                {% endif %}
+                <div
+                  class="insights"
+                  style="color: #333333; font-size: 14px; line-height: 1.6"
+                >
+                  {% endif %} {% if weekly_trend_html %} {{weekly_trend_html}}
+                  {% endif %} {% if not is_expired_token_user and
+                  user_weekly_trend_html %} {{user_weekly_trend_html}} {% endif
+                  %} {% if is_expired_token_user %}
+                  <!-- Token Expired Warning -->
+                  <div style="margin-bottom: 40px">
+                    <h2
+                      style="
+                        font-size: 24px;
+                        font-weight: 900;
+                        color: #000000;
+                        margin-bottom: 20px;
+                        letter-spacing: 0;
+                      "
+                    >
+                      {% if user.username %} {{user.username}}님의 활동 리포트
+                      {% else %} 활동 리포트 {% endif %}
+                    </h2>
+                    <div
+                      style="
+                        background-color: #fffbd7;
+                        border-radius: 8px;
+                        padding: 20px;
+                        margin: 20px 0;
+                      "
+                    >
+                      <p
+                        style="
+                          font-size: 16px;
+                          font-weight: 700;
+                          color: #000000;
+                          margin: 0 0 10px 0;
+                          line-height: 20px;
+                        "
+                      >
+                        🚨 잠시만요, 토큰이 만료된 것 같아요!
+                      </p>
+                      <p
+                        style="
+                          color: #999999;
+                          margin: 0;
+                          font-size: 13px;
+                          font-weight: 500;
+                          line-height: 20px;
+                          letter-spacing: 0;
+                        "
+                      >
+                        토큰이 만료되어 정상적으로 통계를 수집할 수 없었어요.<br />
+                        토큰을 재발급받으시려면
+                        <a
+                          href="https://velog-dashboard.kro.kr/?utm_source=email&utm_medium=weekly_analysis&utm_campaign=token_expire"
+                          style="
+                            color: #999999;
+                            font-weight: bold;
+                            text-decoration: underline;
+                          "
+                          >여기</a
+                        >에서 다시 로그인해주세요.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </table>
 
-                                {% if weekly_trend_html %}
-                                    {{weekly_trend_html}}
-                                {% endif %}
-                                
-                                {% if not is_expired_token_user and user_weekly_trend_html %}
-                                    {{user_weekly_trend_html}}
-                                {% endif %}
-                            </div>
+          <!-- Footer - Outside content box -->
+          <div
+            class="footer"
+            style="
+              margin-top: 20px;
+              text-align: center;
+              width: 100%;
+              max-width: 600px;
+            "
+          >
+            <div
+              style="
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin-bottom: 10px;
+                gap: 10px;
+              "
+            >
+              <svg
+                width="20"
+                height="20"
+                style="border-radius: 2px"
+                viewBox="0 0 20 20"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <rect width="20" height="20" rx="0.46875" fill="#1EC996" />
+                <path
+                  d="M4.52499 5.81977L5.63155 12.4487H5.70632L9.36355 5.81977H10.1646L5.89451 13.4137H5.07206L3.7239 5.81977H4.52499ZM12.2818 13.4137H9.55815L11.0191 5.81977H13.7749C16.1034 5.81977 17.2495 7.24625 16.7955 9.60623C16.3374 11.9872 14.6424 13.4137 12.2818 13.4137ZM11.4206 12.0606H12.4781C13.9521 12.0606 14.8664 11.3054 15.1933 9.60623C15.5182 7.91753 14.8924 7.17283 13.4291 7.17283H12.361L11.4206 12.0606Z"
+                  fill="white"
+                />
+              </svg>
 
-                            <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-
-                            <div class="footer" style="margin-top: 20px; text-align: center;">
-                                <a href="https://velog-dashboard.kro.kr/main?utm_source=email&utm_medium=weekly_analysis&utm_campaign=dashboard_cta" style="color: #63e6be; font-size: 12px; margin: 0 5px; text-decoration: none;">
-                                    대시보드 보러가기
-                                </a>
-                                <a href="https://nuung.notion.site/terms-of-service" style="color: #666; font-size: 12px; margin: 0 5px; text-decoration: none;">
-                                    서비스 이용약관
-                                </a>
-                                <a href="https://nuung.notion.site/privacy-policy" style="color: #666; font-size: 12px; margin: 0 5px; text-decoration: none;">
-                                    개인정보처리방침
-                                </a>
-                            </div>
-                        </td>
-                    </tr>
-                </table>
-            </td>
-        </tr>
+              <span
+                style="
+                  font-size: 15px;
+                  font-weight: 500;
+                  color: #4d4d4d;
+                  letter-spacing: 0;
+                  line-height: 18px;
+                "
+                >Velog Dashboard</span
+              >
+            </div>
+            <p
+              style="
+                font-size: 12px;
+                font-weight: 300;
+                color: #4d4d4d;
+                margin: 0;
+                letter-spacing: 0;
+                line-height: 14.4px;
+              "
+            >
+              <a
+                href="https://velog-dashboard.kro.kr/main?utm_source=email&utm_medium=weekly_analysis&utm_campaign=dashboard_cta"
+                style="color: #4d4d4d; text-decoration: underline"
+                >대시보드 바로가기</a
+              >
+              &nbsp;&nbsp;|&nbsp;&nbsp;
+              <a
+                href="https://nuung.notion.site/terms-of-service"
+                style="color: #4d4d4d; text-decoration: underline"
+                >서비스 이용약관</a
+              >
+              &nbsp;&nbsp;|&nbsp;&nbsp;
+              <a
+                href="https://nuung.notion.site/privacy-policy"
+                style="color: #4d4d4d; text-decoration: underline"
+                >개인정보처리방침</a
+              >
+            </p>
+          </div>
+        </td>
+      </tr>
     </table>
-</body>
+  </body>
 </html>
