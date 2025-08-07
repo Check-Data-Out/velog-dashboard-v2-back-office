@@ -510,23 +510,34 @@ class WeeklyNewsletterBatch:
                 if (total_processed + total_failed) > 0
                 else 0
             )
+            elapsed_time = (get_local_now() - start_time).total_seconds()
 
             if total_processed > total_failed:
                 # 과반수 이상 성공시에만 processed로 마킹
                 self._update_weekly_trend_result()
                 logger.info(
-                    f"Newsletter batch process completed successfully in {(get_local_now() - start_time).total_seconds()} seconds. "
+                    f"Newsletter batch process completed successfully in {elapsed_time} seconds. "
                     f"Processed: {total_processed}, Failed: {total_failed}, Success Rate: {success_rate:.2%}"
                 )
             else:
                 logger.warning(
-                    f"Newsletter batch process failed to meet success criteria in {(get_local_now() - start_time).total_seconds()} seconds. "
+                    f"Newsletter batch process failed to meet success criteria in {elapsed_time} seconds. "
                     f"Processed: {total_processed}, Failed: {total_failed}, Success Rate: {success_rate:.2%}. "
                     f"WeeklyTrend remains unprocessed due to low success rate (< 50%)"
                 )
 
+            # 결과 파일 저장 (for slack notification)
+            with open("newsletter_batch_result.txt", "w") as f:
+                f.write(
+                    f"✅ 뉴스레터 발송 완료: 성공 {total_processed}명, 실패 {total_failed}명\\n"
+                )
+                f.write(f"   - 소요 시간: {elapsed_time}초\\n")
+                f.write(f"   - 성공률: {success_rate:.2%}\\n")
+
         except Exception as e:
             logger.error(f"Newsletter batch process failed: {e}")
+            with open("newsletter_batch_result.txt", "w") as f:
+                f.write(f"❌ 뉴스레터 발송 실패: {e}")
             raise
 
 
