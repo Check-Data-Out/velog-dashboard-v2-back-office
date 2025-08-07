@@ -195,9 +195,17 @@ async def main():
     result = await analyzer.run()
 
     if result.success:
-        print(f"✅ 주간 트렌드 분석 완료: {result.metadata}")
+        try:
+            with open("weekly_analysis_result.txt", "w") as f:
+                f.write(f"✅ 주간 트렌드 분석 완료: {result.metadata}\\n")
+        except Exception as e:
+            print(f"결과 파일 저장 실패: {e}")
     else:
-        print(f"❌ 주간 트렌드 분석 실패: {result.error}")
+        try:
+            with open("weekly_analysis_result.txt", "w") as f:
+                f.write(f"❌ 주간 트렌드 분석 실패: {result.error}\\n")
+        except Exception as e:
+            print(f"결과 파일 저장 실패: {e}")
         return 1
 
     return 0

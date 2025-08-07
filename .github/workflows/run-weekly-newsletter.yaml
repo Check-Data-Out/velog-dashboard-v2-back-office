@@ -71,7 +71,33 @@ jobs:
 
       # KST 시간을 GitHub Actions 환경 변수에 세팅
       - name: Get Current KST Time
+        if: always()
         run: echo "KST_TIME=$(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
+
+      # 결과 파일 읽기
+      - name: Read Result Output
+        if: always()
+        id: read-result
+        run: |
+          if [ -f newsletter_batch_result.txt ]; then
+            RESULT=$(cat newsletter_batch_result.txt)
+            echo "RESULT<<EOF" >> $GITHUB_OUTPUT
+            echo "$RESULT" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "RESULT=No output file found" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Send Slack Notification on Success
+        if: success()
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "*Weekly Newsletter Batch*\n\n✅ *Status:* Success\n📅 *Timestamp (KST):* ${{ env.KST_TIME }}\n📝 *Result:* \n```${{ steps.read-result.outputs.RESULT }}```\n🔗 *Workflow URL:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow>"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
       - name: Send Slack Notification on Failure
         if: failure()
@@ -79,7 +105,7 @@ jobs:
         with:
           payload: |
             {
-              "text": "*Weekly Newsletter Batch*\n\n❌ *Status:* Failure\n📅 *Timestamp (KST):* ${{ env.KST_TIME }}\n🔗 *Workflow URL:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow>"
+              "text": "*Weekly Newsletter Batch*\n\n❌ *Status:* Failure\n📅 *Timestamp (KST):* ${{ env.KST_TIME }}\n📝 *Result:* \n```${{ steps.read-result.outputs.RESULT }}```\n🔗 *Workflow URL:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow>"
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
