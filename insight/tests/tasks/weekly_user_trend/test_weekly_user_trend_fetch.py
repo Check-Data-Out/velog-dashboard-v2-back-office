@@ -32,6 +32,7 @@ class TestWeeklyUserTrendFetch:
     ):
         """게시글이 없는 경우에도 토큰을 유효하다고 판단하는지 테스트"""
         mock_posts.filter.return_value.values_list.return_value = []
+
         is_valid = await analyzer_user._check_user_token_validity(
             1, mock_context
         )
@@ -57,15 +58,18 @@ class TestWeeklyUserTrendFetch:
     @patch("insight.tasks.weekly_user_trend_analysis.Post.objects")
     @patch("insight.tasks.weekly_user_trend_analysis.PostDailyStatistics.objects")
     async def test_fetch_data_handles_token_expired_error(
-        self, mock_stats, mock_posts, mock_users, analyzer_user, mock_context
+        self,
+        mock_stats,
+        mock_posts,
+        mock_users,
+        analyzer_user,
+        mock_context,
     ):
         """TokenExpiredError 발생 시 사용자 ID를 expired_token_users에 추가하는지 테스트"""
         mock_users.return_value.exclude.return_value.values.return_value = [
             {"id": 1, "username": "tester"}
         ]
-
-        # 게시글은 있으나 오늘자 통계 없음
-        mock_posts.filter.return_value.values_list.return_value = [100]
+        mock_posts.filter.return_value.values_list.return_value = [123]
         mock_stats.filter.return_value.count.return_value = 0
 
         with patch.object(analyzer_user, "logger") as mock_logger:

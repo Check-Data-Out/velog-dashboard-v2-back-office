@@ -87,33 +87,24 @@ class TestWeeklyUserTrendAnalyze:
 
     @patch("insight.tasks.weekly_user_trend_analysis.analyze_user_posts")
     async def test_analyze_user_posts_success(
-        self, mock_analyze, analyzer_user
+        self, mock_analyze, analyzer_user, sample_trend_analysis, sample_trending_items
     ):
         """사용자 게시글 분석 성공 테스트"""
         mock_post = MagicMock(
             title="test", thumbnail="", url_slug="slug", body="내용"
         )
         mock_analyze.return_value = {
-            "trending_summary": [
-                {"title": "test", "summary": "요약", "key_points": ["a", "b"]}
-            ],
-            "trend_analysis": {
-                "hot_keywords": ["python"],
-                "title_trends": "트렌드",
-                "content_trends": "내용트렌드",
-                "insights": "인사이트",
-            },
+            "trending_summary": [sample_trending_items[0].to_dict()],
+            "trend_analysis": sample_trend_analysis.to_dict(),
         }
 
-        (
-            trending_items,
-            trend_analysis,
-        ) = await analyzer_user._analyze_user_posts_with_llm(
+        trending_items, trend_analysis = await analyzer_user._analyze_user_posts_with_llm(
             [mock_post], "user"
         )
 
         assert len(trending_items) == 1
-        assert trend_analysis.hot_keywords == ["python"]
+        assert trend_analysis is not None
+        assert trend_analysis.hot_keywords == sample_trend_analysis.hot_keywords
 
     @patch(
         "insight.tasks.weekly_user_trend_analysis.analyze_user_posts",
