@@ -527,17 +527,24 @@ class WeeklyNewsletterBatch:
                 )
 
             # 결과 파일 저장 (for slack notification)
-            with open("newsletter_batch_result.txt", "w") as f:
-                f.write(
-                    f"✅ 뉴스레터 발송 완료: 성공 {total_processed}명, 실패 {total_failed}명\\n"
-                )
-                f.write(f"   - 소요 시간: {elapsed_time}초\\n")
-                f.write(f"   - 성공률: {success_rate:.2%}\\n")
+            try:
+                with open("newsletter_batch_result.txt", "w") as f:
+                    f.write(
+                        f"✅ 뉴스레터 발송 완료: 성공 {total_processed}명, 실패 {total_failed}명\\n"
+                    )
+                    f.write(f"   - 소요 시간: {elapsed_time}초\\n")
+                    f.write(f"   - 성공률: {success_rate:.2%}\\n")
+            except Exception as e:
+                logger.error(f"Failed to save newsletter batch result: {e}")
 
         except Exception as e:
             logger.error(f"Newsletter batch process failed: {e}")
-            with open("newsletter_batch_result.txt", "w") as f:
-                f.write(f"❌ 뉴스레터 발송 실패: {e}")
+            try:
+                with open("newsletter_batch_result.txt", "w") as f:
+                    f.write(f"❌ 뉴스레터 발송 실패: {e}")
+            except Exception as e:
+                logger.error(f"Failed to save newsletter batch result: {e}")
+
             raise
 
 
