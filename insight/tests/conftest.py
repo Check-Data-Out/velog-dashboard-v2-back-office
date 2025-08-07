@@ -275,6 +275,6 @@ def mock_context(mock_post, mock_post_detail):
     return mock_context
 
 @pytest.fixture
-def trending_post_data(mock_post):
+def trending_post_data(mock_post, mock_post_detail):
     from insight.tasks.weekly_trend_analysis import TrendingPostData
-    return TrendingPostData(post=mock_post, body="내용")
+    return TrendingPostData(post=mock_post, body=mock_post_detail.body)
