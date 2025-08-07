@@ -243,22 +243,29 @@ def empty_insight_weekly_trend(db):
     )
 
 @pytest.fixture
-def mock_context():
-    mock_user = MagicMock(username="tester")
-    mock_post = MagicMock(
+def mock_post():
+    """테스트용 게시글 목록 응답 (get_trending_posts 용)"""
+    return MagicMock(
         id="abc123",
         title="test title",
         views=100,
         likes=10,
-        user=mock_user,
+        user=MagicMock(username="tester"),
         thumbnail="thumbnail",
         url_slug="test",
     )
-    mock_detail = MagicMock(body="test content")
 
+@pytest.fixture
+def mock_post_detail():
+    """테스트용 게시글 본문 응답 (get_post 용)"""
+    return MagicMock(body="test content")
+
+@pytest.fixture
+def mock_context(mock_post, mock_post_detail):
+    """VelogClient 및 날짜 mock을 포함한 컨텍스트"""
     mock_velog_client = AsyncMock()
     mock_velog_client.get_trending_posts.return_value = [mock_post]
-    mock_velog_client.get_post.return_value = mock_detail
+    mock_velog_client.get_post.return_value = mock_post_detail
 
     mock_context = MagicMock()
     mock_context.velog_client = mock_velog_client
@@ -267,16 +274,7 @@ def mock_context():
     mock_context.week_end = datetime(2025, 7, 27)
     return mock_context
 
-
 @pytest.fixture
-def trending_post_data():
+def trending_post_data(mock_post):
     from insight.tasks.weekly_trend_analysis import TrendingPostData
-    mock_post = MagicMock(
-        title="test",
-        views=1,
-        likes=2,
-        user=MagicMock(username="tester"),
-        thumbnail="thumbnail",
-        url_slug="slug",
-    )
     return TrendingPostData(post=mock_post, body="내용")
