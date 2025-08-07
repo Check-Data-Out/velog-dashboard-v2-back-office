@@ -520,16 +520,16 @@ async def main():
         successful = metadata.get("successful_users", 0)
         expired = metadata.get("expired_token_users", 0)
 
-        print("✅ 사용자 주간 분석 완료")
-        print(f"   - 성공: {successful}명")
-        print(f"   - 토큰 만료: {expired}명")
-
-        if expired > 0:
-            print(
-                f"   ⚠️  토큰 만료 사용자: {metadata.get('expired_user_ids', [])}"
+        with open("weekly_analysis_result.txt", "a") as f:
+            f.write(
+                f"✅ 사용자 주간 분석 완료: 성공 {successful}명, 토큰 만료 {expired}명\\n"
+            )
+            f.write(
+                f"   - 토큰 만료 사용자: {metadata.get('expired_user_ids', [])}"
             )
     else:
-        print(f"❌ 사용자 주간 분석 실패: {result.error}")
+        with open("weekly_analysis_result.txt", "a") as f:
+            f.write(f"❌ 사용자 주간 분석 실패: {result.error}")
         return 1
 
     return 0
