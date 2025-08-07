@@ -243,16 +243,6 @@ def empty_insight_weekly_trend(db):
     )
 
 @pytest.fixture
-def analyzer():
-    from insight.tasks.weekly_trend_analysis import WeeklyTrendAnalyzer
-    return WeeklyTrendAnalyzer(trending_limit=1)
-
-@pytest.fixture
-def analyzer_user():
-    from insight.tasks.weekly_user_trend_analysis import UserWeeklyAnalyzer
-    return UserWeeklyAnalyzer()
-
-@pytest.fixture
 def mock_context():
     mock_user = MagicMock(username="tester")
     mock_post = MagicMock(
