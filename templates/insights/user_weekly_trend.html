@@ -96,15 +96,19 @@
     </h3>
     {% for item in insight.trending_summary %}
       <div style="box-sizing: border-box; margin: 20px 0; padding: 20px; border-radius: 8px; background-color: #f7f7f7;">
-        <div style="box-sizing: border-box; display: flex;">
-          {% if item.thumbnail %}
-            <img
-              src="{{item.thumbnail}}"
-              alt="{{item.title}}"
-              style="box-sizing: border-box; width: 100px; height: 100px; border-radius: 6.4px; object-fit: cover; flex-shrink: 0; margin-right: 20px;"
-            />
-          {% endif %}
-          <div style="box-sizing: border-box; flex: 1; min-width: 0">
+        <table style="box-sizing: border-box; width: 100%; border-collapse: collapse; border-spacing: 0; margin: 0; padding: 0;">
+          <tr style="box-sizing: border-box;">
+            {% if item.thumbnail %}
+            <td style="box-sizing: border-box; width: 100px; vertical-align: top; padding: 0; margin: 0;">
+              <img
+                src="{{item.thumbnail}}"
+                alt="{{item.title}}"
+                style="box-sizing: border-box; width: 100px; height: 100px; border-radius: 6.4px; object-fit: cover; display: block; margin: 0;"
+              />
+            </td>
+            <td style="box-sizing: border-box; width: 20px; padding: 0; margin: 0;"></td>
+            {% endif %}
+            <td style="box-sizing: border-box; vertical-align: top; padding: 0; margin: 0;">
             <h4 style="box-sizing: border-box; margin: 0 0 6px 0; font-size: 16px; font-weight: 700; line-height: 19.2px; color: #000000; letter-spacing: 0;">
               <a
                 href="https://velog.io/@{{item.username}}/{{item.slug}}?utm_source=velog_dashboard_email&utm_medium=weekly_analysis" 
@@ -131,8 +135,9 @@
             <p style="box-sizing: border-box; margin: 0; font-size: 13px; font-weight: 500; color: #999999; line-height: 15.6px; letter-spacing: 0;">
               {{ item.summary }}
             </p>
-          </div>
-        </div>
+            </td>
+          </tr>
+        </table>
       </div>
     {% endfor %}
   {% endif %}
