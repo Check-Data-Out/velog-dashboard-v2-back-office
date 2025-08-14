@@ -117,7 +117,7 @@
             </h4>
             {% if item.username and item.key_points %}
               <p style="box-sizing: border-box; margin: 0 0 6px 0; font-size: 13px; font-weight: 700; color: #acacac; letter-spacing: 0; line-height: 14.4px;">
-                @{{item.username}} | {{ item.key_points|join:", " }}
+                @{{item.username}} | 📌 {{ item.key_points|join:", " }}
               </p>
             {% elif item.username %}
               <p style="box-sizing: border-box; margin: 0 0 6px 0; font-size: 13px; font-weight: 700; color: #acacac; letter-spacing: 0; line-height: 14.4px;">
