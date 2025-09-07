@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "velog-dashboard-v2-back-office"
 version = "0.1.0"
-description = ""
+description = "Velog Dashboard Project, velog의 모든 게시글, 통계 데이터를 한 눈에 편하게 확인할 수 있는 대시보드입니다."
 authors = ["BDlhj <akk808@snu.ac.kr>"]
 readme = "README.md"
 
@@ -19,7 +19,7 @@ uvicorn = "^0.34.0"
 gunicorn = "^23.0.0"
 async-timeout = "^5.0.1"
 sentry-sdk = "^2.24.1"
-macwinua = "^0.1.2"
+macwinua = "^0.5.250826"
 openai = "^1.78.1"
 boto3 = "^1.38.30"
 botocore = "^1.38.30"
