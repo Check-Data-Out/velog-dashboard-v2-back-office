@@ -11,6 +11,7 @@ Velog-Dashboard v2의 데이터, 스크래핑, 백오피스용 레포지토리�
 
 - `pyenv` 와 `poetry` 가 설치되었다고 가정하고 진행합니다.
 - `poetry` 대신 `venv` 로 대체해서 사용가능합니다. (`requirements.txt` 활용)
+- 참고로 `poetry` 기반으로 `poetry export -f requirements.txt --without-hashes -o requirements.txt` 통해 배포 require를 만들어야 합니다.
 
 ```bash
 # 프로젝트 Clone 및 이동
