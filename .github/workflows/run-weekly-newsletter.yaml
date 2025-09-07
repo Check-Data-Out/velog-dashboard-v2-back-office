@@ -65,6 +65,8 @@ jobs:
       - name: Run Weekly Newsletter Batch Script
         id: weekly-newsletter-main
         timeout-minutes: 48
+        env:
+          DJANGO_SETTINGS_MODULE: backoffice.settings.prod
         run: |
           set -e
           poetry run python ./insight/tasks/weekly_newsletter_batch.py
