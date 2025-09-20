@@ -2,8 +2,9 @@ name: Weekly Newsletter Batch
 
 on:
   workflow_dispatch:
-  # schedule:
-  #   - cron: "*/50 * * * *"
+  schedule:
+    # 매주 월요일 오전 9시 30분 실행
+    - cron: "30 9 * * 1"
 
 jobs:
   weekly-newsletter-batch:

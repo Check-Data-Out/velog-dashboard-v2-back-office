@@ -2,8 +2,9 @@ name: Weekly Analysis Batch
 
 on:
   workflow_dispatch:
-  # schedule:
-  #   - cron: "*/50 * * * *"
+  schedule:
+    # 매주 월요일 오전 7시 실행
+    - cron: "0 7 * * 1"
 
 jobs:
   weekly-trend-analysis-batch:
