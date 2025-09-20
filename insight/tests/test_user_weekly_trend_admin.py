@@ -1,4 +1,5 @@
 # poetry run pytest insight/tests/test_user_weekly_trend_admin.py -v
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -332,10 +333,8 @@ class TestUserWeeklyTrendAdmin:
         """mark_as_processed 메소드 테스트 (여러 항목)"""
         # 다른 주차로 생성하여 unique constraint 회피
         other_week_start, other_week_end = get_previous_week_range()
-        other_week_start = other_week_start.replace(
-            day=other_week_start.day + 7
-        )
-        other_week_end = other_week_end.replace(day=other_week_end.day + 7)
+        other_week_start = other_week_start + timedelta(days=7)
+        other_week_end = other_week_end + timedelta(days=7)
 
         user_weekly_trend_2 = UserWeeklyTrend.objects.create(
             user=user,

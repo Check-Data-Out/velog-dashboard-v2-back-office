@@ -3,8 +3,8 @@ name: Weekly Newsletter Batch
 on:
   workflow_dispatch:
   schedule:
-    # 매주 월요일 오전 9시 30분 실행
-    - cron: "30 9 * * 1"
+    # 매주 월요일 오전 7시(KST, UTC+9) 실행 -> UTC 기준 일요일 22:00
+    - cron: "0 22 * * 0"
 
 jobs:
   weekly-newsletter-batch:
@@ -90,7 +90,7 @@ jobs:
           else
             echo "RESULT=No output file found" >> $GITHUB_OUTPUT
           fi
-      
+
       - name: Send Slack Notification on Success
         if: success()
         uses: slackapi/slack-github-action@v1.24.0

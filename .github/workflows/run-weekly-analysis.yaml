@@ -3,8 +3,8 @@ name: Weekly Analysis Batch
 on:
   workflow_dispatch:
   schedule:
-    # 매주 월요일 오전 7시 실행
-    - cron: "0 7 * * 1"
+    # 매주 월요일 오전 9시 30분(KST, UTC+9) 실행 -> UTC 기준 00:30 월요일
+    - cron: "30 0 * * 1"
 
 jobs:
   weekly-trend-analysis-batch:
@@ -94,7 +94,7 @@ jobs:
           else
             echo "RESULT=No output file found" >> $GITHUB_OUTPUT
           fi
-    
+
       - name: Send Slack Notification on Success
         if: success()
         uses: slackapi/slack-github-action@v1.24.0
