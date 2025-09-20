@@ -1,7 +1,7 @@
 import sys
 import uuid
 from datetime import datetime
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from django.conf import settings
@@ -63,6 +63,7 @@ def weekly_trend_admin(admin_site):
 
 @pytest.fixture
 def user_weekly_trend_admin(admin_site):
+    """UserWeeklyTrendAdmin 인스턴스"""
     return UserWeeklyTrendAdmin(UserWeeklyTrend, admin_site)
 
 
@@ -242,6 +243,7 @@ def empty_insight_weekly_trend(db):
         week_start_date=week_start, week_end_date=week_end, insight={}
     )
 
+
 @pytest.fixture
 def mock_post():
     """테스트용 게시글 목록 응답 (get_trending_posts 용)"""
@@ -255,10 +257,12 @@ def mock_post():
         url_slug="test",
     )
 
+
 @pytest.fixture
 def mock_post_detail():
     """테스트용 게시글 본문 응답 (get_post 용)"""
     return MagicMock(body="test content")
+
 
 @pytest.fixture
 def mock_context(mock_post, mock_post_detail):
@@ -274,7 +278,9 @@ def mock_context(mock_post, mock_post_detail):
     mock_context.week_end = datetime(2025, 7, 27)
     return mock_context
 
+
 @pytest.fixture
 def trending_post_data(mock_post, mock_post_detail):
     from insight.tasks.weekly_trend_analysis import TrendingPostData
+
     return TrendingPostData(post=mock_post, body=mock_post_detail.body)
