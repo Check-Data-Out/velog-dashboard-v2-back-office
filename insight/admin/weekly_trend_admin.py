@@ -1,15 +1,12 @@
-import json
 from html import escape
 
 from django.contrib import admin
-from django.db.models import QuerySet
-from django.http import HttpRequest
 from django.template.loader import render_to_string
 from django.utils.safestring import mark_safe
 
 from insight.admin.base_admin import BaseTrendAdminMixin
 from insight.models import WeeklyTrend, WeeklyTrendInsight
-from utils.utils import from_dict, get_local_now
+from utils.utils import from_dict
 
 
 @admin.register(WeeklyTrend)
@@ -128,21 +125,3 @@ class WeeklyTrendAdmin(admin.ModelAdmin, BaseTrendAdminMixin):
             return mark_safe(style + iframe)
         except Exception as e:
             return f"Error rendering preview: {e}"
-
-    @admin.display(description="Insight JSON")
-    def formatted_insight_json(self, obj: WeeklyTrend):
-        if not obj.insight:
-            return "No data"
-        json_str = json.dumps(obj.insight, indent=2, ensure_ascii=False)
-        return mark_safe(f"<pre><code>{escape(json_str)}</code></pre>")
-
-    @admin.action(description="선택된 항목을 처리 완료로 표시하기")
-    def mark_as_processed(
-        self, request: HttpRequest, queryset: QuerySet[WeeklyTrend]
-    ):
-        """선택된 항목을 처리 완료로 표시"""
-        queryset.update(is_processed=True, processed_at=get_local_now())
-        self.message_user(
-            request,
-            f"{queryset.count()}개의 트렌드가 처리 완료로 표시되었습니다.",
-        )

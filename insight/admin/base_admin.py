@@ -1,12 +1,14 @@
 import json
+from html import escape
 
 from django.contrib import admin
-from django.template.defaultfilters import truncatechars
-from django.template.loader import render_to_string
+from django.db.models import QuerySet
+from django.http import HttpRequest
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
 from insight.models import UserWeeklyTrend, WeeklyTrend
+from utils.utils import get_local_now
 
 
 class BaseTrendAdminMixin:
@@ -20,11 +22,6 @@ class BaseTrendAdminMixin:
             obj.week_start_date.strftime("%Y-%m-%d"),
             obj.week_end_date.strftime("%Y-%m-%d"),
         )
-
-    @admin.display(description="인사이트 미리보기")
-    def insight_preview(self, obj: WeeklyTrend | UserWeeklyTrend):
-        """인사이트 미리보기"""
-        return self.get_json_preview(obj, "insight")
 
     @admin.display(description="처리 완료")
     def is_processed_colored(self, obj: WeeklyTrend | UserWeeklyTrend):
@@ -44,29 +41,24 @@ class BaseTrendAdminMixin:
             return obj.processed_at.strftime("%Y-%m-%d %H:%M")
         return "-"
 
+    @admin.display(description="Insight JSON")
+    def formatted_insight_json(self, obj: WeeklyTrend | UserWeeklyTrend):
+        if not obj.insight:
+            return "-"
+        json_str = json.dumps(obj.insight, indent=2, ensure_ascii=False)
+        return mark_safe(f"<pre><code>{escape(json_str)}</code></pre>")
 
-class JsonPreviewMixin:
-    """JSONField를 보기 좋게 표시하기 위한 Mixin"""
+    # ========================================================================
+    # Actions
+    # ========================================================================
 
-    def get_json_preview(
-        self, obj: WeeklyTrend | UserWeeklyTrend, field_name, max_length=150
+    @admin.action(description="선택된 항목을 처리 완료로 표시하기")
+    def mark_as_processed(
+        self, request: HttpRequest, queryset: QuerySet[UserWeeklyTrend]
     ):
-        """JSONField 내용의 미리보기를 반환"""
-        json_data = getattr(obj, field_name, {})
-        if not json_data:
-            return "-"
-
-        # JSON 문자열로 변환하여 일부만 표시
-        json_str = json.dumps(json_data, ensure_ascii=False)
-        return truncatechars(json_str, max_length)
-
-    @admin.display(description="인사이트 데이터")
-    def formatted_insight(self, obj: WeeklyTrend | UserWeeklyTrend):
-        """인사이트 JSON을 보기 좋게 포맷팅하여 표시"""
-        if not hasattr(obj, "insight") or not obj.insight:
-            return "-"
-
-        context = {"insight": obj.insight, "user": getattr(obj, "user", None)}
-        # render_to_string을 사용하여 템플릿 렌더링
-        html = render_to_string("insights/insight_preview.html", context)
-        return mark_safe(html)
+        """선택된 항목을 처리 완료로 표시"""
+        queryset.update(is_processed=True, processed_at=get_local_now())
+        self.message_user(
+            request,
+            f"{queryset.count()}개의 사용자 인사이트가 처리 완료로 표시되었습니다.",
+        )

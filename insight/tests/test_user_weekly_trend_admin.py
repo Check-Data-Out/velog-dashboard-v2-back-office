@@ -295,7 +295,7 @@ class TestUserWeeklyTrendAdmin:
         result = user_weekly_trend_admin.formatted_insight_json(
             user_weekly_trend
         )
-        assert result == "No data"
+        assert result == "-"
 
     def test_mark_as_processed(
         self, user_weekly_trend_admin, user_weekly_trend
