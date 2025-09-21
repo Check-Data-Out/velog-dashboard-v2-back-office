@@ -59,7 +59,9 @@ class TestScraperStatistics:
         await scraper.update_daily_statistics(post_data, stats_data)
 
         # 결과 확인
-        today = get_local_now().date()
+        today = get_local_now().replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
         stats = await sync_to_async(PostDailyStatistics.objects.get)(
             post__post_uuid=post_uuid, date=today
         )

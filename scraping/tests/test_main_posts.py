@@ -49,13 +49,11 @@ class TestScraperPosts:
             for i in range(10)
         ]
 
-        # 실제 예외를 발생시키는 비동기 함수 생성
-        async def mock_async_error(*args, **kwargs):
-            raise Exception("DB 에러")
-
-        # sync_to_async가 적절한 비동기 함수를 반환하도록 패치
+        # sync_to_async가 예외를 발생시키는 AsyncMock을 반환하도록 패치
         with patch("scraping.main.sync_to_async") as mock_sync_to_async:
-            mock_sync_to_async.return_value = mock_async_error
+            mock_sync_to_async.return_value = AsyncMock(
+                side_effect=Exception("DB 에러")
+            )
             result = await scraper.bulk_upsert_posts(
                 user, posts_data, batch_size=5
             )
