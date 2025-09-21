@@ -192,9 +192,13 @@ class TestUserWeeklyTrendAdmin:
         weekly_trend.insight = {"trending_summary": [{"title": "주간 트렌드"}]}
         weekly_trend.save()
 
-        with patch("django.template.loader.render_to_string") as mock_render:
+        with patch(
+            "insight.admin.user_weekly_trend_admin.render_to_string"
+        ) as mock_render:
             mock_render.return_value = "<div>Mocked HTML</div>"
-            with patch("utils.utils.from_dict") as mock_from_dict:
+            with patch(
+                "insight.admin.user_weekly_trend_admin.from_dict"
+            ) as mock_from_dict:
                 mock_insight = MagicMock()
                 mock_insight.to_dict.return_value = {"mocked": "data"}
                 mock_from_dict.return_value = mock_insight
@@ -216,12 +220,16 @@ class TestUserWeeklyTrendAdmin:
             week_end_date=user_weekly_trend.week_end_date,
         ).delete()
 
-        with patch("django.template.loader.render_to_string") as mock_render:
+        with patch(
+            "insight.admin.user_weekly_trend_admin.render_to_string"
+        ) as mock_render:
             mock_render.side_effect = [
                 "<div>User Weekly Trend HTML</div>",
                 "<div>Final HTML with warning</div>",
             ]
-            with patch("utils.utils.from_dict") as mock_from_dict:
+            with patch(
+                "insight.admin.user_weekly_trend_admin.from_dict"
+            ) as mock_from_dict:
                 mock_insight = MagicMock()
                 mock_insight.to_dict.return_value = {"mocked": "data"}
                 mock_from_dict.return_value = mock_insight
@@ -240,12 +248,16 @@ class TestUserWeeklyTrendAdmin:
         weekly_trend.insight = {}  # null 대신 빈 딕셔너리
         weekly_trend.save()
 
-        with patch("django.template.loader.render_to_string") as mock_render:
+        with patch(
+            "insight.admin.user_weekly_trend_admin.render_to_string"
+        ) as mock_render:
             mock_render.side_effect = [
                 "<div>User Weekly Trend HTML</div>",
                 "<div>Final HTML</div>",
             ]
-            with patch("utils.utils.from_dict") as mock_from_dict:
+            with patch(
+                "insight.admin.user_weekly_trend_admin.from_dict"
+            ) as mock_from_dict:
                 mock_insight = MagicMock()
                 mock_insight.to_dict.return_value = {"mocked": "data"}
                 mock_from_dict.return_value = mock_insight
@@ -269,7 +281,8 @@ class TestUserWeeklyTrendAdmin:
     ):
         """render_full_preview 메소드 테스트 (예외 발생)"""
         with patch(
-            "utils.utils.from_dict", side_effect=Exception("Test error")
+            "insight.admin.user_weekly_trend_admin.from_dict",
+            side_effect=Exception("Test error"),
         ):
             result = user_weekly_trend_admin.render_full_preview(
                 user_weekly_trend
@@ -309,7 +322,7 @@ class TestUserWeeklyTrendAdmin:
         request.method = "POST"
         request.user = MagicMock()
 
-        with patch("utils.utils.get_local_now") as mock_now:
+        with patch("insight.admin.base_admin.get_local_now") as mock_now:
             mock_now.return_value = get_local_now()
             with patch.object(
                 user_weekly_trend_admin, "message_user"
@@ -348,7 +361,7 @@ class TestUserWeeklyTrendAdmin:
         request.method = "POST"
         request.user = MagicMock()
 
-        with patch("utils.utils.get_local_now") as mock_now:
+        with patch("insight.admin.base_admin.get_local_now") as mock_now:
             mock_now.return_value = get_local_now()
             with patch.object(
                 user_weekly_trend_admin, "message_user"
