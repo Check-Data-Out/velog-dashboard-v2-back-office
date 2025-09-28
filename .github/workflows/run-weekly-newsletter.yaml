@@ -3,8 +3,8 @@ name: Weekly Newsletter Batch
 on:
   workflow_dispatch:
   schedule:
-    # 매주 월요일 오전 7시(KST, UTC+9) 실행 -> UTC 기준 일요일 22:00
-    - cron: "0 22 * * 0"
+    # 매주 월요일 오전 9시 30분(KST, UTC+9) 실행 -> UTC 기준 00:30 월요일
+    - cron: "30 0 * * 1"
 
 jobs:
   weekly-newsletter-batch:

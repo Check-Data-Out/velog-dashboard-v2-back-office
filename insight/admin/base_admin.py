@@ -4,6 +4,7 @@ from html import escape
 from django.contrib import admin
 from django.db.models import QuerySet
 from django.http import HttpRequest
+from django.utils import timezone
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
@@ -37,8 +38,11 @@ class BaseTrendAdminMixin:
     @admin.display(description="처리 완료 시간")
     def processed_at_formatted(self, obj: WeeklyTrend | UserWeeklyTrend):
         """처리 완료 시간 포맷팅"""
+
         if obj.processed_at:
-            return obj.processed_at.strftime("%Y-%m-%d %H:%M")
+            return timezone.localtime(obj.processed_at).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
         return "-"
 
     @admin.display(description="Insight JSON")
