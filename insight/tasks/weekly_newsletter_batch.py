@@ -91,6 +91,7 @@ class WeeklyNewsletterBatch:
                 User.objects.filter(
                     is_active=True,
                     email__isnull=False,
+                    newsletter_subscribed=True,
                 )
                 .values("id", "email", "username")
                 .distinct("email")

@@ -115,6 +115,11 @@ class TestWeeklyNewsletterBatch:
 
             chunks = newsletter_batch._get_target_user_chunks()
 
+            mock_filter.assert_called_once_with(
+                is_active=True,
+                email__isnull=False,
+                newsletter_subscribed=True,
+            )
             assert len(chunks) == 1
             assert len(chunks[0]) == 1
             assert chunks[0][0]["email"] == user.email
@@ -197,7 +202,10 @@ class TestWeeklyNewsletterBatch:
             assert newsletters[0].user_id == user.id
             assert newsletters[0].email_message.to[0] == user.email
             # 제목 포맷 검증
-            assert "벨로그 대시보드 주간 뉴스레터" in newsletters[0].email_message.subject
+            assert (
+                "벨로그 대시보드 주간 뉴스레터"
+                in newsletters[0].email_message.subject
+            )
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     def test_send_newsletters_success(

@@ -47,6 +47,7 @@ def user(db):
         email="test@example.com",
         username="test_user",
         is_active=True,
+        newsletter_subscribed=True,
     )
 
 

@@ -282,6 +282,7 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
                 User.objects.filter(
                     email__isnull=False,
                     is_active=True,
+                    newsletter_subscribed=True,
                 )
                 .exclude(email="")
                 .values("id", "username")
