@@ -47,6 +47,9 @@ class User(TimeStampedModel):
     is_active = models.BooleanField(
         default=True, null=False, verbose_name="활성 여부"
     )
+    newsletter_subscribed = models.BooleanField(
+        default=True, null=False, verbose_name="뉴스레터 구독 여부"
+    )
 
     def __str__(self) -> str:
         return f"{self.velog_uuid}"
