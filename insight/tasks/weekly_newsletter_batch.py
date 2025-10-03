@@ -467,9 +467,9 @@ class WeeklyNewsletterBatch:
             weekly_trend_html = self._get_weekly_trend_html()
 
             # 로컬 환경에선 뉴스레터 발송 건너뜀
-            # if settings.DEBUG:
-            #     logger.info("DEBUG mode: Skipping newsletter sending")
-            #     return
+            if settings.DEBUG:
+                logger.info("DEBUG mode: Skipping newsletter sending")
+                return
 
             # ========================================================== #
             # STEP4: 청크별로 뉴스레터 발송 및 결과 저장
