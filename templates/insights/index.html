@@ -134,6 +134,23 @@
                     {{weekly_trend_html}} 
                   {% endif %}
 
+                  <h2
+                  style="
+                    box-sizing: border-box;
+                    margin-bottom: 24px;
+                    color: #000000;
+                    font-size: 24px;
+                    font-weight: 900;
+                    letter-spacing: 0;
+                  "
+                >
+                  {% if user.username %} 
+                    {{user.username}}님의 활동 리포트 
+                  {% else %} 
+                    활동 리포트 
+                  {% endif %}
+                </h2>
+
                   {% if not is_expired_token_user and user_weekly_trend_html %}
                     {{user_weekly_trend_html}} 
                   {% endif %} 
@@ -141,22 +158,6 @@
                   {% if is_expired_token_user %}
                   <!-- Token Expired Warning -->
                   <div style="margin-bottom: 40px; box-sizing: border-box">
-                    <h2
-                      style="
-                        font-size: 24px;
-                        font-weight: 900;
-                        color: #000000;
-                        margin-bottom: 20px;
-                        letter-spacing: 0;
-                        box-sizing: border-box;
-                      "
-                    >
-                      {% if user.username %} 
-                        {{user.username}}님의 활동 리포트
-                      {% else %} 
-                        활동 리포트 
-                      {% endif %}
-                    </h2>
                     <div
                       style="
                         background-color: #fffbd7;
@@ -310,6 +311,20 @@
               "
             >
               개인정보처리방침
+            </a>
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            <a
+              href="https://velog-dashboard.kro.kr/api/user/newsletter-unsubscribe?email={{user.email}}"
+              target="_blank"
+              rel="noopener noreferrer"
+              style="
+                color: #4d4d4d;
+                text-decoration: underline;
+                box-sizing: border-box;
+                display: inline-block;
+              "
+            >
+              수신 거부
             </a>
           </p>
         </td>

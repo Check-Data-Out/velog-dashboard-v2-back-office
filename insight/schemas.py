@@ -8,6 +8,7 @@ from modules.mail.schemas import EmailMessage
 class NewsletterContext:
     s_date: str
     e_date: str
+    user: dict
     is_expired_token_user: bool
     weekly_trend_html: str
     user_weekly_trend_html: str | None = None

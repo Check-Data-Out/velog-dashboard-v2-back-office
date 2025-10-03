@@ -223,6 +223,7 @@ class WeeklyNewsletterBatch:
 
     def _get_newsletter_html(
         self,
+        user: dict,
         is_expired_token_user: bool,
         weekly_trend_html: str,
         user_weekly_trend_html: str | None,
@@ -235,6 +236,7 @@ class WeeklyNewsletterBatch:
                     NewsletterContext(
                         s_date=self.weekly_info["s_date"],
                         e_date=self.weekly_info["e_date"],
+                        user=user,
                         is_expired_token_user=is_expired_token_user,
                         weekly_trend_html=weekly_trend_html,
                         user_weekly_trend_html=user_weekly_trend_html,
@@ -295,6 +297,7 @@ class WeeklyNewsletterBatch:
 
                     # 최종 뉴스레터 렌더링
                     html_body = self._get_newsletter_html(
+                        user=user,
                         is_expired_token_user=is_expired_token_user,
                         weekly_trend_html=weekly_trend_html,
                         user_weekly_trend_html=user_weekly_trend_html,
@@ -464,9 +467,9 @@ class WeeklyNewsletterBatch:
             weekly_trend_html = self._get_weekly_trend_html()
 
             # 로컬 환경에선 뉴스레터 발송 건너뜀
-            if settings.DEBUG:
-                logger.info("DEBUG mode: Skipping newsletter sending")
-                return
+            # if settings.DEBUG:
+            #     logger.info("DEBUG mode: Skipping newsletter sending")
+            #     return
 
             # ========================================================== #
             # STEP4: 청크별로 뉴스레터 발송 및 결과 저장

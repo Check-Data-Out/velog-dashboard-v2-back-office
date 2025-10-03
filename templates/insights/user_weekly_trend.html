@@ -2,24 +2,6 @@
   class="user-weekly-trend"
   style="box-sizing: border-box; margin-top: 40px; color: #000000"
 >
-  {% if insight.trending_summary or insight.user_weekly_stats or insight.user_weekly_reminder %}
-  <h2
-    style="
-      box-sizing: border-box;
-      margin-bottom: 24px;
-      color: #000000;
-      font-size: 24px;
-      font-weight: 900;
-      letter-spacing: 0;
-    "
-  >
-    {% if user.username %} 
-      {{user.username}}님의 활동 리포트 
-    {% else %} 
-      활동 리포트 
-    {% endif %}
-  </h2>
-  {% endif %} 
   {% if insight.user_weekly_stats %}
   <div
     style="
