@@ -145,6 +145,10 @@ class UserWeeklyTrendAdmin(admin.ModelAdmin, BaseTrendAdminMixin):
                 {
                     "s_date": obj.week_start_date,
                     "e_date": obj.week_end_date,
+                    "user": {
+                        "username": obj.user.username if obj.user else "N/A",
+                        "email": obj.user.email if obj.user else "N/A",
+                    },
                     "is_expired_token_user": False,
                     "weekly_trend_html": weekly_trend_html,
                     "user_weekly_trend_html": user_weekly_trend_html,
