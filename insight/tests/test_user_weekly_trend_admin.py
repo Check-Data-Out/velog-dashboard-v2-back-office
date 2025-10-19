@@ -413,7 +413,7 @@ class TestUserWeeklyTrendAdmin:
         result = user_weekly_trend_admin.processed_at_formatted(
             user_weekly_trend
         )
-        assert now.strftime("%Y-%m-%d %H:%M") == result
+        assert now.strftime("%Y-%m-%d %H:%M:%S") == result
 
     def test_processed_at_formatted_no_date(
         self, user_weekly_trend_admin, user_weekly_trend

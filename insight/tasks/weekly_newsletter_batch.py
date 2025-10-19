@@ -91,6 +91,7 @@ class WeeklyNewsletterBatch:
                 User.objects.filter(
                     is_active=True,
                     email__isnull=False,
+                    newsletter_subscribed=True,
                 )
                 .values("id", "email", "username")
                 .distinct("email")
@@ -222,6 +223,7 @@ class WeeklyNewsletterBatch:
 
     def _get_newsletter_html(
         self,
+        user: dict,
         is_expired_token_user: bool,
         weekly_trend_html: str,
         user_weekly_trend_html: str | None,
@@ -234,6 +236,7 @@ class WeeklyNewsletterBatch:
                     NewsletterContext(
                         s_date=self.weekly_info["s_date"],
                         e_date=self.weekly_info["e_date"],
+                        user=user,
                         is_expired_token_user=is_expired_token_user,
                         weekly_trend_html=weekly_trend_html,
                         user_weekly_trend_html=user_weekly_trend_html,
@@ -294,6 +297,7 @@ class WeeklyNewsletterBatch:
 
                     # 최종 뉴스레터 렌더링
                     html_body = self._get_newsletter_html(
+                        user=user,
                         is_expired_token_user=is_expired_token_user,
                         weekly_trend_html=weekly_trend_html,
                         user_weekly_trend_html=user_weekly_trend_html,

@@ -21,6 +21,7 @@ class UserAdmin(admin.ModelAdmin):
         "email",
         "group_id",
         "is_active",
+        "newsletter_subscribed",
         "created_at",
         "post_count",
         "get_qr_login_token",
@@ -31,7 +32,7 @@ class UserAdmin(admin.ModelAdmin):
     empty_value_display = "-"
     ordering = ["-created_at"]
 
-    actions = ["make_inactive", "update_stats"]
+    actions = ["make_inactive", "update_stats", "make_unsubscribed"]
 
     def get_list_display(self, request):
         list_display = super().get_list_display(request)
@@ -40,6 +41,7 @@ class UserAdmin(admin.ModelAdmin):
             "email": "이메일",
             "group_id": "그룹 ID",
             "is_active": "활성화 여부",
+            "newsletter_subscribed": "뉴스레터 구독 여부",
             "created_at": "생성일",
         }
         return list_display
@@ -92,6 +94,20 @@ class UserAdmin(admin.ModelAdmin):
         self.message_user(
             request,
             f"{updated} 명의 사용자가 비활성화되었습니다.",
+            messages.SUCCESS,
+        )
+
+    @admin.action(description="선택된 사용자 뉴스레터 구독 해제")
+    def make_unsubscribed(
+        self, request: HttpRequest, queryset: QuerySet[User]
+    ):
+        updated = queryset.update(newsletter_subscribed=False)
+        logger.info(
+            f"{request.user} 가 {updated} 명 사용자를 뉴스레터 구독 해제 했습니다."
+        )
+        self.message_user(
+            request,
+            f"{updated} 명의 사용자가 뉴스레터 구독 해제되었습니다.",
             messages.SUCCESS,
         )
 

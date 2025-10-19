@@ -125,7 +125,10 @@ class TestWeeklyNewsletterTemplate:
 
         assert trending_summary[0]["title"] in user_weekly_trend_html
         assert trend_analysis["insights"] in user_weekly_trend_html
-        assert f'{user_weekly_stats["new_posts"]}개의 글' in user_weekly_trend_html
+        assert (
+            f'{user_weekly_stats["new_posts"]}개의 글'
+            in user_weekly_trend_html
+        )
         assert "마지막으로 글을 작성하신지" not in user_weekly_trend_html
         assert user.username in user_weekly_trend_html
         assert "이번주에 작성한 글" in user_weekly_trend_html
@@ -179,13 +182,16 @@ class TestWeeklyNewsletterTemplate:
                 )
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
-    def test_get_newsletter_html_success(self, mock_logger, newsletter_batch):
+    def test_get_newsletter_html_success(
+        self, mock_logger, newsletter_batch, user
+    ):
         """정상 사용자 뉴스레터 HTML 렌더링 테스트"""
         is_expired_token_user = False
         weekly_trend_html = "test-weekly-trend-html"
         user_weekly_trend_html = "test-user-weekly-trend-html"
 
         newsletter_html = newsletter_batch._get_newsletter_html(
+            user,
             is_expired_token_user,
             weekly_trend_html,
             user_weekly_trend_html,
@@ -198,10 +204,14 @@ class TestWeeklyNewsletterTemplate:
         assert "대시보드 보러가기" in newsletter_html
         assert "Weekly Report" in newsletter_html
         assert "Velog Dashboard" in newsletter_html
+        assert (
+            "user/newsletter-unsubscribe?email=" + user.email
+            in newsletter_html
+        )
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     def test_get_newsletter_html_expired_token_user(
-        self, mock_logger, newsletter_batch
+        self, mock_logger, newsletter_batch, user
     ):
         """토큰 만료 사용자 뉴스레터 HTML 렌더링 테스트"""
         is_expired_token_user = True
@@ -209,6 +219,7 @@ class TestWeeklyNewsletterTemplate:
         user_weekly_trend_html = "test-user-weekly-trend-html"
 
         newsletter_html = newsletter_batch._get_newsletter_html(
+            user,
             is_expired_token_user,
             weekly_trend_html,
             user_weekly_trend_html,
@@ -216,15 +227,22 @@ class TestWeeklyNewsletterTemplate:
 
         # 템플릿 렌더링 검증
         assert "🚨 잠시만요, 토큰이 만료된 것 같아요!" in newsletter_html
-        assert "토큰이 만료되어 정상적으로 통계를 수집할 수 없었어요" in newsletter_html
+        assert (
+            "토큰이 만료되어 정상적으로 통계를 수집할 수 없었어요"
+            in newsletter_html
+        )
         assert weekly_trend_html in newsletter_html
         assert user_weekly_trend_html not in newsletter_html
         assert "대시보드 보러가기" in newsletter_html
         assert "활동 리포트" in newsletter_html
+        assert (
+            "user/newsletter-unsubscribe?email=" + user.email
+            in newsletter_html
+        )
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     def test_get_newsletter_html_exception(
-        self, mock_logger, newsletter_batch
+        self, mock_logger, newsletter_batch, user
     ):
         """뉴스레터 HTML 렌더링 실패 시 예외 처리 테스트"""
         with patch(
@@ -234,6 +252,7 @@ class TestWeeklyNewsletterTemplate:
 
             with pytest.raises(Exception):
                 newsletter_batch._get_newsletter_html(
+                    user,
                     False,
                     "test-weekly-trend-html",
                     "test-user-weekly-trend-html",
