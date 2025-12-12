@@ -4,13 +4,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 from redis import RedisError
 
-from consumer.redis_client import RedisQueueClient
+from modules.redis.client import RedisQueueClient
 
 
 class TestRedisQueueClient:
     """Tests for RedisQueueClient class."""
 
-    @patch("consumer.redis_client.redis.Redis")
+    @patch("modules.redis.client.redis.Redis")
     def test_init_success(self, mock_redis_class) -> None:
         """Redis 클라이언트 초기화 성공 테스트."""
         mock_client = MagicMock()
@@ -22,7 +22,7 @@ class TestRedisQueueClient:
         assert client.client is not None
         mock_client.ping.assert_called_once()
 
-    @patch("consumer.redis_client.redis.Redis")
+    @patch("modules.redis.client.redis.Redis")
     def test_init_failure(self, mock_redis_class) -> None:
         """Redis 연결 실패 테스트."""
         mock_redis_class.side_effect = RedisError("Connection failed")
@@ -30,7 +30,7 @@ class TestRedisQueueClient:
         with pytest.raises(RedisError):
             RedisQueueClient()
 
-    @patch("consumer.redis_client.redis.Redis")
+    @patch("modules.redis.client.redis.Redis")
     def test_pop_message_success(
         self, mock_redis_class, sample_message
     ) -> None:
@@ -47,7 +47,7 @@ class TestRedisQueueClient:
         assert result == sample_message
         mock_client.brpop.assert_called_once()
 
-    @patch("consumer.redis_client.redis.Redis")
+    @patch("modules.redis.client.redis.Redis")
     def test_pop_message_timeout(self, mock_redis_class) -> None:
         """메시지 pop 타임아웃 테스트."""
         mock_client = MagicMock()
@@ -60,7 +60,7 @@ class TestRedisQueueClient:
 
         assert result is None
 
-    @patch("consumer.redis_client.redis.Redis")
+    @patch("modules.redis.client.redis.Redis")
     def test_pop_message_invalid_json(self, mock_redis_class) -> None:
         """잘못된 JSON 형식 메시지 테스트."""
         mock_client = MagicMock()
@@ -73,7 +73,7 @@ class TestRedisQueueClient:
 
         assert result is None
 
-    @patch("consumer.redis_client.redis.Redis")
+    @patch("modules.redis.client.redis.Redis")
     def test_push_to_processing(
         self, mock_redis_class, sample_message
     ) -> None:
@@ -90,7 +90,7 @@ class TestRedisQueueClient:
         call_args = mock_client.lpush.call_args
         assert json.loads(call_args[0][1]) == sample_message
 
-    @patch("consumer.redis_client.redis.Redis")
+    @patch("modules.redis.client.redis.Redis")
     def test_push_to_failed(self, mock_redis_class, sample_message) -> None:
         """Failed 큐에 메시지 push 테스트."""
         mock_client = MagicMock()
@@ -103,7 +103,7 @@ class TestRedisQueueClient:
 
         mock_client.lpush.assert_called_once()
 
-    @patch("consumer.redis_client.redis.Redis")
+    @patch("modules.redis.client.redis.Redis")
     def test_remove_from_processing(
         self, mock_redis_class, sample_message
     ) -> None:
@@ -118,7 +118,7 @@ class TestRedisQueueClient:
 
         mock_client.lrem.assert_called_once()
 
-    @patch("consumer.redis_client.redis.Redis")
+    @patch("modules.redis.client.redis.Redis")
     def test_get_queue_size(self, mock_redis_class) -> None:
         """큐 사이즈 조회 테스트."""
         mock_client = MagicMock()
@@ -132,7 +132,7 @@ class TestRedisQueueClient:
         assert size == 5
         mock_client.llen.assert_called_once_with("test_queue")
 
-    @patch("consumer.redis_client.redis.Redis")
+    @patch("modules.redis.client.redis.Redis")
     def test_close(self, mock_redis_class) -> None:
         """Redis 연결 종료 테스트."""
         mock_client = MagicMock()

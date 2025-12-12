@@ -6,6 +6,7 @@ from modules.mail.schemas import EmailMessage
 # 클라이언트 타입을 위한 제네릭 타입 변수
 T = TypeVar("T")
 
+
 class MailClient(ABC, Generic[T]):
     """
     모든 메일 클라이언트를 위한 추상 기본 클래스로 Lazy Initialization 패턴을 따릅니다.

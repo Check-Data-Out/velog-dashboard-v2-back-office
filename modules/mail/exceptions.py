@@ -27,6 +27,7 @@ class SendError(MailError):
 
     pass
 
+
 class LimitExceededException(MailError):
     """메일 서비스 할당량 초과 오류"""
 
@@ -37,6 +38,7 @@ class ValidationError(MailError):
     """API 입력이 유효하지 않은 오류"""
 
     pass
+
 
 class UnexpectedClientError(MailError):
     """예상하지 못한 ClientError"""

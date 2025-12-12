@@ -9,7 +9,9 @@ from insight.models import WeeklyUserStats
 @pytest.mark.usefixtures("mock_setup_django")
 class TestWeeklyUserTrendAnalyze:
     @patch("insight.tasks.weekly_user_trend_analysis.Post.objects")
-    @patch("insight.tasks.weekly_user_trend_analysis.PostDailyStatistics.objects")
+    @patch(
+        "insight.tasks.weekly_user_trend_analysis.PostDailyStatistics.objects"
+    )
     async def test_calculate_user_weekly_total_stats_success(
         self, mock_stats, mock_posts, analyzer_user, mock_context
     ):
@@ -41,7 +43,9 @@ class TestWeeklyUserTrendAnalyze:
         assert stats.new_posts == 1
 
     @patch("insight.tasks.weekly_user_trend_analysis.Post.objects")
-    @patch("insight.tasks.weekly_user_trend_analysis.PostDailyStatistics.objects")
+    @patch(
+        "insight.tasks.weekly_user_trend_analysis.PostDailyStatistics.objects"
+    )
     async def test_calculate_user_weekly_total_stats_missing_stats(
         self, mock_stats, mock_posts, analyzer_user, mock_context
     ):
@@ -57,7 +61,9 @@ class TestWeeklyUserTrendAnalyze:
         assert stats.likes == 0
 
     @patch("insight.tasks.weekly_user_trend_analysis.Post.objects")
-    @patch("insight.tasks.weekly_user_trend_analysis.PostDailyStatistics.objects")
+    @patch(
+        "insight.tasks.weekly_user_trend_analysis.PostDailyStatistics.objects"
+    )
     async def test_calculate_user_weekly_total_stats_ignores_negative_diff(
         self, mock_stats, mock_posts, analyzer_user, mock_context
     ):
@@ -87,7 +93,11 @@ class TestWeeklyUserTrendAnalyze:
 
     @patch("insight.tasks.weekly_user_trend_analysis.analyze_user_posts")
     async def test_analyze_user_posts_success(
-        self, mock_analyze, analyzer_user, sample_trend_analysis, sample_trending_items
+        self,
+        mock_analyze,
+        analyzer_user,
+        sample_trend_analysis,
+        sample_trending_items,
     ):
         """사용자 게시글 분석 성공 테스트"""
         mock_post = MagicMock(
@@ -98,13 +108,18 @@ class TestWeeklyUserTrendAnalyze:
             "trend_analysis": sample_trend_analysis.to_dict(),
         }
 
-        trending_items, trend_analysis = await analyzer_user._analyze_user_posts_with_llm(
+        (
+            trending_items,
+            trend_analysis,
+        ) = await analyzer_user._analyze_user_posts_with_llm(
             [mock_post], "user"
         )
 
         assert len(trending_items) == 1
         assert trend_analysis is not None
-        assert trend_analysis.hot_keywords == sample_trend_analysis.hot_keywords
+        assert (
+            trend_analysis.hot_keywords == sample_trend_analysis.hot_keywords
+        )
 
     @patch(
         "insight.tasks.weekly_user_trend_analysis.analyze_user_posts",
@@ -125,7 +140,9 @@ class TestWeeklyUserTrendAnalyze:
         assert items[0].summary == "[분석 실패]"
         assert trend is None
 
-    @patch("insight.tasks.weekly_user_trend_analysis.UserWeeklyAnalyzer._create_user_reminder")
+    @patch(
+        "insight.tasks.weekly_user_trend_analysis.UserWeeklyAnalyzer._create_user_reminder"
+    )
     async def test_analyze_user_data_without_new_posts_creates_reminder(
         self, mock_reminder, analyzer_user, mock_context
     ):

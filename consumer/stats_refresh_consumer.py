@@ -9,7 +9,7 @@ import consumer.setup_django  # noqa: F401
 from consumer.config import ConsumerConfig, RedisConfig
 from consumer.logger_config import setup_logger
 from consumer.message_handler import MessageProcessor
-from consumer.redis_client import RedisQueueClient
+from modules.redis.client import RedisQueueClient
 
 logger = setup_logger()
 

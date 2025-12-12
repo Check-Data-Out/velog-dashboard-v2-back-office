@@ -1,13 +1,13 @@
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
 import redis
 from redis import Redis, RedisError
 
 from consumer.config import RedisConfig
 
-logger = logging.getLogger("consumer")
+logger = logging.getLogger(__name__)
 
 
 class RedisQueueClient:
@@ -57,8 +57,8 @@ class RedisQueueClient:
                 [self.config.QUEUE_STATS_REFRESH], timeout=timeout
             )
             if result:
-                _, message_str = result  # type: ignore
-                message = json.loads(message_str)
+                _, message_str = cast(tuple[str, str], result)
+                message: dict[str, Any] = json.loads(message_str)
                 logger.debug(f"Popped message from queue: {message}")
                 return message
             return None
@@ -139,7 +139,8 @@ class RedisQueueClient:
             raise RuntimeError("Redis client not connected")
 
         try:
-            return self.client.llen(queue_name)  # type: ignore
+            result = cast(int, self.client.llen(queue_name))
+            return result
         except RedisError as e:
             logger.error(f"Failed to get queue size: {e}")
             return 0
