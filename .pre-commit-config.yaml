@@ -12,5 +12,3 @@ repos:
         files: "(scraping|modules)"
         args: [--strict, --ignore-missing-imports, --pretty]
         exclude: "(tests/|test_|migrations/|conftest)"
-        additional_dependencies:
-          - redis==5.3.1
