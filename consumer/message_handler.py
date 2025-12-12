@@ -1,5 +1,3 @@
-"""Message handler for processing stats refresh requests."""
-
 import asyncio
 import logging
 import time

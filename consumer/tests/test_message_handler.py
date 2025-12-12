@@ -1,5 +1,3 @@
-"""Tests for message handler."""
-
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest

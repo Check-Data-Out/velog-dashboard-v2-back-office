@@ -1,5 +1,3 @@
-"""Tests for stats refresh consumer."""
-
 import signal
 from unittest.mock import Mock, patch
 

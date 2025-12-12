@@ -1,5 +1,3 @@
-"""Pytest fixtures for consumer tests."""
-
 import uuid
 from unittest.mock import MagicMock, Mock
 

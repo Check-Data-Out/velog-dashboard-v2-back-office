@@ -1,5 +1,3 @@
-"""Logging configuration for consumer process."""
-
 import logging
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path

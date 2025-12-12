@@ -1,6 +1,4 @@
-"""Configuration for consumer process."""
-
-import environ  # type: ignore
+import environ
 
 env = environ.Env()
 

@@ -1,5 +1,3 @@
-"""Main consumer process for stats refresh requests."""
-
 import signal
 import sys
 import time

@@ -1,7 +1,3 @@
-"""
-Django setup for consumer process.
-"""
-
 import os
 import sys
 

@@ -1,5 +1,3 @@
-"""Redis client for consumer process."""
-
 import json
 import logging
 from typing import Any

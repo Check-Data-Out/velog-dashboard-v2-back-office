@@ -115,3 +115,51 @@ python manage.py runserver --settings=backoffice.settings.prod
 # 이후 localhost:8000로 접속
 # admin / admin 으로 로그인
 ```
+
+## Stats Refresh Consumer
+
+통계 새로고침 요청을 Redis 큐에서 받아 처리하는 Consumer 프로세스입니다.
+
+### Local 실행
+
+```bash
+# Poetry를 사용하여 실행
+poetry run python -m consumer.stats_refresh_consumer
+
+# 또는 실행 스크립트 사용
+./run-consumer.sh
+```
+
+### Docker 실행
+
+```bash
+# Docker Compose로 실행
+docker compose up stats-refresh-consumer
+
+# 백그라운드 실행
+docker compose up -d stats-refresh-consumer
+
+# 로그 확인
+docker compose logs -f stats-refresh-consumer
+```
+
+### Redis 큐 구조
+
+**메인 큐**
+
+- `vd2:queue:stats-refresh`: 새로고침 요청 대기열
+
+**처리 큐**
+
+- `vd2:queue:stats-refresh:processing`: 처리 중인 작업 추적
+- `vd2:queue:stats-refresh:failed`: 실패한 작업 재처리용
+
+**메시지 포맷**
+
+```json
+{
+  "userId": 123,
+  "requestedAt": "2025-12-12T10:30:00Z",
+  "retryCount": 0
+}
+```
