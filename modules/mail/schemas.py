@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+
 @dataclass
 class EmailAttachment:
     filename: str
@@ -17,6 +18,7 @@ class EmailMessage:
     cc: list[str] | None = None
     bcc: list[str] | None = None
     attachments: list[EmailAttachment] | None = None
+
 
 @dataclass
 class AWSSESCredentials:

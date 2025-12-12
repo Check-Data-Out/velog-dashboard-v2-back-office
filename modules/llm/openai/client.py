@@ -10,7 +10,7 @@ from openai import (
     AuthenticationError as OpenAIAuthError,
 )
 from openai.types.chat import ChatCompletion
-from openai.types.embedding import Embedding
+from openai.types.create_embedding_response import CreateEmbeddingResponse
 
 from modules.llm.base_client import LLMClient
 from modules.llm.exceptions import (
@@ -166,7 +166,9 @@ class OpenAIClient(LLMClient[OpenAI]):
 
         try:
             response: ChatCompletion = self._client.chat.completions.create(
-                model=model, messages=messages, **kwargs
+                model=model,
+                messages=messages,
+                **kwargs,
             )
 
             if not response.choices or len(response.choices) == 0:
@@ -224,7 +226,7 @@ class OpenAIClient(LLMClient[OpenAI]):
             raise ValueError("임베딩을 위한 텍스트가 비어있습니다.")
 
         try:
-            response: Embedding = self._client.embeddings.create(
+            response: CreateEmbeddingResponse = self._client.embeddings.create(
                 model=model, input=text
             )
 

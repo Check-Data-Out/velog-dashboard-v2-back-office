@@ -30,16 +30,21 @@ def get_local_date() -> datetime:
     return local_now.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-def parse_json(data: Any, default: dict | None = None) -> dict[Any, Any]:
+def parse_json(
+    data: Any, default: dict[Any, Any] | None = None
+) -> dict[Any, Any]:
     """데이터를 JSON 형식으로 안전하게 파싱"""
     if default is None:
         default = {}
     if isinstance(data, str):
         try:
-            return json.loads(data)
+            result: dict[Any, Any] = json.loads(data)
+            return result
         except json.JSONDecodeError:
             return default
-    return data
+    if isinstance(data, dict):
+        return data
+    return default
 
 
 def strip_html_tags(html: str) -> str:
@@ -115,7 +120,7 @@ def from_dict(cls: Type[T], data: dict[str, Any]) -> T:
 
 
 def get_previous_week_range(
-    today: datetime = None,
+    today: datetime | None = None,
 ) -> tuple[datetime, datetime]:
     """지금 시간대를 유지하면서 7일 전과 오늘 00:00 까지 날짜 범위 계산"""
     today = today or get_local_now()

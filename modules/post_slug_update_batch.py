@@ -42,7 +42,7 @@ async def update_user_posts(session: ClientSession, user: User) -> None:
     _, user_data = await fetch_velog_user_chk(
         session, access_token, refresh_token
     )
-    username = user_data["data"]["currentUser"]["username"]  # type: ignore
+    username = user_data["data"]["currentUser"]["username"]
     fetched_posts = await fetch_all_velog_posts(
         session, username, access_token, refresh_token
     )
@@ -60,7 +60,7 @@ async def update_user_posts(session: ClientSession, user: User) -> None:
 
 
 async def main() -> None:
-    users = await sync_to_async(list)(User.objects.all())
+    users: list[User] = await sync_to_async(list)(User.objects.all())
     async with aiohttp.ClientSession() as session:
         tasks = [update_user_posts(session, user) for user in users]
         await asyncio.gather(*tasks)
