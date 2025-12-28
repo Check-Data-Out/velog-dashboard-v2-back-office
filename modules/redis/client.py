@@ -9,13 +9,43 @@ from consumer.config import RedisConfig
 
 logger = logging.getLogger(__name__)
 
+# 모듈 레벨 싱글톤 인스턴스
+_client: "RedisQueueClient | None" = None
+
+
+def get_redis_client() -> "RedisQueueClient":
+    """글로벌 싱글톤 Redis 클라이언트 반환.
+
+    Returns:
+        RedisQueueClient 싱글톤 인스턴스
+    """
+    global _client
+    if _client is None:
+        _client = RedisQueueClient()
+    return _client
+
+
+def reset_redis_client() -> None:
+    """싱글톤 인스턴스 리셋 (테스트용).
+
+    기존 연결을 닫고 싱글톤 인스턴스를 None으로 초기화합니다.
+    """
+    global _client
+    if _client is not None:
+        _client.close()
+        _client = None
+
 
 class RedisQueueClient:
     """Redis client for queue operations."""
 
-    def __init__(self) -> None:
-        """Initialize Redis client."""
-        self.config = RedisConfig()
+    def __init__(self, config: type[RedisConfig] | None = None) -> None:
+        """Initialize Redis client.
+
+        Args:
+            config: RedisConfig 클래스 (DI 지원, 기본값: RedisConfig)
+        """
+        self.config = config or RedisConfig
         self.client: Redis | None = None
         self._connect()
 

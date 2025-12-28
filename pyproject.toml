@@ -46,3 +46,25 @@ DJANGO_SETTINGS_MODULE = "backoffice.settings.local"
 python_files = ["test_*.py"]
 filterwarnings = ["ignore::pytest.PytestDeprecationWarning"]
 asyncio_mode = "strict"
+
+[tool.mypy]
+python_version = "3.13"
+files = ["scraping/", "modules/", "consumer/"]
+exclude = ".*/tests?/.*|.*/test?/.*|.*/migrations/.*"
+pretty = true
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+# import-untyped: 타입 스텁이 없는 라이브러리 import 에러 무시
+disable_error_code = ["import-untyped"]
+
+# redis-py 5.x는 py.typed 마커가 있지만 타입 힌트가 불완전함
+# https://github.com/redis/redis-py/issues/1717
+[[tool.mypy.overrides]]
+module = "redis.*"
+ignore_missing_imports = true
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "modules.mail.ses.client"
+ignore_errors = true

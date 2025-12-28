@@ -4,7 +4,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from redis import RedisError
 
-from modules.redis.client import RedisQueueClient
+from modules.redis.client import (
+    RedisQueueClient,
+    get_redis_client,
+    reset_redis_client,
+)
 
 
 class TestRedisQueueClient:
@@ -144,3 +148,45 @@ class TestRedisQueueClient:
         client.close()
 
         mock_client.close.assert_called_once()
+
+
+class TestSingletonFunctions:
+    """Tests for singleton helper functions."""
+
+    @patch("modules.redis.client.redis.Redis")
+    def test_get_redis_client_returns_singleton(
+        self, mock_redis_class
+    ) -> None:
+        """get_redis_client가 동일한 인스턴스를 반환하는지 테스트."""
+        mock_client = MagicMock()
+        mock_client.ping.return_value = True
+        mock_redis_class.return_value = mock_client
+
+        client1 = get_redis_client()
+        client2 = get_redis_client()
+
+        assert client1 is client2
+        # Redis 연결은 한 번만 생성되어야 함
+        assert mock_redis_class.call_count == 1
+
+    @patch("modules.redis.client.redis.Redis")
+    def test_reset_redis_client(self, mock_redis_class) -> None:
+        """reset_redis_client가 싱글톤을 리셋하는지 테스트."""
+        mock_client = MagicMock()
+        mock_client.ping.return_value = True
+        mock_redis_class.return_value = mock_client
+
+        client1 = get_redis_client()
+        reset_redis_client()
+        client2 = get_redis_client()
+
+        assert client1 is not client2
+        # close가 호출되었는지 확인
+        mock_client.close.assert_called()
+        # Redis 연결이 두 번 생성되어야 함
+        assert mock_redis_class.call_count == 2
+
+    def test_reset_redis_client_when_none(self) -> None:
+        """싱글톤이 None일 때 reset_redis_client 호출 테스트."""
+        # 에러 없이 실행되어야 함
+        reset_redis_client()

@@ -15,9 +15,13 @@ logger = logging.getLogger("consumer")
 class StatsRefreshMessageHandler:
     """Handler for stats refresh messages."""
 
-    def __init__(self) -> None:
-        """Initialize message handler."""
-        self.config = RedisConfig()
+    def __init__(self, config: type[RedisConfig] | None = None) -> None:
+        """Initialize message handler.
+
+        Args:
+            config: RedisConfig 클래스 (DI 지원, 기본값: RedisConfig)
+        """
+        self.config = config or RedisConfig
 
     async def process_message(self, message: dict[str, Any]) -> None:
         """Process a stats refresh message.
@@ -78,10 +82,14 @@ class StatsRefreshMessageHandler:
 class MessageProcessor:
     """Processor with retry logic for messages."""
 
-    def __init__(self) -> None:
-        """Initialize message processor."""
-        self.handler = StatsRefreshMessageHandler()
-        self.config = RedisConfig()
+    def __init__(self, config: type[RedisConfig] | None = None) -> None:
+        """Initialize message processor.
+
+        Args:
+            config: RedisConfig 클래스 (DI 지원, 기본값: RedisConfig)
+        """
+        self.config = config or RedisConfig
+        self.handler = StatsRefreshMessageHandler(config=self.config)
 
     def process_with_retry(self, message: dict[str, Any]) -> bool:
         """Process message with retry logic.

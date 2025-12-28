@@ -9,7 +9,7 @@ import consumer.setup_django  # noqa: F401
 from consumer.config import ConsumerConfig, RedisConfig
 from consumer.logger_config import setup_logger
 from consumer.message_handler import MessageProcessor
-from modules.redis.client import RedisQueueClient
+from modules.redis.client import RedisQueueClient, get_redis_client
 
 logger = setup_logger()
 
@@ -17,14 +17,26 @@ logger = setup_logger()
 class StatsRefreshConsumer:
     """Main consumer process for stats refresh queue."""
 
-    def __init__(self) -> None:
-        """Initialize consumer."""
+    def __init__(
+        self,
+        redis_client: RedisQueueClient | None = None,
+        redis_config: type[RedisConfig] | None = None,
+        consumer_config: type[ConsumerConfig] | None = None,
+    ) -> None:
+        """Initialize consumer.
+
+        Args:
+            redis_client: RedisQueueClient 인스턴스 (DI 지원, 기본값: 싱글톤)
+            redis_config: RedisConfig 클래스 (DI 지원, 기본값: RedisConfig)
+            consumer_config: ConsumerConfig 클래스 (DI 지원, 기본값: ConsumerConfig)
+        """
+        self._injected_redis_client = redis_client
         self.redis_client: RedisQueueClient | None = None
-        self.message_processor = MessageProcessor()
+        self.redis_config = redis_config or RedisConfig
+        self.consumer_config = consumer_config or ConsumerConfig
+        self.message_processor = MessageProcessor(config=self.redis_config)
         self.running = False
         self.processing_message = False
-        self.redis_config = RedisConfig()
-        self.consumer_config = ConsumerConfig()
 
         # Statistics
         self.stats = {
@@ -60,8 +72,10 @@ class StatsRefreshConsumer:
         logger.info(f"Starting {self.consumer_config.PROCESS_NAME}...")
 
         try:
-            # Initialize Redis client
-            self.redis_client = RedisQueueClient()
+            # Initialize Redis client (DI 또는 싱글톤)
+            self.redis_client = (
+                self._injected_redis_client or get_redis_client()
+            )
             self.running = True
 
             logger.info(
