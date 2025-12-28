@@ -85,10 +85,10 @@ poetry run coverage html
 
 ```bash
 # Formatting
-ruff format
+poetry run ruff format
 
 # Linting
-ruff check --fix
+poetry run ruff check --fix
 ```
 
 ### 3) register pre-commit
@@ -119,18 +119,24 @@ python manage.py runserver --settings=backoffice.settings.prod
 ## Stats Refresh Consumer
 
 통계 새로고침 요청을 Redis 큐에서 받아 처리하는 Consumer 프로세스입니다.
-
-### Local 실행
-
-```bash
-# Poetry를 사용하여 실행
-poetry run python -m consumer.stats_refresh_consumer
-
-# 또는 실행 스크립트 사용
-./run-consumer.sh
-```
+상세 사용법은 ***[노션 링크를 참조](https://www.notion.so/nuung/25-12-28-back-office-2d76299fd66680ba8368e438f2b34478?source=copy_link)*** 해주세요. (멤버 전용)
 
 ### Docker 실행
+
+1. 이미지 빌드를 직접 하는 걸 추천, 이유는 mac, window local 에서 바로 빌드하면 이미지 사이즈가 너무 커짐
+- 즉 `docker buildx build --platform linux/amd64 ...` 와 같이 빌드 환경 자체를 바꿔서 직접 빌드 하는 것 추천
+
+```bash
+# linux/amd64용 빌드 후 로컬 Docker에 로드
+docker buildx build \
+  --platform linux/amd64 \
+  -f Dockerfile.consumer \
+  -t stats-refresh-consumer:latest \
+  --load \
+  .
+```
+
+2. 이미지 빌드 이후 실행
 
 ```bash
 # Docker Compose로 실행

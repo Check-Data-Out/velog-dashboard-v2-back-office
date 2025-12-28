@@ -1,21 +1,47 @@
-FROM python:3.13-slim
+# syntax=docker/dockerfile:1
 
-WORKDIR /app
-
-# 모든 주요 의존성이 사전 빌드된 wheel 제공하므로 gcc 불필요
-# - psycopg[binary]: cp313 wheel 제공 (https://pypi.org/project/psycopg-binary/)
-# - cryptography: abi3 wheel 제공 (https://pypi.org/project/cryptography/)
-# - redis: 순수 Python 패키지
+# =============================================================================
+# Builder Stage: Poetry + dependencies 설치
+# =============================================================================
+FROM python:3.13-slim-bookworm AS builder
 
 # Install poetry
 RUN pip install --no-cache-dir poetry==1.8.0
 
+# Poetry 설정: 프로젝트 내 .venv 생성
+# https://python-poetry.org/docs/configuration/#virtualenvsin-project
+ENV POETRY_NO_INTERACTION=1 \
+    POETRY_VIRTUALENVS_IN_PROJECT=1 \
+    POETRY_VIRTUALENVS_CREATE=1 \
+    POETRY_CACHE_DIR=/tmp/poetry_cache
+
+WORKDIR /app
+
 # Copy dependency files
 COPY pyproject.toml poetry.lock ./
 
-# Install dependencies
-RUN poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi --only main
+# poetry install requires README.md if specified in pyproject.toml
+RUN touch README.md
+
+# Install dependencies with cache mount for faster rebuilds
+# --no-root: 프로젝트 자체는 설치하지 않음 (소스 코드는 runtime에서 복사)
+# https://docs.docker.com/build/cache/
+RUN --mount=type=cache,target=$POETRY_CACHE_DIR \
+    poetry install --only main --no-root
+
+# =============================================================================
+# Runtime Stage: 최소 이미지 (Poetry 제외)
+# =============================================================================
+FROM python:3.13-slim-bookworm AS runtime
+
+# Virtual environment 경로 설정
+ENV VIRTUAL_ENV=/app/.venv \
+    PATH="/app/.venv/bin:$PATH"
+
+WORKDIR /app
+
+# Builder에서 생성된 .venv만 복사 (Poetry 제외)
+COPY --from=builder ${VIRTUAL_ENV} ${VIRTUAL_ENV}
 
 # Copy application code
 COPY . .
@@ -23,5 +49,5 @@ COPY . .
 # Create logs directory
 RUN mkdir -p /app/logs
 
-# Run consumer
-CMD ["poetry", "run", "python", "-m", "consumer.stats_refresh_consumer"]
+# Run consumer (poetry 없이 직접 python 실행)
+CMD ["python", "-m", "consumer.stats_refresh_consumer"]

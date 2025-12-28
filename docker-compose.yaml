@@ -16,11 +16,16 @@ services:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
 
   stats-refresh-consumer:
+    image: stats-refresh-consumer:latest
     build:
       context: .
       dockerfile: Dockerfile.consumer
     container_name: stats-refresh-consumer
+    env_file:
+      - .env
     environment:
+      # Django settings (consumer 전용: debug_toolbar 제외)
+      DJANGO_SETTINGS_MODULE: backoffice.settings.consumer
       # Database settings
       DATABASE_ENGINE: ${DATABASE_ENGINE}
       DATABASE_NAME: ${DATABASE_NAME}
@@ -56,4 +61,4 @@ services:
     restart: unless-stopped
     volumes:
       - ./logs:/app/logs
-    command: poetry run python -m consumer.stats_refresh_consumer
+    command: python -m consumer.stats_refresh_consumer
