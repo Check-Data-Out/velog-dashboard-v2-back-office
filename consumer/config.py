@@ -21,6 +21,13 @@ class RedisConfig:
     MAX_RETRIES = 3  # maximum retry attempts
     RETRY_BACKOFF_BASE = 2  # exponential backoff base (seconds)
 
+    # DLQ (Dead Letter Queue) settings
+    # Failed queue 최대 크기 - 초과 시 오래된 메시지부터 삭제
+    # https://redis.io/glossary/redis-queue/
+    MAX_FAILED_QUEUE_SIZE = env.int(
+        "REDIS_MAX_FAILED_QUEUE_SIZE", default=10000
+    )
+
 
 class ConsumerConfig:
     """Consumer process configuration."""

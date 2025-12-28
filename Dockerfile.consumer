@@ -2,10 +2,10 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
+# 모든 주요 의존성이 사전 빌드된 wheel 제공하므로 gcc 불필요
+# - psycopg[binary]: cp313 wheel 제공 (https://pypi.org/project/psycopg-binary/)
+# - cryptography: abi3 wheel 제공 (https://pypi.org/project/cryptography/)
+# - redis: 순수 Python 패키지
 
 # Install poetry
 RUN pip install --no-cache-dir poetry==1.8.0

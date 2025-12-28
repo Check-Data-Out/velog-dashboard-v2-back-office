@@ -88,16 +88,60 @@ class RedisQueueClient:
             )
             if result:
                 _, message_str = cast(tuple[str, str], result)
-                message: dict[str, Any] = json.loads(message_str)
-                logger.debug(f"Popped message from queue: {message}")
-                return message
-            return None
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to decode message: {e}")
+                try:
+                    message: dict[str, Any] = json.loads(message_str)
+                    logger.debug(f"Popped message from queue: {message}")
+                    return message
+                except json.JSONDecodeError as e:
+                    # JSON 디코딩 실패 시 원본 문자열을 DLQ(failed queue)에 저장
+                    # https://ctaverna.github.io/dead-letters/
+                    logger.error(
+                        f"Failed to decode message, moving to failed queue: {e}, "
+                        f"raw_message={message_str!r}"
+                    )
+                    self._push_raw_to_failed(message_str, str(e))
+                    return None
             return None
         except RedisError as e:
             logger.error(f"Redis error while popping message: {e}")
             raise
+
+    def _push_raw_to_failed(self, raw_message: str, error: str) -> None:
+        """Push raw (unparseable) message to failed queue with error info.
+
+        Args:
+            raw_message: Original message string that failed to decode
+            error: Error message describing the failure
+
+        Note:
+            큐 크기가 MAX_FAILED_QUEUE_SIZE를 초과하면 오래된 메시지부터 삭제됩니다.
+        """
+        if not self.client:
+            return
+
+        try:
+            # 원본 메시지와 에러 정보를 함께 저장
+            failed_entry = json.dumps(
+                {
+                    "raw_message": raw_message,
+                    "error": error,
+                    "error_type": "JSONDecodeError",
+                }
+            )
+            self.client.lpush(
+                self.config.QUEUE_STATS_REFRESH_FAILED, failed_entry
+            )
+            # 큐 크기 제한
+            self.client.ltrim(
+                self.config.QUEUE_STATS_REFRESH_FAILED,
+                0,
+                self.config.MAX_FAILED_QUEUE_SIZE - 1,
+            )
+            logger.warning("Pushed malformed message to failed queue")
+        except RedisError as e:
+            logger.error(
+                f"Failed to push malformed message to failed queue: {e}"
+            )
 
     def push_to_processing(self, message: dict[str, Any]) -> None:
         """Push message to processing queue.
@@ -138,10 +182,14 @@ class RedisQueueClient:
             raise
 
     def push_to_failed(self, message: dict[str, Any]) -> None:
-        """Push message to failed queue.
+        """Push message to failed queue with size limit.
 
         Args:
             message: Message to push
+
+        Note:
+            큐 크기가 MAX_FAILED_QUEUE_SIZE를 초과하면 오래된 메시지부터 삭제됩니다.
+            https://redis.io/glossary/redis-queue/
         """
         if not self.client:
             raise RuntimeError("Redis client not connected")
@@ -150,6 +198,12 @@ class RedisQueueClient:
             message_str = json.dumps(message)
             self.client.lpush(
                 self.config.QUEUE_STATS_REFRESH_FAILED, message_str
+            )
+            # 큐 크기 제한 - LTRIM으로 최대 크기 유지
+            self.client.ltrim(
+                self.config.QUEUE_STATS_REFRESH_FAILED,
+                0,
+                self.config.MAX_FAILED_QUEUE_SIZE - 1,
             )
             logger.warning(f"Pushed message to failed queue: {message}")
         except RedisError as e:

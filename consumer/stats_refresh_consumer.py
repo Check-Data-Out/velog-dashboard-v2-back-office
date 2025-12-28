@@ -147,10 +147,16 @@ class StatsRefreshConsumer:
         self.processing_message = True
         self.stats["processed"] += 1
 
+        # 원본 메시지 복사 - LREM은 정확한 바이트 일치가 필요함
+        # process_with_retry에서 retryCount, lastAttemptAt 필드가 추가되므로
+        # processing queue에서 제거 시 원본 메시지를 사용해야 함
+        # https://redis.io/docs/latest/commands/rpoplpush/
+        original_message = message.copy()
+
         try:
             # Move to processing queue
             assert self.redis_client is not None
-            self.redis_client.push_to_processing(message)
+            self.redis_client.push_to_processing(original_message)
 
             # Process with retry logic
             success = self.message_processor.process_with_retry(message)
@@ -171,7 +177,7 @@ class StatsRefreshConsumer:
                 )
 
             # Remove from processing queue
-            self.redis_client.remove_from_processing(message)
+            self.redis_client.remove_from_processing(original_message)
 
         except Exception as e:
             self.stats["failed"] += 1
@@ -182,7 +188,7 @@ class StatsRefreshConsumer:
             try:
                 assert self.redis_client is not None
                 self.redis_client.push_to_failed(message)
-                self.redis_client.remove_from_processing(message)
+                self.redis_client.remove_from_processing(original_message)
             except Exception as cleanup_error:
                 logger.error(f"Failed to cleanup after error: {cleanup_error}")
 
