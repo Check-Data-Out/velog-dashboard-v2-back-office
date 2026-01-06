@@ -9,6 +9,6 @@ repos:
     rev: v1.13.0
     hooks:
       - id: mypy
-        files: "(scraping|modules)" 
+        files: "(scraping|modules)"
         args: [--strict, --ignore-missing-imports, --pretty]
-        exclude: "(tests/|test_|migrations/)"
+        exclude: "(tests/|test_|migrations/|conftest)"

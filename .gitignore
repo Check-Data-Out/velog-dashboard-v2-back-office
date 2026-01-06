@@ -1,6 +1,10 @@
+serena
+.serena
+
 # CUSTOM
 **/timescale_data*/**
 *_result.txt
+.vscode
 
 # Created by https://www.toptal.com/developers/gitignore/api/macos,python,pycharm,django
 # Edit at https://www.toptal.com/developers/gitignore?templates=macos,python,pycharm,django

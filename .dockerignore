@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+
+# Poetry
+.poetry/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Build
+dist/
+build/
+*.egg-info/
+
+# Local files
+*.log
+logs/
+*.env
+.env.*
+
+# Docker (avoid recursive copy)
+Dockerfile*
+docker-compose*.yaml
+docker-compose*.yml
+
+# Data directories
+timescale_data/
+
+# macOS
+.DS_Store

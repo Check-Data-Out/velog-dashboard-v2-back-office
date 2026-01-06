@@ -39,7 +39,9 @@ class TestWeeklyUserTrendFetch:
         assert is_valid is True
 
     @patch("insight.tasks.weekly_user_trend_analysis.Post.objects")
-    @patch("insight.tasks.weekly_user_trend_analysis.PostDailyStatistics.objects")
+    @patch(
+        "insight.tasks.weekly_user_trend_analysis.PostDailyStatistics.objects"
+    )
     async def test_check_user_token_validity_failure(
         self, mock_stats, mock_posts, analyzer_user, mock_context
     ):
@@ -56,7 +58,9 @@ class TestWeeklyUserTrendFetch:
 
     @patch("insight.tasks.weekly_user_trend_analysis.User.objects.filter")
     @patch("insight.tasks.weekly_user_trend_analysis.Post.objects")
-    @patch("insight.tasks.weekly_user_trend_analysis.PostDailyStatistics.objects")
+    @patch(
+        "insight.tasks.weekly_user_trend_analysis.PostDailyStatistics.objects"
+    )
     async def test_fetch_data_handles_token_expired_error(
         self,
         mock_stats,

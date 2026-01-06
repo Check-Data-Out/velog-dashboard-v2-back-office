@@ -85,10 +85,10 @@ poetry run coverage html
 
 ```bash
 # Formatting
-ruff format
+poetry run ruff format
 
 # Linting
-ruff check --fix
+poetry run ruff check --fix
 ```
 
 ### 3) register pre-commit
@@ -114,4 +114,58 @@ python manage.py runserver --settings=backoffice.settings.prod
 
 # 이후 localhost:8000로 접속
 # admin / admin 으로 로그인
+```
+
+## Stats Refresh Consumer
+
+통계 새로고침 요청을 Redis 큐에서 받아 처리하는 Consumer 프로세스입니다.
+상세 사용법은 ***[노션 링크를 참조](https://www.notion.so/nuung/25-12-28-back-office-2d76299fd66680ba8368e438f2b34478?source=copy_link)*** 해주세요. (멤버 전용)
+
+### Docker 실행
+
+1. 이미지 빌드를 직접 하는 걸 추천, 이유는 mac, window local 에서 바로 빌드하면 이미지 사이즈가 너무 커짐
+- 즉 `docker buildx build --platform linux/amd64 ...` 와 같이 빌드 환경 자체를 바꿔서 직접 빌드 하는 것 추천
+
+```bash
+# linux/amd64용 빌드 후 로컬 Docker에 로드
+docker buildx build \
+  --platform linux/amd64 \
+  -f Dockerfile.consumer \
+  -t stats-refresh-consumer:latest \
+  --load \
+  .
+```
+
+2. 이미지 빌드 이후 실행
+
+```bash
+# Docker Compose로 실행
+docker compose up stats-refresh-consumer
+
+# 백그라운드 실행
+docker compose up -d stats-refresh-consumer
+
+# 로그 확인
+docker compose logs -f stats-refresh-consumer
+```
+
+### Redis 큐 구조
+
+**메인 큐**
+
+- `vd2:queue:stats-refresh`: 새로고침 요청 대기열
+
+**처리 큐**
+
+- `vd2:queue:stats-refresh:processing`: 처리 중인 작업 추적
+- `vd2:queue:stats-refresh:failed`: 실패한 작업 재처리용
+
+**메시지 포맷**
+
+```json
+{
+  "userId": 123,
+  "requestedAt": "2025-12-12T10:30:00Z",
+  "retryCount": 0
+}
 ```
