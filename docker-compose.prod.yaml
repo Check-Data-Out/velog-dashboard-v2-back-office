@@ -1,0 +1,46 @@
+services:
+  stats-refresh-consumer:
+    image: stats-refresh-consumer:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.consumer
+    container_name: stats-refresh-consumer
+    env_file:
+      - .env
+    environment:
+      # Django settings (consumer 전용: debug_toolbar 제외)
+      DJANGO_SETTINGS_MODULE: backoffice.settings.consumer
+      # Database settings - Supabase 사용
+      DATABASE_ENGINE: ${DATABASE_ENGINE}
+      DATABASE_NAME: ${DATABASE_NAME}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      # Redis settings
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_DB: ${REDIS_DB}
+      # Consumer settings
+      CONSUMER_LOG_LEVEL: ${CONSUMER_LOG_LEVEL:-INFO}
+      CONSUMER_GRACEFUL_SHUTDOWN_TIMEOUT: ${CONSUMER_GRACEFUL_SHUTDOWN_TIMEOUT:-30}
+      # AES encryption keys
+      AES_KEY_0: ${AES_KEY_0}
+      AES_KEY_1: ${AES_KEY_1}
+      AES_KEY_2: ${AES_KEY_2}
+      AES_KEY_3: ${AES_KEY_3}
+      AES_KEY_4: ${AES_KEY_4}
+      AES_KEY_5: ${AES_KEY_5}
+      AES_KEY_6: ${AES_KEY_6}
+      AES_KEY_7: ${AES_KEY_7}
+      AES_KEY_8: ${AES_KEY_8}
+      AES_KEY_9: ${AES_KEY_9}
+      # Sentry
+      SENTRY_DSN: ${SENTRY_DSN}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE}
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
+    command: python -m consumer.stats_refresh_consumer
