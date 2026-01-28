@@ -24,6 +24,8 @@ services:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
 
   stats-refresh-consumer:
+    env_file:
+      - .env
     environment:
       # 로컬에서는 docker 내부 db 컨테이너에 연결
       POSTGRES_HOST: db

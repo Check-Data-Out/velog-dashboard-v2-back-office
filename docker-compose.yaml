@@ -1,11 +1,11 @@
 # =============================================================================
-# Docker Compose - Stats Refresh Consumer
+# Docker Compose - Stats Refresh Consumer (Base)
 # =============================================================================
 # Local:  docker compose up -d
-#         → override.yml 자동 로드 (db + consumer)
+#         → override.yml 자동 로드 (db + consumer, env_file: .env)
 #
-# Prod:   docker compose -f docker-compose.yaml --env-file .env.prod up -d
-#         → base 파일만 사용 (consumer만, override.yml 무시)
+# Prod:   docker compose -f docker-compose.yaml -f docker-compose.prod.yml up -d
+#         → prod.yml 로드 (consumer만, env_file: .env.prod)
 # =============================================================================
 
 services:
@@ -15,11 +15,7 @@ services:
       context: .
       dockerfile: Dockerfile.consumer
     container_name: stats-refresh-consumer
-    env_file:
-      - path: .env
-        required: true
     environment:
-      # Consumer 전용 settings (debug_toolbar 제외)
       DJANGO_SETTINGS_MODULE: backoffice.settings.consumer
     restart: unless-stopped
     volumes:

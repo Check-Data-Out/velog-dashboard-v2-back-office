@@ -182,11 +182,11 @@ docker compose logs -f stats-refresh-consumer
 #### 3. 프로덕션 실행 (consumer만)
 
 ```bash
-# override.yml 무시 → consumer만 실행, 외부 DB 사용
-docker compose -f docker-compose.yaml --env-file .env.prod up -d
+# override.yml 무시 → consumer만 실행, env_file: .env.prod
+docker compose -f docker-compose.yaml -f docker-compose.prod.yml up -d
 
 # 로그 확인
-docker compose -f docker-compose.yaml logs -f stats-refresh-consumer
+docker compose -f docker-compose.yaml -f docker-compose.prod.yml logs -f stats-refresh-consumer
 ```
 
 ### Redis 큐 구조
