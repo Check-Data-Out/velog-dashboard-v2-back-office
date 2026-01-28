@@ -9,7 +9,7 @@ source ./run-kill.sh
 source ./.venv/bin/activate
 pip install -r requirements.txt
 
-# export DJANGO_SETTINGS_MODULE=config.settings.prod
+export DJANGO_SETTINGS_MODULE=backoffice.settings.prod
 python manage.py collectstatic --no-input
 python manage.py migrate
 
