@@ -24,19 +24,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # =============================================================================
 # Environment Variables Loading
-# - Local: .env 파일에서 로드
-# - Docker: env_file로 환경 변수 주입 (.env 파일 없음)
+# 각 settings 파일(local.py, prod.py)에서 import 전에 env 파일을 로드함
+# - local.py → .env
+# - prod.py → .env.prod
+# - consumer.py → Docker env_file로 환경 변수 주입
 # =============================================================================
-env_path = os.path.join(BASE_DIR, ".env")
-if os.path.exists(env_path):
-    environ.Env.read_env(env_path)
-else:
-    # .env 파일이 없으면 환경 변수에서 필수 값 확인
-    if not os.environ.get("SECRET_KEY"):
-        raise EnvironmentError(
-            f".env file not found at {env_path} and SECRET_KEY environment variable is not set. "
-            f"Please create .env file from .env.sample or set required environment variables."
-        )
 
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 
