@@ -26,13 +26,46 @@ poetry shell
 poetry install
 ```
 
+## Environment Configuration
+
+### 환경 파일 구조
+
+```
+.env.sample    # 템플릿 (git 추적)
+.env           # 로컬용 (git 무시)
+.env.prod      # 프로덕션용 (git 무시)
+```
+
+### DJANGO_SETTINGS_MODULE 자동 설정
+
+환경 변수에서 직접 설정할 필요 없음. 진입점에서 자동 설정됨:
+
+| 진입점 | Settings Module | 용도 |
+|--------|-----------------|------|
+| `manage.py` | `local` | 로컬 개발 (runserver) |
+| `wsgi.py` (gunicorn) | `prod` | 프로덕션 웹 서버 |
+| `docker-compose.yaml` | `consumer` | Consumer 프로세스 |
+
+### 환경 파일 설정
+
+```bash
+# 1. 템플릿 복사
+cp .env.sample .env
+
+# 2. notion을 참조하여 실제 값 입력
+# ⚠️ .env 파일이 없거나 SECRET_KEY가 없으면 실행 불가
+```
+
 ## Database Configuration
 
-#### 1. [dockerdocs](https://docs.docker.com/get-started/)를 참고하여 Docker, Docker Compose 설치
+#### 1. [docker docs](https://docs.docker.com/get-started/)를 참고하여 Docker, Docker Compose 설치
 
-#### 2. .env.sample의 형식으로 환경 변수 설정
+#### 2. `docker compose up -d`로 실행
 
-#### 3. `docker-compose up -d`로 실행 (또는 공백없이 `docker compose up -d`)
+```bash
+# 로컬: db + consumer 모두 실행 (override.yml 자동 로드)
+docker compose up -d
+```
 
 ## Pre-configue
 
@@ -109,7 +142,7 @@ poetry run pre-commit run --all-files
 # Local 환경
 python manage.py runserver
 
-# Prod 환경으로 실행
+# Prod 환경으로 실행, 이 경우 `.env.prod` 필수
 python manage.py runserver --settings=backoffice.settings.prod
 
 # 이후 localhost:8000로 접속
@@ -123,11 +156,11 @@ python manage.py runserver --settings=backoffice.settings.prod
 
 ### Docker 실행
 
-1. 이미지 빌드를 직접 하는 걸 추천, 이유는 mac, window local 에서 바로 빌드하면 이미지 사이즈가 너무 커짐
-- 즉 `docker buildx build --platform linux/amd64 ...` 와 같이 빌드 환경 자체를 바꿔서 직접 빌드 하는 것 추천
+#### 1. 이미지 빌드
+
+mac/windows에서 빌드 시 이미지 크기가 커지므로 linux/amd64 플랫폼으로 직접 빌드 권장:
 
 ```bash
-# linux/amd64용 빌드 후 로컬 Docker에 로드
 docker buildx build \
   --platform linux/amd64 \
   -f Dockerfile.consumer \
@@ -136,17 +169,24 @@ docker buildx build \
   .
 ```
 
-2. 이미지 빌드 이후 실행
+#### 2. 로컬 실행 (db + consumer)
 
 ```bash
-# Docker Compose로 실행
-docker compose up stats-refresh-consumer
-
-# 백그라운드 실행
-docker compose up -d stats-refresh-consumer
+# override.yml 자동 로드 → db + consumer 모두 실행
+docker compose up -d
 
 # 로그 확인
 docker compose logs -f stats-refresh-consumer
+```
+
+#### 3. 프로덕션 실행 (consumer만)
+
+```bash
+# override.yml 무시 → consumer만 실행, 외부 DB 사용
+docker compose -f docker-compose.yaml --env-file .env.prod up -d
+
+# 로그 확인
+docker compose -f docker-compose.yaml logs -f stats-refresh-consumer
 ```
 
 ### Redis 큐 구조

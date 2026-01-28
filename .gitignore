@@ -7,6 +7,10 @@ serena
 *_result.txt
 .vscode
 
+# Environment files (contain sensitive credentials)
+.env.local
+.env.prod
+
 # Created by https://www.toptal.com/developers/gitignore/api/macos,python,pycharm,django
 # Edit at https://www.toptal.com/developers/gitignore?templates=macos,python,pycharm,django
 

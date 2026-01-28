@@ -1,20 +1,14 @@
-services:
-  db:
-    image: timescale/timescaledb-ha:pg17
-    container_name: timescaledb
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${DATABASE_NAME}
-      PGDATA: /home/postgres/pgdata
-      TZ: 'UTC'
-    ports:
-      - "${POSTGRES_PORT}:${POSTGRES_PORT}"
-    platform: linux/arm64
-    volumes:
-      - ./timescale_data:/home/postgres/pgdata
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+# =============================================================================
+# Docker Compose - Stats Refresh Consumer
+# =============================================================================
+# Local:  docker compose up -d
+#         → override.yml 자동 로드 (db + consumer)
+#
+# Prod:   docker compose -f docker-compose.yaml --env-file .env.prod up -d
+#         → base 파일만 사용 (consumer만, override.yml 무시)
+# =============================================================================
 
+services:
   stats-refresh-consumer:
     image: stats-refresh-consumer:latest
     build:
@@ -22,42 +16,11 @@ services:
       dockerfile: Dockerfile.consumer
     container_name: stats-refresh-consumer
     env_file:
-      - .env
+      - path: .env
+        required: true
     environment:
-      # Django settings (consumer 전용: debug_toolbar 제외)
+      # Consumer 전용 settings (debug_toolbar 제외)
       DJANGO_SETTINGS_MODULE: backoffice.settings.consumer
-      # Database settings
-      DATABASE_ENGINE: ${DATABASE_ENGINE}
-      DATABASE_NAME: ${DATABASE_NAME}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_HOST: db
-      POSTGRES_PORT: ${POSTGRES_PORT}
-      # Redis settings
-      REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT}
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_DB: ${REDIS_DB}
-      # Consumer settings
-      CONSUMER_LOG_LEVEL: ${CONSUMER_LOG_LEVEL:-INFO}
-      CONSUMER_GRACEFUL_SHUTDOWN_TIMEOUT: ${CONSUMER_GRACEFUL_SHUTDOWN_TIMEOUT:-30}
-      # AES encryption keys
-      AES_KEY_0: ${AES_KEY_0}
-      AES_KEY_1: ${AES_KEY_1}
-      AES_KEY_2: ${AES_KEY_2}
-      AES_KEY_3: ${AES_KEY_3}
-      AES_KEY_4: ${AES_KEY_4}
-      AES_KEY_5: ${AES_KEY_5}
-      AES_KEY_6: ${AES_KEY_6}
-      AES_KEY_7: ${AES_KEY_7}
-      AES_KEY_8: ${AES_KEY_8}
-      AES_KEY_9: ${AES_KEY_9}
-      # Sentry
-      SENTRY_DSN: ${SENTRY_DSN}
-      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT}
-      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE}
-    depends_on:
-      - db
     restart: unless-stopped
     volumes:
       - ./logs:/app/logs

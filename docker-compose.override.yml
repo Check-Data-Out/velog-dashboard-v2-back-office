@@ -1,0 +1,32 @@
+# =============================================================================
+# Local Development Overrides (자동 로드)
+# =============================================================================
+# docker compose up 실행 시 자동으로 병합됨
+# - 로컬 TimescaleDB 인스턴스 추가
+# - consumer가 로컬 db에 연결하도록 설정
+# =============================================================================
+
+services:
+  db:
+    image: timescale/timescaledb-ha:pg17
+    container_name: timescaledb
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME}
+      PGDATA: /home/postgres/pgdata
+      TZ: UTC
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    platform: linux/arm64
+    volumes:
+      - ./timescale_data:/home/postgres/pgdata
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  stats-refresh-consumer:
+    environment:
+      # 로컬에서는 docker 내부 db 컨테이너에 연결
+      POSTGRES_HOST: db
+      SENTRY_ENVIRONMENT: local
+    depends_on:
+      - db

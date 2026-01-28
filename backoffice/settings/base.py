@@ -22,7 +22,21 @@ env = environ.Env()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
+# =============================================================================
+# Environment Variables Loading
+# - Local: .env 파일에서 로드
+# - Docker: env_file로 환경 변수 주입 (.env 파일 없음)
+# =============================================================================
+env_path = os.path.join(BASE_DIR, ".env")
+if os.path.exists(env_path):
+    environ.Env.read_env(env_path)
+else:
+    # .env 파일이 없으면 환경 변수에서 필수 값 확인
+    if not os.environ.get("SECRET_KEY"):
+        raise EnvironmentError(
+            f".env file not found at {env_path} and SECRET_KEY environment variable is not set. "
+            f"Please create .env file from .env.sample or set required environment variables."
+        )
 
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 
