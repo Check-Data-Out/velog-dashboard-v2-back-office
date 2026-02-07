@@ -46,30 +46,32 @@ jobs:
       - name: Install dependencies
         run: poetry install --with dev
 
-      - name: Create .env file
+      - name: Create .env.prod file
         run: |
-          echo "SECRET_KEY=${{ secrets.SECRET_KEY }}" >> .env
-          echo "DEBUG=False" >> .env
-          echo "DATABASE_ENGINE=${{ secrets.DATABASE_ENGINE }}" >> .env
-          echo "DATABASE_NAME=${{ secrets.DATABASE_NAME }}" >> .env
-          echo "POSTGRES_USER=${{ secrets.POSTGRES_USER }}" >> .env
-          echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" >> .env
-          echo "POSTGRES_HOST=${{ secrets.POSTGRES_HOST }}" >> .env
-          echo "POSTGRES_PORT=${{ secrets.POSTGRES_PORT }}" >> .env
-          echo "AES_KEY_0=${{ secrets.AES_KEY_0 }}" >> .env
-          echo "AES_KEY_1=${{ secrets.AES_KEY_1 }}" >> .env
-          echo "AES_KEY_2=${{ secrets.AES_KEY_2 }}" >> .env
-          echo "AES_KEY_3=${{ secrets.AES_KEY_3 }}" >> .env
-          echo "AES_KEY_4=${{ secrets.AES_KEY_4 }}" >> .env
-          echo "AES_KEY_5=${{ secrets.AES_KEY_5 }}" >> .env
-          echo "AES_KEY_6=${{ secrets.AES_KEY_6 }}" >> .env
-          echo "AES_KEY_7=${{ secrets.AES_KEY_7 }}" >> .env
-          echo "AES_KEY_8=${{ secrets.AES_KEY_8 }}" >> .env
-          echo "AES_KEY_9=${{ secrets.AES_KEY_9 }}" >> .env
+          echo "SECRET_KEY=${{ secrets.SECRET_KEY }}" >> .env.prod
+          echo "DEBUG=False" >> .env.prod
+          echo "DATABASE_ENGINE=${{ secrets.DATABASE_ENGINE }}" >> .env.prod
+          echo "DATABASE_NAME=${{ secrets.DATABASE_NAME }}" >> .env.prod
+          echo "POSTGRES_USER=${{ secrets.POSTGRES_USER }}" >> .env.prod
+          echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" >> .env.prod
+          echo "POSTGRES_HOST=${{ secrets.POSTGRES_HOST }}" >> .env.prod
+          echo "POSTGRES_PORT=${{ secrets.POSTGRES_PORT }}" >> .env.prod
+          echo "AES_KEY_0=${{ secrets.AES_KEY_0 }}" >> .env.prod
+          echo "AES_KEY_1=${{ secrets.AES_KEY_1 }}" >> .env.prod
+          echo "AES_KEY_2=${{ secrets.AES_KEY_2 }}" >> .env.prod
+          echo "AES_KEY_3=${{ secrets.AES_KEY_3 }}" >> .env.prod
+          echo "AES_KEY_4=${{ secrets.AES_KEY_4 }}" >> .env.prod
+          echo "AES_KEY_5=${{ secrets.AES_KEY_5 }}" >> .env.prod
+          echo "AES_KEY_6=${{ secrets.AES_KEY_6 }}" >> .env.prod
+          echo "AES_KEY_7=${{ secrets.AES_KEY_7 }}" >> .env.prod
+          echo "AES_KEY_8=${{ secrets.AES_KEY_8 }}" >> .env.prod
+          echo "AES_KEY_9=${{ secrets.AES_KEY_9 }}" >> .env.prod
 
       - name: Run Velog Daily Stats Script
         id: velog-daily-stats-main
         timeout-minutes: 48
+        env:
+          DJANGO_SETTINGS_MODULE: backoffice.settings.prod
         run: |
           set -e
           poetry run python scraping/aggregate_batch.py --min-group ${{ github.event.inputs.min_group || '301' }} --max-group ${{ github.event.inputs.max_group || '350' }}
