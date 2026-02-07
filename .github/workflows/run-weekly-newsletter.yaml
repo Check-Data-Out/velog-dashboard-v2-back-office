@@ -62,6 +62,8 @@ jobs:
           echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> .env.prod
           echo "AWS_REGION=${{ secrets.AWS_REGION }}" >> .env.prod
           echo "DEFAULT_FROM_EMAIL=${{ secrets.DEFAULT_FROM_EMAIL }}" >> .env.prod
+          echo "SENTRY_DSN=${{ secrets.SENTRY_DSN }}" >> .env.prod
+          echo "SENTRY_TRACES_SAMPLE_RATE=0.2" >> .env.prod
 
       - name: Run Weekly Newsletter Batch Script
         id: weekly-newsletter-main
