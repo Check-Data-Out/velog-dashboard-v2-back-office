@@ -1,3 +1,4 @@
+import logging
 import signal
 import sys
 import time
@@ -7,11 +8,10 @@ import sentry_sdk
 # Django setup must be imported first
 import consumer.setup_django  # noqa: F401
 from consumer.config import ConsumerConfig, RedisConfig
-from consumer.logger_config import setup_logger
 from consumer.message_handler import MessageProcessor
 from modules.redis.client import RedisQueueClient, get_redis_client
 
-logger = setup_logger()
+logger = logging.getLogger("consumer")
 
 
 class StatsRefreshConsumer:
@@ -125,13 +125,13 @@ class StatsRefreshConsumer:
                 logger.error(
                     f"Error in consume loop (consecutive: {consecutive_errors}): {e}"
                 )
-                sentry_sdk.capture_exception(e)
 
                 if consecutive_errors >= max_consecutive_errors:
                     logger.critical(
                         f"Too many consecutive errors ({consecutive_errors}). "
                         f"Shutting down consumer."
                     )
+                    sentry_sdk.capture_exception(e)
                     self.shutdown()
                     sys.exit(1)
 

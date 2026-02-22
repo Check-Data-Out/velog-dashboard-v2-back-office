@@ -4,11 +4,12 @@ from unittest.mock import Mock, patch
 from consumer.stats_refresh_consumer import StatsRefreshConsumer
 
 
+@patch("consumer.stats_refresh_consumer.MessageProcessor")
+@patch("consumer.stats_refresh_consumer.RedisQueueClient")
 class TestStatsRefreshConsumer:
     """Tests for StatsRefreshConsumer class."""
 
-    @patch("consumer.stats_refresh_consumer.RedisQueueClient")
-    def test_init(self, mock_redis_client_class) -> None:
+    def test_init(self, mock_redis_client_class, mock_processor_class) -> None:
         """Consumer 초기화 테스트."""
         consumer = StatsRefreshConsumer()
 
@@ -19,12 +20,12 @@ class TestStatsRefreshConsumer:
         assert consumer.stats["succeeded"] == 0
         assert consumer.stats["failed"] == 0
 
-    @patch("consumer.stats_refresh_consumer.RedisQueueClient")
-    def test_setup_signal_handlers(self, mock_redis_client_class) -> None:
+    def test_setup_signal_handlers(
+        self, mock_redis_client_class, mock_processor_class
+    ) -> None:
         """시그널 핸들러 설정 테스트."""
         consumer = StatsRefreshConsumer()
 
-        # 시그널 핸들러가 설정되었는지 확인
         assert (
             signal.getsignal(signal.SIGTERM)
             == consumer._handle_shutdown_signal
@@ -33,8 +34,9 @@ class TestStatsRefreshConsumer:
             signal.getsignal(signal.SIGINT) == consumer._handle_shutdown_signal
         )
 
-    @patch("consumer.stats_refresh_consumer.RedisQueueClient")
-    def test_handle_shutdown_signal(self, mock_redis_client_class) -> None:
+    def test_handle_shutdown_signal(
+        self, mock_redis_client_class, mock_processor_class
+    ) -> None:
         """Shutdown 시그널 처리 테스트."""
         consumer = StatsRefreshConsumer()
         consumer.running = True
@@ -43,9 +45,8 @@ class TestStatsRefreshConsumer:
 
         assert consumer.running is False
 
-    @patch("consumer.stats_refresh_consumer.RedisQueueClient")
     def test_process_message_success(
-        self, mock_redis_client_class, sample_message
+        self, mock_redis_client_class, mock_processor_class, sample_message
     ) -> None:
         """메시지 처리 성공 테스트."""
         mock_redis_client = Mock()
@@ -53,7 +54,7 @@ class TestStatsRefreshConsumer:
 
         consumer = StatsRefreshConsumer()
         consumer.redis_client = mock_redis_client
-        consumer.message_processor.process_with_retry = Mock(return_value=True)  # type: ignore
+        consumer.message_processor.process_with_retry = Mock(return_value=True)
 
         consumer._process_message(sample_message)
 
@@ -67,9 +68,8 @@ class TestStatsRefreshConsumer:
             sample_message
         )
 
-    @patch("consumer.stats_refresh_consumer.RedisQueueClient")
     def test_process_message_failure(
-        self, mock_redis_client_class, sample_message
+        self, mock_redis_client_class, mock_processor_class, sample_message
     ) -> None:
         """메시지 처리 실패 테스트."""
         mock_redis_client = Mock()
@@ -77,7 +77,7 @@ class TestStatsRefreshConsumer:
 
         consumer = StatsRefreshConsumer()
         consumer.redis_client = mock_redis_client
-        consumer.message_processor.process_with_retry = Mock(  # type: ignore
+        consumer.message_processor.process_with_retry = Mock(
             return_value=False
         )
 
@@ -90,8 +90,9 @@ class TestStatsRefreshConsumer:
             sample_message
         )
 
-    @patch("consumer.stats_refresh_consumer.RedisQueueClient")
-    def test_get_stats_summary(self, mock_redis_client_class) -> None:
+    def test_get_stats_summary(
+        self, mock_redis_client_class, mock_processor_class
+    ) -> None:
         """통계 요약 조회 테스트."""
         consumer = StatsRefreshConsumer()
         consumer.stats["processed"] = 10
@@ -105,10 +106,9 @@ class TestStatsRefreshConsumer:
         assert "failed=2" in summary
         assert "uptime=" in summary
 
-    @patch("consumer.stats_refresh_consumer.RedisQueueClient")
     @patch("consumer.stats_refresh_consumer.time.sleep")
     def test_shutdown_graceful(
-        self, mock_sleep, mock_redis_client_class
+        self, mock_sleep, mock_redis_client_class, mock_processor_class
     ) -> None:
         """Graceful shutdown 테스트."""
         mock_redis_client = Mock()
@@ -124,10 +124,9 @@ class TestStatsRefreshConsumer:
         assert consumer.running is False
         mock_redis_client.close.assert_called_once()
 
-    @patch("consumer.stats_refresh_consumer.RedisQueueClient")
     @patch("consumer.stats_refresh_consumer.time.sleep")
     def test_shutdown_with_processing_message(
-        self, mock_sleep, mock_redis_client_class
+        self, mock_sleep, mock_redis_client_class, mock_processor_class
     ) -> None:
         """메시지 처리 중 shutdown 테스트."""
         mock_redis_client = Mock()
@@ -138,7 +137,6 @@ class TestStatsRefreshConsumer:
         consumer.running = True
         consumer.processing_message = True
 
-        # processing_message를 False로 변경하는 side effect
         def sleep_side_effect(duration):
             consumer.processing_message = False
 
@@ -149,13 +147,13 @@ class TestStatsRefreshConsumer:
         assert consumer.running is False
         mock_redis_client.close.assert_called_once()
 
-    @patch("consumer.stats_refresh_consumer.RedisQueueClient")
-    def test_shutdown_already_stopped(self, mock_redis_client_class) -> None:
+    def test_shutdown_already_stopped(
+        self, mock_redis_client_class, mock_processor_class
+    ) -> None:
         """이미 중지된 상태에서 shutdown 테스트."""
         consumer = StatsRefreshConsumer()
         consumer.running = False
 
-        # Should not raise any errors
         consumer.shutdown()
 
         assert consumer.running is False

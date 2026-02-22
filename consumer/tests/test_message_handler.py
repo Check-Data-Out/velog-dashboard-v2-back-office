@@ -56,20 +56,14 @@ class TestStatsRefreshMessageHandler:
         with pytest.raises(Exception, match="Scraper error"):
             await handler.process_message(sample_message)
 
-    @patch("consumer.message_handler.asyncio.run")
-    @patch("consumer.message_handler.ScraperTargetUser")
-    def test_handle_message_sync(
-        self, mock_scraper_class, mock_asyncio_run, sample_message
-    ) -> None:
+    def test_handle_message_sync(self, sample_message) -> None:
         """동기 wrapper 함수 테스트."""
-        mock_scraper = Mock()
-        mock_scraper.run = AsyncMock()
-        mock_scraper_class.return_value = mock_scraper
-
         handler = StatsRefreshMessageHandler()
+        handler.process_message = AsyncMock()
+
         handler.handle_message_sync(sample_message)
 
-        mock_asyncio_run.assert_called_once()
+        handler.process_message.assert_called_once_with(sample_message)
 
 
 class TestMessageProcessor:
