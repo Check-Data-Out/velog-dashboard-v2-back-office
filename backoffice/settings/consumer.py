@@ -44,7 +44,13 @@ for handler_name in ("scraping_file", "newsletter_file", "django_file"):
     LOGGING["handlers"].pop(handler_name, None)  # noqa: F405
 
 for logger_name in ("scraping", "newsletter", "django", "consumer"):
-    logger_conf = LOGGING["loggers"].get(logger_name, {})  # noqa: F405
+    logger_conf = LOGGING["loggers"].setdefault(  # noqa: F405
+        logger_name,
+        {
+            "level": "INFO",
+            "propagate": False,
+        },
+    )
     logger_conf["handlers"] = [
         h for h in logger_conf.get("handlers", []) if not h.endswith("_file")
     ]

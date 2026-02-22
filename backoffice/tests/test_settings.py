@@ -81,7 +81,13 @@ def consumer_logging():
         logging_copy["handlers"].pop(handler_name, None)
 
     for logger_name in ("scraping", "newsletter", "django", "consumer"):
-        logger_conf = logging_copy["loggers"].get(logger_name, {})
+        logger_conf = logging_copy["loggers"].setdefault(
+            logger_name,
+            {
+                "level": "INFO",
+                "propagate": False,
+            },
+        )
         logger_conf["handlers"] = [
             h
             for h in logger_conf.get("handlers", [])
