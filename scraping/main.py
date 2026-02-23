@@ -271,7 +271,9 @@ class Scraper:
             return
 
         try:
-            today = get_local_now().date()
+            today = get_local_now().replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
             post_id = post["id"]
 
             stats_data = stats.get("data", {})

@@ -39,19 +39,20 @@ DEFAULT_FROM_EMAIL = env(
     "DEFAULT_FROM_EMAIL", default="no-reply@velog-dashboard.kro.kr"
 )
 
-SENTRY_DSN = env("SENTRY_DSN", default="")
-SENTRY_ENVIRONMENT = env("SENTRY_ENVIRONMENT", default="local")
+SENTRY_DSN = env("SENTRY_DSN", default="").strip()
+SENTRY_ENVIRONMENT = env("SENTRY_ENVIRONMENT", default="local").strip()
 SENTRY_TRACES_SAMPLE_RATE = env.float("SENTRY_TRACES_SAMPLE_RATE", default=1.0)
 
-sentry_sdk.init(
-    dsn=SENTRY_DSN,
-    integrations=[
-        DjangoIntegration(),
-    ],
-    send_default_pii=True,
-    environment=SENTRY_ENVIRONMENT,
-    traces_sample_rate=SENTRY_TRACES_SAMPLE_RATE,
-)
+if SENTRY_DSN and SENTRY_ENVIRONMENT not in ("local", "test"):
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[
+            DjangoIntegration(),
+        ],
+        send_default_pii=True,
+        environment=SENTRY_ENVIRONMENT,
+        traces_sample_rate=SENTRY_TRACES_SAMPLE_RATE,
+    )
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
@@ -209,8 +210,9 @@ LOGGING = {
         },
         "django_file": {
             "level": "INFO",
-            "class": "logging.handlers.TimedRotatingFileHandler",
+            "class": "backoffice.logging_handlers.GzipTimedRotatingFileHandler",
             "when": "midnight",
+            "utc": True,
             "interval": 1,
             "backupCount": 7,
             "formatter": "default_formatter",
@@ -224,8 +226,9 @@ LOGGING = {
         },
         "scraping_file": {
             "level": "INFO",
-            "class": "logging.handlers.TimedRotatingFileHandler",
+            "class": "backoffice.logging_handlers.GzipTimedRotatingFileHandler",
             "when": "midnight",
+            "utc": True,
             "interval": 1,
             "backupCount": 7,
             "formatter": "default_formatter",
@@ -239,13 +242,19 @@ LOGGING = {
         },
         "newsletter_file": {
             "level": "INFO",
-            "class": "logging.handlers.TimedRotatingFileHandler",
+            "class": "backoffice.logging_handlers.GzipTimedRotatingFileHandler",
             "when": "midnight",
+            "utc": True,
             "interval": 1,
             "backupCount": 7,
             "formatter": "default_formatter",
             "encoding": "utf-8",
             "filename": os.path.join(BASE_DIR, "logs", "newsletter.log"),
+        },
+        "consumer_console": {
+            "level": "INFO",
+            "class": "logging.StreamHandler",
+            "formatter": "default_formatter",
         },
     },
     "loggers": {
@@ -261,6 +270,11 @@ LOGGING = {
         },
         "newsletter": {
             "handlers": ["newsletter_console", "newsletter_file"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "consumer": {
+            "handlers": ["consumer_console"],
             "level": "INFO",
             "propagate": False,
         },

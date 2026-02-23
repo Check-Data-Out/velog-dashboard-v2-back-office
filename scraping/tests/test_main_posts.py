@@ -49,17 +49,18 @@ class TestScraperPosts:
             for i in range(10)
         ]
 
-        # sync_to_async가 예외를 발생시키는 AsyncMock을 반환하도록 패치
-        with patch("scraping.main.sync_to_async") as mock_sync_to_async:
-            mock_sync_to_async.return_value = AsyncMock(
-                side_effect=Exception("DB 에러")
-            )
+        with patch.object(
+            scraper,
+            "_upsert_batch",
+            new_callable=AsyncMock,
+            side_effect=Exception("DB 에러"),
+        ) as mock_upsert:
             result = await scraper.bulk_upsert_posts(
                 user, posts_data, batch_size=5
             )
 
         assert result is False
-        mock_sync_to_async.assert_called()
+        mock_upsert.assert_called()
 
     @pytest.mark.asyncio
     @pytest.mark.django_db
