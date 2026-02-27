@@ -9,6 +9,7 @@
 
 import asyncio
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
 
 import setup_django  # noqa
@@ -178,7 +179,7 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
 
             await sync_to_async(WeeklyTrend.objects.create)(
                 week_start_date=context.week_start.date(),
-                week_end_date=context.week_end.date(),
+                week_end_date=(context.week_end - timedelta(days=1)).date(),
                 insight=insight_data,
                 is_processed=False,
                 processed_at=context.week_end,
