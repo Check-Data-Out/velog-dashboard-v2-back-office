@@ -38,7 +38,7 @@ class TrendingPostData:
         return {
             "제목": self.post.title,
             "내용": self.body,
-            "조회수": self.post.views,
+            # "조회수": self.post.views, # 실제 데이터 없음 (모두 0으로 들어감, 추후 추가 여부 논의)
             "좋아요 수": self.post.likes,
         }
 

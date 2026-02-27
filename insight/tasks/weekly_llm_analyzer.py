@@ -2,7 +2,12 @@ import json
 import logging
 from typing import Any
 
-from insight.tasks.prompts import SYS_PROM, USER_TREND_PROM, WEEKLY_TREND_PROM
+from insight.tasks.prompts import (
+    USER_SYS_PROM,
+    USER_TREND_PROM,
+    WEEKLY_SYS_PROM,
+    WEEKLY_TREND_PROM,
+)
 from modules.llm.openai.client import OpenAIClient
 
 logger = logging.getLogger("newsletter")
@@ -10,19 +15,20 @@ logger = logging.getLogger("newsletter")
 
 def _generate_analysis(
     posts: list,
-    prompt_template: str,
+    user_prompt: str,
+    sys_prompt: str,
     api_key: str,
 ) -> dict[str, Any]:
     """공통 분석 로직"""
     client = OpenAIClient.get_client(api_key)
-    prompt = prompt_template.format(posts=posts)
+    prompt = user_prompt.format(posts=posts, count=len(posts))
 
     logger.info("Generated prompt:\n%s", prompt)
 
     try:
         result = client.generate_text(
             prompt=prompt,
-            system_prompt=SYS_PROM,
+            system_prompt=sys_prompt,
             temperature=0.1,
             response_format={"type": "json_object"},
         )
@@ -39,8 +45,10 @@ def _generate_analysis(
 
 
 def analyze_trending_posts(posts: list, api_key: str) -> dict[str, Any]:
-    return _generate_analysis(posts, WEEKLY_TREND_PROM, api_key)
+    return _generate_analysis(
+        posts, WEEKLY_TREND_PROM, WEEKLY_SYS_PROM, api_key
+    )
 
 
 def analyze_user_posts(posts: list, api_key: str) -> dict[str, Any]:
-    return _generate_analysis(posts, USER_TREND_PROM, api_key)
+    return _generate_analysis(posts, USER_TREND_PROM, USER_SYS_PROM, api_key)
