@@ -33,8 +33,8 @@ from noti.models import NotiMailLog
 from users.models import User
 from utils.utils import (
     from_dict,
-    get_local_date,
     get_local_now,
+    get_local_now_date,
     strip_html_tags,
     to_dict,
 )
@@ -67,8 +67,8 @@ class WeeklyNewsletterBatch:
             "e_date": None,
         }
         # 배치 실행 시점 기준의 local 날짜 로드
-        self.before_a_week = get_local_date() - timedelta(weeks=1)
-        self.today = get_local_date()
+        self.before_a_week = get_local_now_date() - timedelta(weeks=1)
+        self.today = get_local_now_date()
 
     def _delete_old_maillogs(self) -> None:
         """이전 뉴스레터의 성공한 메일 발송 로그 삭제"""

@@ -35,7 +35,7 @@ from insight.tasks.weekly_llm_analyzer import analyze_user_posts
 from posts.models import Post, PostDailyStatistics
 from scraping.velog.schemas import Post as VelogPost
 from users.models import User
-from utils.utils import get_local_date
+from utils.utils import to_local_date
 
 
 class TokenExpiredError(Exception):
@@ -112,7 +112,7 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
 
         days_ago = (
             context.week_end.date()
-            - get_local_date(last_post.released_at).date()
+            - to_local_date(last_post.released_at).date()
         ).days
         if days_ago == 0:
             return None  # 배치 당일 발행 글은 다음 뉴스레터에 포함됨, 리마인더 미표시

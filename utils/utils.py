@@ -24,13 +24,15 @@ def get_local_now() -> datetime:
     return local_now
 
 
-def get_local_date(dt: datetime | None = None) -> datetime:
-    """django timezone 을 기반으로 하는 실제 local의 date. dt가 없으면 현재 시각 기준"""
-    local_dt = (
-        timezone.localtime(dt, timezone=timezone.get_current_timezone())
-        if dt
-        else get_local_now()
-    )
+def get_local_now_date() -> datetime:
+    """django timezone 을 기반으로 하는 실제 local의 now date"""
+    local_now = get_local_now()
+    return local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def to_local_date(dt: datetime) -> datetime:
+    """django timezone 을 기반으로 하는 실제 local의 date로 변환"""
+    local_dt = timezone.localtime(dt, timezone=timezone.get_current_timezone())
     return local_dt.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
