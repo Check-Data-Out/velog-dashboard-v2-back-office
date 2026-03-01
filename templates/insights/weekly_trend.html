@@ -10,6 +10,20 @@
     {% for item in insight.trending_summary %}
       <div style="box-sizing: border-box; margin: 20px 0; padding: 20px; border-radius: 8px; background-color: #f7f7f7;">
         <table style="box-sizing: border-box; width: 100%; border-collapse: collapse; border-spacing: 0;">
+          <tr>
+            <td style="box-sizing: border-box; padding: 0 0 12px 0;">
+              <h4 style="box-sizing: border-box; margin: 0; font-size: 16px; font-weight: 700; line-height: 19.2px; color: #000000; letter-spacing: 0;">
+                <a
+                  href="https://velog.io/@{{item.username}}/{{item.slug}}?utm_source=velog_dashboard_email&utm_medium=weekly_analysis"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style="box-sizing: border-box; color: #000000; text-decoration: none"
+                >
+                  {{ item.title }}
+                </a>
+              </h4>
+            </td>
+          </tr>
           {% if item.thumbnail %}
           <tr>
             <td style="box-sizing: border-box; padding: 0 0 12px 0;">
@@ -23,16 +37,6 @@
           {% endif %}
           <tr>
             <td style="box-sizing: border-box; vertical-align: top; padding: 0;">
-              <h4 style="box-sizing: border-box; margin: 0 0 6px 0; font-size: 16px; font-weight: 700; line-height: 19.2px; color: #000000; letter-spacing: 0;">
-                <a
-                  href="https://velog.io/@{{item.username}}/{{item.slug}}?utm_source=velog_dashboard_email&utm_medium=weekly_analysis"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style="box-sizing: border-box; color: #000000; text-decoration: none"
-                >
-                  {{ item.title }}
-                </a>
-              </h4>
               {% if item.username %}
                 <p style="box-sizing: border-box; margin: 0 0 6px 0; font-size: 13px; font-weight: 700; color: #acacac; letter-spacing: 0; line-height: 14.4px;">
                   @{{item.username}}
