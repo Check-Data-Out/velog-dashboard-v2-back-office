@@ -9,6 +9,7 @@
 
 import asyncio
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
 
 import setup_django  # noqa
@@ -38,7 +39,7 @@ class TrendingPostData:
         return {
             "제목": self.post.title,
             "내용": self.body,
-            "조회수": self.post.views,
+            # "조회수": self.post.views, # 실제 데이터 없음 (모두 0으로 들어감, 추후 추가 여부 논의)
             "좋아요 수": self.post.likes,
         }
 
@@ -178,7 +179,7 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
 
             await sync_to_async(WeeklyTrend.objects.create)(
                 week_start_date=context.week_start.date(),
-                week_end_date=context.week_end.date(),
+                week_end_date=(context.week_end - timedelta(days=1)).date(),
                 insight=insight_data,
                 is_processed=False,
                 processed_at=context.week_end,

@@ -9,43 +9,50 @@
     </h3>
     {% for item in insight.trending_summary %}
       <div style="box-sizing: border-box; margin: 20px 0; padding: 20px; border-radius: 8px; background-color: #f7f7f7;">
-        <div style="box-sizing: border-box; display: flex;">
+        <table style="box-sizing: border-box; width: 100%; border-collapse: collapse; border-spacing: 0;">
+          <tr>
+            <td style="box-sizing: border-box; padding: 0 0 12px 0;">
+              <h4 style="box-sizing: border-box; margin: 0; font-size: 16px; font-weight: 700; line-height: 19.2px; color: #000000; letter-spacing: 0;">
+                <a
+                  href="https://velog.io/@{{item.username}}/{{item.slug}}?utm_source=velog_dashboard_email&utm_medium=weekly_analysis"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style="box-sizing: border-box; color: #000000; text-decoration: none"
+                >
+                  {{ item.title }}
+                </a>
+              </h4>
+            </td>
+          </tr>
           {% if item.thumbnail %}
-            <img
-              src="{{item.thumbnail}}"
-              alt="{{item.title}}"
-              style="box-sizing: border-box; width: 100px; height: 100px; border-radius: 6.4px; object-fit: cover; flex-shrink: 0; margin-right: 20px;"
-            />
+          <tr>
+            <td style="box-sizing: border-box; padding: 0 0 12px 0;">
+              <img
+                src="{{item.thumbnail}}"
+                alt="{{item.title}}"
+                style="box-sizing: border-box; width: 100%; height: 200px; object-fit: cover; border-radius: 6.4px; display: block;"
+              />
+            </td>
+          </tr>
           {% endif %}
-          <div style="box-sizing: border-box; flex: 1; min-width: 0">
-            <h4 style="box-sizing: border-box; margin: 0 0 6px 0; font-size: 16px; font-weight: 700; line-height: 19.2px; color: #000000; letter-spacing: 0;">
-              <a
-                href="https://velog.io/@{{item.username}}/{{item.slug}}?utm_source=velog_dashboard_email&utm_medium=weekly_analysis"
-                target="_blank"
-                rel="noopener noreferrer"
-                style="box-sizing: border-box; color: #000000; text-decoration: none"
-              >
-                {{ item.title }}
-              </a>
-            </h4>
-            {% if item.username and item.key_points %}
-              <p style="box-sizing: border-box; margin: 0 0 6px 0; font-size: 13px; font-weight: 700; color: #acacac; letter-spacing: 0; line-height: 14.4px;">
-                @{{item.username}} | 📌 {{ item.key_points|join:", " }}
+          <tr>
+            <td style="box-sizing: border-box; vertical-align: top; padding: 0;">
+              {% if item.username %}
+                <p style="box-sizing: border-box; margin: 0 0 6px 0; font-size: 13px; font-weight: 700; color: #acacac; letter-spacing: 0; line-height: 14.4px;">
+                  @{{item.username}}
+                </p>
+              {% endif %}
+              {% if item.key_points %}
+                <p style="box-sizing: border-box; margin: 0 0 6px 0; font-size: 13px; font-weight: 700; color: #333333; letter-spacing: 0; line-height: 20px;">
+                  {% for point in item.key_points %}📌 {{ point }}{% if not forloop.last %}<br>{% endif %}{% endfor %}
+                </p>
+              {% endif %}
+              <p style="box-sizing: border-box; margin: 0; font-size: 13px; font-weight: 500; color: #555555; line-height: 15.6px; letter-spacing: 0;">
+                {{ item.summary }}
               </p>
-            {% elif item.username %}
-              <p style="box-sizing: border-box; margin: 0 0 6px 0; font-size: 13px; font-weight: 700; color: #acacac; letter-spacing: 0; line-height: 14.4px;">
-                @{{item.username}}
-              </p>
-            {% elif item.key_points %}
-              <p style="box-sizing: border-box; margin: 0 0 6px 0; font-size: 13px; font-weight: 700; color: #acacac; letter-spacing: 0; line-height: 14.4px;">
-                📌 {{ item.key_points|join:", " }}
-              </p>
-            {% endif %}
-            <p style="box-sizing: border-box; margin: 0; font-size: 13px; font-weight: 500; color: #999999; line-height: 15.6px; letter-spacing: 0;">
-              {{ item.summary }}
-            </p>
-          </div>
-        </div>
+            </td>
+          </tr>
+        </table>
       </div>
     {% endfor %} 
   {% endif %} 
@@ -59,9 +66,13 @@
         <h4 style="box-sizing: border-box; color: #000000; margin: 10px 0 6px 0; line-height: 19.2px; font-size: 16px; font-weight: 700; letter-spacing: 0;">
           🔑 핫한 기술 키워드
         </h4>
-        <p style="box-sizing: border-box; margin: 0 0 20px 0; color: #000000; font-size: 13px; font-weight: 500; line-height: 15.6px; letter-spacing: 0;">
-          {{ insight.trend_analysis.hot_keywords|join:", " }}
-        </p>
+        <table style="box-sizing: border-box; width: 100%; border-collapse: collapse; border-spacing: 0; margin: 0 0 20px 0;">
+          {% for keyword in insight.trend_analysis.hot_keywords %}
+            {% if forloop.counter0|divisibleby:2 %}<tr style="box-sizing: border-box;">{% endif %}
+            <td style="box-sizing: border-box; width: 50%; padding: 3px 0; font-size: 13px; font-weight: 500; color: #000000; line-height: 18px; letter-spacing: 0; vertical-align: top;">• {{ keyword }}</td>
+            {% if not forloop.counter0|divisibleby:2 %}</tr>{% elif forloop.last %}<td style="box-sizing: border-box; width: 50%;"></td></tr>{% endif %}
+          {% endfor %}
+        </table>
       {% endif %} 
       
       {% if insight.trend_analysis.title_trends %}

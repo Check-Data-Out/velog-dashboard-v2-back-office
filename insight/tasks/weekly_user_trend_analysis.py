@@ -14,6 +14,7 @@
 import asyncio
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
 
 import setup_django  # noqa
@@ -34,6 +35,7 @@ from insight.tasks.weekly_llm_analyzer import analyze_user_posts
 from posts.models import Post, PostDailyStatistics
 from scraping.velog.schemas import Post as VelogPost
 from users.models import User
+from utils.utils import to_local_date
 
 
 class TokenExpiredError(Exception):
@@ -109,8 +111,11 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
             return None
 
         days_ago = (
-            context.week_end.date() - last_post.released_at.date()
+            context.week_end.date()
+            - to_local_date(last_post.released_at).date()
         ).days
+        if days_ago == 0:
+            return None  # 배치 당일 발행 글은 다음 뉴스레터에 포함됨, 리마인더 미표시
         return WeeklyUserReminder(title=last_post.title, days_ago=days_ago)
 
     async def _calculate_user_weekly_total_stats(
@@ -474,7 +479,9 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
                 await sync_to_async(UserWeeklyTrend.objects.create)(
                     user_id=user_id,
                     week_start_date=context.week_start.date(),
-                    week_end_date=context.week_end.date(),
+                    week_end_date=(
+                        context.week_end - timedelta(days=1)
+                    ).date(),
                     insight=insight_data,
                     is_processed=False,
                     processed_at=context.week_end,

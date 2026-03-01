@@ -275,8 +275,8 @@ def mock_context(mock_post, mock_post_detail):
     mock_context = MagicMock()
     mock_context.velog_client = mock_velog_client
     mock_context.week_start.date.return_value = "2025-07-21"
-    mock_context.week_end.date.return_value = "2025-07-27"
-    mock_context.week_end = datetime(2025, 7, 27)
+    mock_context.week_end.date.return_value = "2025-07-28"
+    mock_context.week_end = datetime(2025, 7, 28)
     return mock_context
 
 

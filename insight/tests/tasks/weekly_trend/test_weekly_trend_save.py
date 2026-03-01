@@ -33,7 +33,7 @@ class TestWeeklyTrendSave:
                 "trend_analysis": {"insights": "Good"},
             },
             is_processed=False,
-            processed_at=datetime(2025, 7, 27),
+            processed_at=datetime(2025, 7, 28),
         )
         mock_logger.info.assert_called()
 
