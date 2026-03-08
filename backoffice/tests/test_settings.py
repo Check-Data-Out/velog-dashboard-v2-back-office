@@ -74,7 +74,7 @@ def consumer_logging():
         "backupCount": 7,
         "formatter": "default_formatter",
         "encoding": "utf-8",
-        "filename": "logs/consumer.log",
+        "filename": "consumer-logs/consumer.log",
     }
 
     for handler_name in ("scraping_file", "newsletter_file", "django_file"):
@@ -121,3 +121,11 @@ class TestConsumerLoggingOverride:
         assert handler["backupCount"] == 7
         assert handler["when"] == "midnight"
         assert handler["utc"] is True
+
+    def test_consumer_log_dir_is_separate_from_django(self, consumer_logging):
+        """Consumer 로그 경로가 Django의 logs/와 분리되어야 한다."""
+        consumer_path = consumer_logging["handlers"]["consumer_file"][
+            "filename"
+        ]
+        assert "consumer-logs/" in consumer_path
+        assert not consumer_path.startswith("logs/")

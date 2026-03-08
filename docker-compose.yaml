@@ -19,5 +19,5 @@ services:
       DJANGO_SETTINGS_MODULE: backoffice.settings.consumer
     restart: unless-stopped
     volumes:
-      - ./logs:/app/logs
+      - ./consumer-logs:/app/consumer-logs
     command: python -m consumer.stats_refresh_consumer

@@ -46,8 +46,8 @@ COPY --from=builder ${VIRTUAL_ENV} ${VIRTUAL_ENV}
 # Copy application code
 COPY . .
 
-# Create logs directory
-RUN mkdir -p /app/logs
+# Create consumer logs directory (Django의 logs/와 분리)
+RUN mkdir -p /app/consumer-logs
 
 # Run consumer (poetry 없이 직접 python 실행)
 CMD ["python", "-m", "consumer.stats_refresh_consumer"]
