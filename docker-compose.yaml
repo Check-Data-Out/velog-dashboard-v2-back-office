@@ -20,4 +20,5 @@ services:
     restart: unless-stopped
     volumes:
       - ./consumer-logs:/app/consumer-logs
+      - ./consumer-logs:/app/logs
     command: python -m consumer.stats_refresh_consumer
