@@ -1,16 +1,19 @@
 import logging
 
-from asgiref.sync import async_to_sync
 from django.contrib import admin, messages
 from django.db.models import Count, Prefetch, QuerySet
 from django.http import HttpRequest
 from django.urls import reverse
 from django.utils.html import format_html
 
-from scraping.main import ScraperTargetUser
+from consumer.envelope import build_envelope
+from ops_tracking.services import RequestLifecycleService
+from queue_monitor.services import QueueMonitorService
 from users.models import QRLoginToken, User
 
 logger = logging.getLogger(__name__)
+
+_MAX_UPDATE_STATS_SELECTION = 10
 
 
 @admin.register(User)
@@ -112,36 +115,64 @@ class UserAdmin(admin.ModelAdmin):
         )
 
     @admin.action(
-        description="선택된 사용자 실시간 통계 업데이트 (1명 정도만 진행, 이상 timeout 발생 위험)"
+        description="선택된 사용자 통계 업데이트 요청 (큐에 추가, 진행은 Queue Monitor 에서 확인)"
     )
     def update_stats(self, request: HttpRequest, queryset: QuerySet[User]):
+        """Plan.md Phase 6 — 동기 ScraperTargetUser 호출 제거, 큐 기반으로 대체.
+
+        - max 10명 선택 제한
+        - QUEUED/PROCESSING 으로 이미 진행 중인 사용자는 스킵
+        - 각 user 에 대해 envelope 생성 + pending 큐 LPUSH + StatsRefreshRequest 생성
+        """
         user_pk_list = list(queryset.values_list("pk", flat=True))
         logger.info(
-            f"{request.user} 가 {user_pk_list} 사용자를 실시간 업데이트 시도 했습니다."
+            f"{request.user} 가 {user_pk_list} 사용자 통계 업데이트를 큐에 요청했습니다."
         )
 
-        if len(user_pk_list) >= 3:
+        if len(user_pk_list) > _MAX_UPDATE_STATS_SELECTION:
             return self.message_user(
                 request,
-                f"3명 이상의 유저를 선택하지 말아주세요 >> {user_pk_list}",
+                f"{_MAX_UPDATE_STATS_SELECTION} 명 이하로 선택해주세요.",
                 messages.ERROR,
             )
 
-        try:
-            # 비동기 함수를 동기적으로 실행
-            async_to_sync(ScraperTargetUser(user_pk_list).run)()
-        except Exception as e:
-            return self.message_user(
-                request,
-                f"실시간 통계 업데이트를 실패했습니다 >> {e}, {e.__class__}",
-                messages.ERROR,
+        lifecycle = RequestLifecycleService()
+        inflight = lifecycle.has_inflight_for_users(user_pk_list)
+
+        # request.user 는 Django auth.User 이고 StatsRefreshRequest.requested_by 는
+        # users.User FK 이므로 email 매칭으로 users.User id 를 찾아 보조. 매칭 실패 시 None.
+        requester_id = None
+        requester_email = getattr(request.user, "email", None)
+        if requester_email:
+            requester_id = (
+                User.objects.filter(email=requester_email)
+                .values_list("id", flat=True)
+                .first()
             )
 
-        return self.message_user(
-            request,
-            f"{len(user_pk_list)} 명의 사용자 통계를 실시간 업데이트 성공했습니다.",
-            messages.SUCCESS,
-        )
+        service = QueueMonitorService()
+        queued = 0
+        for user_id in user_pk_list:
+            if user_id in inflight:
+                continue
+            envelope = build_envelope(
+                user_id=user_id, requested_by=requester_id
+            )
+            # StatsRefreshRequest 먼저 생성 (consumer 가 mark_processing 할 수 있도록)
+            lifecycle.mark_queued(
+                request_id=envelope["requestId"],
+                user_id=user_id,
+                requested_by=requester_id,
+            )
+            service.redis_client.enqueue_message(envelope)
+            queued += 1
+
+        skipped = len(user_pk_list) - queued
+        msg = f"{queued}건 큐에 추가됨"
+        if skipped:
+            msg += f", {skipped}건은 이미 진행중이어서 스킵"
+        msg += ". 진행 상황은 Queue Monitor 에서 확인하세요."
+        return self.message_user(request, msg, messages.SUCCESS)
 
 
 @admin.register(QRLoginToken)
