@@ -5,15 +5,31 @@ import threading
 import time
 
 import sentry_sdk
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
+from tenacity import (
+    RetryError,
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+    wait_random,
+)
 
 # Django setup must be imported first
 import consumer.setup_django  # noqa: F401
 from consumer.config import ConsumerConfig, RedisConfig
 from consumer.envelope import ensure_envelope
+from consumer.healthz import start_healthz_server
 from consumer.message_handler import MessageProcessor
 from consumer.reclaimer import ProcessingReclaimer
 from consumer.shutdown import get_shutdown_event
-from modules.redis.client import RedisQueueClient, get_redis_client
+from modules.redis.client import (
+    RedisQueueClient,
+    get_redis_client,
+    reset_redis_client,
+)
 
 logger = logging.getLogger("consumer")
 
@@ -89,6 +105,13 @@ class StatsRefreshConsumer:
             # Reclaimer 시작: cold start 1회 + daemon thread loop
             self._start_reclaimer()
 
+            # Healthz 서버 시작 (127.0.0.1 bind only)
+            start_healthz_server(
+                stats_provider=lambda: self.stats,
+                redis_client=self.redis_client,
+                config=self.consumer_config,
+            )
+
             logger.info(
                 f"Consumer started successfully. Listening to queue: "
                 f"{self.redis_config.QUEUE_STATS_REFRESH}"
@@ -132,6 +155,22 @@ class StatsRefreshConsumer:
             self._lifecycle = RequestLifecycleService()
         return self._lifecycle
 
+    @retry(
+        stop=stop_after_attempt(30),
+        wait=wait_exponential(multiplier=1, min=1, max=60) + wait_random(0, 2),
+        retry=retry_if_exception_type(
+            (RedisConnectionError, RedisTimeoutError)
+        ),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+    )
+    def _reconnect_with_backoff(self) -> None:
+        """Redis 연결을 backoff 재시도. tenacity 로 최대 30회."""
+        reset_redis_client()
+        self.redis_client = get_redis_client()
+        assert self.redis_client is not None
+        self.redis_client.client.ping()  # type: ignore[union-attr]
+        logger.info("Redis reconnected successfully.")
+
     def _consume_loop(self) -> None:
         """Main consumption loop.
 
@@ -168,6 +207,22 @@ class StatsRefreshConsumer:
                 logger.info("Received keyboard interrupt")
                 self.shutdown()
                 break
+
+            except (RedisConnectionError, RedisTimeoutError) as e:
+                consecutive_errors += 1
+                logger.warning(
+                    f"Redis transient error (consecutive: {consecutive_errors}): {e}"
+                )
+                try:
+                    self._reconnect_with_backoff()
+                    consecutive_errors = 0
+                except RetryError:
+                    logger.critical(
+                        "Redis reconnect backoff exhausted. Shutting down."
+                    )
+                    sentry_sdk.capture_exception(e)
+                    self.shutdown()
+                    sys.exit(1)
 
             except Exception as e:
                 consecutive_errors += 1
