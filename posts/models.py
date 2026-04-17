@@ -3,6 +3,7 @@ from timescale.db.models import fields as timescale_models
 from timescale.db.models.managers import TimescaleManager
 
 from common.models import TimeStampedModel
+from posts.managers import PostStatsMonitoringManager
 
 
 class Post(TimeStampedModel):
@@ -38,6 +39,14 @@ class Post(TimeStampedModel):
     released_at = models.DateTimeField(
         blank=False, null=True, verbose_name="게시글 업로드 일시"
     )
+
+    objects = models.Manager()
+    stats_monitor = PostStatsMonitoringManager()
+
+    @classmethod
+    def get_posts_missing_today_stats_queryset(cls) -> models.QuerySet:
+        """Plan.md F7 하위호환 API — stats_monitor.missing_today_stats() 위임."""
+        return cls.stats_monitor.missing_today_stats()
 
     def __str__(self) -> str:
         return f"{self.post_uuid}"

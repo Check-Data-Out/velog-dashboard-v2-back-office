@@ -37,6 +37,24 @@ class UserGroupRangeFilter(admin.SimpleListFilter):
         return queryset
 
 
+class StatsStatusFilter(admin.SimpleListFilter):
+    """Plan.md F8 — 오늘 통계 누락 포스트만 보기 필터."""
+
+    title = _("오늘 통계 상태")
+    parameter_name = "stats_status"
+
+    def lookups(self, request: HttpRequest, model_admin):
+        return [("missing", _("오늘 통계 누락"))]
+
+    def queryset(self, request: HttpRequest, queryset: QuerySet[Post]):
+        if self.value() == "missing":
+            missing_ids = Post.stats_monitor.missing_today_stats().values_list(
+                "pk", flat=True
+            )
+            return queryset.filter(pk__in=list(missing_ids))
+        return queryset
+
+
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
     list_display = [
@@ -47,7 +65,7 @@ class PostAdmin(admin.ModelAdmin):
         "created_at",
     ]
     search_fields = ["user__id", "user__email"]
-    list_filter = [UserGroupRangeFilter]
+    list_filter = [UserGroupRangeFilter, StatsStatusFilter]
 
     def get_queryset(self, request):
         """쿼리셋 최적화: N+1 문제 해결"""
