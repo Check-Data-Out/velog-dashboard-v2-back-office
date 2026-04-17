@@ -5,7 +5,7 @@ from typing import Any
 
 import sentry_sdk
 
-from consumer.config import RedisConfig
+from modules.redis.config import RedisConfig
 from scraping.main import ScraperTargetUser
 from utils.utils import get_local_now
 

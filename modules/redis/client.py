@@ -5,7 +5,7 @@ from typing import Any, cast
 import redis
 from redis import Redis, RedisError
 
-from consumer.config import RedisConfig
+from modules.redis.config import RedisConfig
 
 logger = logging.getLogger(__name__)
 
