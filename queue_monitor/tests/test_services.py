@@ -1,6 +1,5 @@
 """Phase 3 — QueueMonitorService 테스트 (RedisQueueClient mock)."""
 
-import json
 from unittest.mock import MagicMock
 
 import pytest
@@ -48,30 +47,36 @@ class TestRetryFailedMessage:
     def test_moves_from_failed_to_pending_and_resets_retry_count(
         self, mock_redis_client
     ):
+        # 서비스는 get_messages(with_raw=True) 로 (raw, parsed) 튜플을 받음
+        failed_raw = '{"requestId": "rid-1", "userId": 5, "retryCount": 3, "reclaimedCount": 1}'
         failed_msg = {
             "requestId": "rid-1",
             "userId": 5,
             "retryCount": 3,
             "reclaimedCount": 1,
         }
-        mock_redis_client.get_messages.return_value = [failed_msg]
+        mock_redis_client.get_messages.return_value = [
+            (failed_raw, failed_msg)
+        ]
         service = QueueMonitorService(redis_client=mock_redis_client)
         ok = service.retry_failed_message("rid-1")
         assert ok is True
-        # remove_message 는 원본 JSON 문자열로 호출되어야 한다 (retryCount=3 상태)
-        remove_args = mock_redis_client.remove_message.call_args[0]
-        assert remove_args[0] == RedisConfig.QUEUE_STATS_REFRESH_FAILED
-        removed_payload = json.loads(remove_args[1])
-        assert removed_payload["retryCount"] == 3
-        # enqueue 는 retryCount 리셋된 메시지로 호출
+        # remove_message 는 **원본 raw 문자열** 그대로 호출되어야 한다
+        mock_redis_client.remove_message.assert_called_once_with(
+            RedisConfig.QUEUE_STATS_REFRESH_FAILED, failed_raw
+        )
+        # enqueue 는 retryCount 리셋된 메시지
         pushed = mock_redis_client.enqueue_message.call_args[0][0]
         assert pushed["requestId"] == "rid-1"
         assert pushed["retryCount"] == 0
-        assert pushed["reclaimedCount"] == 1  # 보존
+        assert pushed["reclaimedCount"] == 1
 
     def test_returns_false_when_request_id_not_found(self, mock_redis_client):
         mock_redis_client.get_messages.return_value = [
-            {"requestId": "other", "userId": 1}
+            (
+                '{"requestId": "other", "userId": 1}',
+                {"requestId": "other", "userId": 1},
+            )
         ]
         service = QueueMonitorService(redis_client=mock_redis_client)
         assert service.retry_failed_message("rid-missing") is False
@@ -79,8 +84,9 @@ class TestRetryFailedMessage:
         mock_redis_client.enqueue_message.assert_not_called()
 
     def test_returns_false_when_remove_fails(self, mock_redis_client):
+        raw = '{"requestId": "rid-1", "userId": 5}'
         mock_redis_client.get_messages.return_value = [
-            {"requestId": "rid-1", "userId": 5}
+            (raw, {"requestId": "rid-1", "userId": 5})
         ]
         mock_redis_client.remove_message.return_value = 0
         service = QueueMonitorService(redis_client=mock_redis_client)

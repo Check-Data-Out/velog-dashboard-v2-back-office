@@ -273,9 +273,17 @@ class RedisQueueClient:
             raise
 
     def get_messages(
-        self, queue_name: str, start: int = 0, end: int = -1
-    ) -> list[dict[str, Any]]:
-        """LRANGE + JSON 파싱. 파싱 실패 메시지는 에러 엔트리로 포함."""
+        self,
+        queue_name: str,
+        start: int = 0,
+        end: int = -1,
+        with_raw: bool = False,
+    ) -> list[dict[str, Any]] | list[tuple[str, dict[str, Any]]]:
+        """LRANGE + JSON 파싱. 파싱 실패 메시지는 에러 엔트리로 포함.
+
+        with_raw=True 시 (raw_str, parsed) 튜플 리스트 반환. 원본 raw 로 LREM 을
+        수행해야 정확 일치가 보장되므로 DLQ retry 경로가 이를 사용한다.
+        """
         if not self.client:
             raise RuntimeError("Redis client not connected")
 
@@ -285,13 +293,18 @@ class RedisQueueClient:
             logger.error(f"Failed to LRANGE {queue_name}: {e}")
             return []
 
-        result: list[dict[str, Any]] = []
+        parsed_only: list[dict[str, Any]] = []
+        with_raw_list: list[tuple[str, dict[str, Any]]] = []
         for raw in cast(list[str], raws):
             try:
-                result.append(json.loads(raw))
+                parsed = json.loads(raw)
             except json.JSONDecodeError:
-                result.append({"_raw": raw, "_error": "JSONDecodeError"})
-        return result
+                parsed = {"_raw": raw, "_error": "JSONDecodeError"}
+            if with_raw:
+                with_raw_list.append((raw, parsed))
+            else:
+                parsed_only.append(parsed)
+        return with_raw_list if with_raw else parsed_only
 
     def enqueue_message(self, message: dict[str, Any]) -> None:
         """Pending 큐에 새 메시지 추가 (LPUSH)."""

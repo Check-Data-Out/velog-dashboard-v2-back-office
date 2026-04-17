@@ -73,6 +73,7 @@ class TestMarkProcessingSuccessFailed:
     def test_mark_failed_truncates_error_to_2000(self, service, user):
         rid = str(uuid.uuid4())
         service.mark_queued(rid, user.id, None)
+        service.mark_processing(rid)  # PROCESSING -> FAILED 전이만 허용
         long_err = "x" * 3000
         obj = service.mark_failed(rid, long_err, retry_count=1)
         assert obj.status == StatsRefreshRequestStatus.FAILED
@@ -81,6 +82,8 @@ class TestMarkProcessingSuccessFailed:
     def test_mark_dlq_sets_status_and_finished_at(self, service, user):
         rid = str(uuid.uuid4())
         service.mark_queued(rid, user.id, None)
+        service.mark_processing(rid)
+        service.mark_failed(rid, "transient")  # FAILED -> DLQ 전이만 허용
         obj = service.mark_dlq(rid, error="poison pill", reclaimed_count=3)
         assert obj.status == StatsRefreshRequestStatus.DLQ
         assert obj.reclaimed_count == 3
@@ -89,6 +92,19 @@ class TestMarkProcessingSuccessFailed:
     def test_mark_processing_returns_none_when_row_missing(self, service):
         rid = str(uuid.uuid4())
         assert service.mark_processing(rid) is None
+
+    def test_mark_success_rejected_from_queued_status(self, service, user):
+        # QUEUED -> SUCCESS 는 허용되지 않는 전이 (PROCESSING 경유 필수)
+        rid = str(uuid.uuid4())
+        service.mark_queued(rid, user.id, None)
+        assert service.mark_success(rid) is None
+
+    def test_mark_dlq_rejected_from_processing_status(self, service, user):
+        # PROCESSING -> DLQ 는 허용되지 않음 (FAILED 경유 필수)
+        rid = str(uuid.uuid4())
+        service.mark_queued(rid, user.id, None)
+        service.mark_processing(rid)
+        assert service.mark_dlq(rid, "direct-dlq") is None
 
 
 class TestHasInflightForUsers:

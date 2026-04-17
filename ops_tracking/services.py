@@ -47,69 +47,93 @@ class RequestLifecycleService:
         )
         return obj
 
+    def _transition(
+        self,
+        request_id: str,
+        from_statuses: list[str],
+        **update_fields,
+    ) -> StatsRefreshRequest | None:
+        """허용된 이전 상태일 때만 UPDATE. race-safe 상태 전이 (architect #1)."""
+        updated = StatsRefreshRequest.objects.filter(
+            request_id=request_id, status__in=from_statuses
+        ).update(**update_fields)
+        if updated == 0:
+            # 행이 없거나 전이가 허용되지 않은 현재 상태
+            try:
+                current = StatsRefreshRequest.objects.get(
+                    request_id=request_id
+                )
+                logger.warning(
+                    "lifecycle: transition rejected",
+                    extra={
+                        "request_id": str(request_id),
+                        "current_status": current.status,
+                        "to": update_fields.get("status"),
+                    },
+                )
+            except StatsRefreshRequest.DoesNotExist:
+                logger.warning(
+                    "lifecycle: row missing",
+                    extra={"request_id": str(request_id)},
+                )
+            return None
+        try:
+            return StatsRefreshRequest.objects.get(request_id=request_id)
+        except StatsRefreshRequest.DoesNotExist:
+            return None
+
     def mark_processing(
         self,
         request_id: str,
         retry_count: int = 0,
         reclaimed_count: int = 0,
     ) -> StatsRefreshRequest | None:
-        updated = StatsRefreshRequest.objects.filter(
-            request_id=request_id
-        ).update(
+        # QUEUED 또는 FAILED (reclaim 재시도) 에서만 PROCESSING 진입 허용
+        return self._transition(
+            request_id,
+            from_statuses=[
+                StatsRefreshRequestStatus.QUEUED,
+                StatsRefreshRequestStatus.FAILED,
+            ],
             status=StatsRefreshRequestStatus.PROCESSING,
             retry_count=retry_count,
             reclaimed_count=reclaimed_count,
         )
-        if updated == 0:
-            logger.warning(
-                "lifecycle: mark_processing found no row",
-                extra={"request_id": str(request_id)},
-            )
-            return None
-        return StatsRefreshRequest.objects.get(request_id=request_id)
 
     def mark_success(
         self, request_id: str, retry_count: int = 0
     ) -> StatsRefreshRequest | None:
-        updated = StatsRefreshRequest.objects.filter(
-            request_id=request_id
-        ).update(
+        return self._transition(
+            request_id,
+            from_statuses=[StatsRefreshRequestStatus.PROCESSING],
             status=StatsRefreshRequestStatus.SUCCESS,
             retry_count=retry_count,
             finished_at=timezone.now(),
         )
-        if updated == 0:
-            return None
-        return StatsRefreshRequest.objects.get(request_id=request_id)
 
     def mark_failed(
         self, request_id: str, error: str, retry_count: int = 0
     ) -> StatsRefreshRequest | None:
-        updated = StatsRefreshRequest.objects.filter(
-            request_id=request_id
-        ).update(
+        return self._transition(
+            request_id,
+            from_statuses=[StatsRefreshRequestStatus.PROCESSING],
             status=StatsRefreshRequestStatus.FAILED,
             retry_count=retry_count,
             last_error=_truncate(error),
         )
-        if updated == 0:
-            return None
-        return StatsRefreshRequest.objects.get(request_id=request_id)
 
     def mark_dlq(
         self, request_id: str, error: str, reclaimed_count: int = 0
     ) -> StatsRefreshRequest | None:
-        updated = StatsRefreshRequest.objects.filter(
-            request_id=request_id
-        ).update(
+        # FAILED (reclaim 재시도 한도 초과) 에서만 DLQ 진입 허용
+        return self._transition(
+            request_id,
+            from_statuses=[StatsRefreshRequestStatus.FAILED],
             status=StatsRefreshRequestStatus.DLQ,
             reclaimed_count=reclaimed_count,
             last_error=_truncate(error),
             finished_at=timezone.now(),
         )
-        if updated == 0:
-            return None
-        return StatsRefreshRequest.objects.get(request_id=request_id)
 
     def has_inflight_for_users(self, user_ids: list[int]) -> set[int]:
         """QUEUED 또는 PROCESSING 상태로 이미 진행 중인 user_id 집합 반환."""

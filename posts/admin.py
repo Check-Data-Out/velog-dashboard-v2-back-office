@@ -48,10 +48,9 @@ class StatsStatusFilter(admin.SimpleListFilter):
 
     def queryset(self, request: HttpRequest, queryset: QuerySet[Post]):
         if self.value() == "missing":
-            missing_ids = Post.stats_monitor.missing_today_stats().values_list(
-                "pk", flat=True
-            )
-            return queryset.filter(pk__in=list(missing_ids))
+            # list() 로 전부 로드하지 않고 서브쿼리로 넘겨 Django 가 JOIN/서브쿼리 최적화 수행
+            missing_ids = Post.stats_monitor.missing_today_stats().values("pk")
+            return queryset.filter(pk__in=missing_ids)
         return queryset
 
 

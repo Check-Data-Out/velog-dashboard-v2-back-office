@@ -9,9 +9,7 @@
 Plan.md §3.2, §5 Phase 3.
 """
 
-import json
 import logging
-from typing import Any
 
 from consumer.envelope import build_envelope
 from modules.redis.client import RedisQueueClient, get_redis_client
@@ -68,21 +66,20 @@ class QueueMonitorService:
         """DLQ 에서 requestId 일치 메시지 1건을 찾아 pending 으로 복귀.
 
         retryCount 는 0 으로 리셋. reclaimedCount 는 유지 (poison pill 방어).
+        LREM 은 반드시 **원본 raw 문자열** 로 호출해야 Redis 저장값과 정확 일치.
         """
         failed_queue = self.config.QUEUE_STATS_REFRESH_FAILED
-        messages = self.redis_client.get_messages(failed_queue)
-        for msg in messages:
-            if msg.get("requestId") != request_id:
+        for raw_str, msg in self.redis_client.get_messages(
+            failed_queue, with_raw=True
+        ):
+            if not isinstance(msg, dict) or msg.get("requestId") != request_id:
                 continue
-            # DLQ 에서 원본 문자열 제거 (정확한 일치 필요)
-            raw_str = json.dumps(msg)
             removed = self.redis_client.remove_message(failed_queue, raw_str)
             if removed == 0:
                 logger.warning(
                     f"retry_failed_message: DLQ 원본 제거 실패 (requestId={request_id})"
                 )
                 return False
-            # retryCount 리셋 후 pending 재투입
             msg["retryCount"] = 0
             msg["lastAttemptAt"] = None
             self.redis_client.enqueue_message(msg)
@@ -121,7 +118,7 @@ class QueueMonitorService:
 
     def get_failed_messages(
         self, offset: int = 0, limit: int = 50
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict]:
         """DLQ 페이지네이션 조회."""
         end = offset + limit - 1
         return self.redis_client.get_messages(
