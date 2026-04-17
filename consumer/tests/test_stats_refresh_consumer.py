@@ -48,7 +48,7 @@ class TestStatsRefreshConsumer:
     def test_process_message_success(
         self, mock_redis_client_class, mock_processor_class, sample_message
     ) -> None:
-        """메시지 처리 성공 테스트."""
+        """메시지 처리 성공 테스트 (Phase 5: BLMOVE 기반 — push_to_processing 호출 없음)."""
         mock_redis_client = Mock()
         mock_redis_client_class.return_value = mock_redis_client
 
@@ -61,17 +61,20 @@ class TestStatsRefreshConsumer:
         assert consumer.stats["processed"] == 1
         assert consumer.stats["succeeded"] == 1
         assert consumer.stats["failed"] == 0
-        mock_redis_client.push_to_processing.assert_called_once_with(
-            sample_message
+        # Phase 5: processing 큐 제거는 remove_message(queue, raw) 로 수행
+        mock_redis_client.remove_message.assert_called_once()
+        remove_args = mock_redis_client.remove_message.call_args[0]
+        assert (
+            remove_args[0]
+            == consumer.redis_config.QUEUE_STATS_REFRESH_PROCESSING
         )
-        mock_redis_client.remove_from_processing.assert_called_once_with(
-            sample_message
-        )
+        # push_to_processing 은 더 이상 호출되지 않음
+        mock_redis_client.push_to_processing.assert_not_called()
 
     def test_process_message_failure(
         self, mock_redis_client_class, mock_processor_class, sample_message
     ) -> None:
-        """메시지 처리 실패 테스트."""
+        """메시지 처리 실패 테스트 (BLMOVE 이후 → DLQ push + processing 제거)."""
         mock_redis_client = Mock()
         mock_redis_client_class.return_value = mock_redis_client
 
@@ -89,6 +92,7 @@ class TestStatsRefreshConsumer:
         mock_redis_client.push_to_failed.assert_called_once_with(
             sample_message
         )
+        mock_redis_client.remove_message.assert_called_once()
 
     def test_get_stats_summary(
         self, mock_redis_client_class, mock_processor_class
