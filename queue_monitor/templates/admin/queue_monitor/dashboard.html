@@ -1,0 +1,15 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>Queue Monitor</h1>
+<table>
+  <thead><tr><th>Queue</th><th>Size</th></tr></thead>
+  <tbody>
+    <tr><td>Pending</td><td>{{ stats.pending }}</td></tr>
+    <tr><td>Processing</td><td>{{ stats.processing }}</td></tr>
+    <tr><td>Failed (DLQ)</td><td>{{ stats.failed }}</td></tr>
+  </tbody>
+</table>
+<p>
+  <a href="{% url 'admin:queue_failed_list' %}">Failed 메시지 관리 →</a>
+</p>
+{% endblock %}

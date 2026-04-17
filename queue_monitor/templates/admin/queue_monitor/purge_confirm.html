@@ -1,0 +1,14 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>DLQ 전체 삭제 확인</h1>
+<p>현재 DLQ 크기: <b>{{ failed_count }}</b>건</p>
+<p style="color:#c00">
+  이 작업은 되돌릴 수 없습니다. 계속하려면 확인 버튼을 눌러주세요.
+</p>
+<form method="post">
+  {% csrf_token %}
+  <input type="hidden" name="confirm" value="yes" />
+  <button type="submit">네, 전체 삭제합니다</button>
+  <a href="{% url 'admin:queue_failed_list' %}">취소</a>
+</form>
+{% endblock %}

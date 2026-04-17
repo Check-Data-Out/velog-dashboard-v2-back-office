@@ -84,6 +84,7 @@ INSTALLED_APPS = [
     "posts",
     "noti",  # 공지와 알림 관련 도메인
     "insight",  # 게시글, 트랜드 인사이트 관련 도메인
+    "queue_monitor",  # F1/F2 Redis 큐 대시보드/DLQ 관리
 ]
 
 MIDDLEWARE = [

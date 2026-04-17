@@ -1,0 +1,44 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>Failed Messages (DLQ) — 총 {{ total }}건</h1>
+<p>
+  <a href="{% url 'admin:queue_dashboard' %}">← 대시보드</a> |
+  <a href="{% url 'admin:queue_purge' %}">전체 퍼지</a>
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>requestId</th><th>userId</th><th>retryCount</th>
+      <th>lastAttemptAt</th><th>action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in items %}
+    <tr>
+      <td>{{ item.requestId|default:"-" }}</td>
+      <td>{{ item.userId|default:"-" }}</td>
+      <td>{{ item.retryCount|default:0 }}</td>
+      <td>{{ item.lastAttemptAt|default:"-" }}</td>
+      <td>
+        {% if item.requestId %}
+        <form method="post" action="{% url 'admin:queue_retry' item.requestId %}">
+          {% csrf_token %}
+          <button type="submit">Retry</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="5">DLQ 비어있음</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p>
+  {% if prev_offset is not None %}
+  <a href="?offset={{ prev_offset }}&limit={{ limit }}">← 이전</a>
+  {% endif %}
+  {% if next_offset %}
+  <a href="?offset={{ next_offset }}&limit={{ limit }}">다음 →</a>
+  {% endif %}
+</p>
+{% endblock %}
