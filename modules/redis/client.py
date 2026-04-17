@@ -229,6 +229,112 @@ class RedisQueueClient:
             logger.error(f"Failed to get queue size: {e}")
             return 0
 
+    # ------------------------------------------------------------------
+    # Plan.md Phase 2 신규 메서드 — Queue Monitor / Reclaimer 공용
+    # ------------------------------------------------------------------
+
+    def blocking_move_pending_to_processing(
+        self, timeout: int = 5
+    ) -> dict[str, Any] | None:
+        """Pending -> Processing 원자적 이동 (BLMOVE).
+
+        BRPOP + LPUSH 2-step race 를 제거하기 위해 Redis 6.2.0+ 의 BLMOVE 사용.
+        https://redis.io/docs/latest/commands/blmove/
+        """
+        if not self.client:
+            raise RuntimeError("Redis client not connected")
+
+        try:
+            raw = self.client.blmove(
+                first_list=self.config.QUEUE_STATS_REFRESH,
+                second_list=self.config.QUEUE_STATS_REFRESH_PROCESSING,
+                timeout=timeout,
+                src="RIGHT",
+                dest="LEFT",
+            )
+            if not raw:
+                return None
+            try:
+                message: dict[str, Any] = json.loads(raw)
+                return message
+            except json.JSONDecodeError as e:
+                logger.error(
+                    f"BLMOVE received malformed JSON, moving to DLQ: {e}, "
+                    f"raw={raw!r}"
+                )
+                # processing 큐에서 제거하고 DLQ 로 옮김
+                self.client.lrem(
+                    self.config.QUEUE_STATS_REFRESH_PROCESSING, 1, raw
+                )
+                self._push_raw_to_failed(str(raw), str(e))
+                return None
+        except RedisError as e:
+            logger.error(f"Redis error in BLMOVE: {e}")
+            raise
+
+    def get_messages(
+        self, queue_name: str, start: int = 0, end: int = -1
+    ) -> list[dict[str, Any]]:
+        """LRANGE + JSON 파싱. 파싱 실패 메시지는 에러 엔트리로 포함."""
+        if not self.client:
+            raise RuntimeError("Redis client not connected")
+
+        try:
+            raws = self.client.lrange(queue_name, start, end)
+        except RedisError as e:
+            logger.error(f"Failed to LRANGE {queue_name}: {e}")
+            return []
+
+        result: list[dict[str, Any]] = []
+        for raw in cast(list[str], raws):
+            try:
+                result.append(json.loads(raw))
+            except json.JSONDecodeError:
+                result.append({"_raw": raw, "_error": "JSONDecodeError"})
+        return result
+
+    def enqueue_message(self, message: dict[str, Any]) -> None:
+        """Pending 큐에 새 메시지 추가 (LPUSH)."""
+        if not self.client:
+            raise RuntimeError("Redis client not connected")
+
+        try:
+            self.client.lpush(
+                self.config.QUEUE_STATS_REFRESH, json.dumps(message)
+            )
+            logger.info(
+                f"Enqueued to pending: requestId={message.get('requestId')}, "
+                f"userId={message.get('userId')}"
+            )
+        except RedisError as e:
+            logger.error(f"Failed to enqueue message: {e}")
+            raise
+
+    def remove_message(self, queue_name: str, message_str: str) -> int:
+        """큐에서 문자열이 일치하는 메시지 1건 제거 (LREM count=1). 제거된 수 반환."""
+        if not self.client:
+            raise RuntimeError("Redis client not connected")
+
+        try:
+            removed = cast(int, self.client.lrem(queue_name, 1, message_str))
+            return removed
+        except RedisError as e:
+            logger.error(f"Failed to LREM from {queue_name}: {e}")
+            return 0
+
+    def flush_queue(self, queue_name: str) -> int:
+        """큐 전체 삭제. 삭제 전 크기를 반환."""
+        if not self.client:
+            raise RuntimeError("Redis client not connected")
+
+        try:
+            size = cast(int, self.client.llen(queue_name))
+            self.client.delete(queue_name)
+            return size
+        except RedisError as e:
+            logger.error(f"Failed to flush {queue_name}: {e}")
+            return 0
+
     def close(self) -> None:
         """Close Redis connection."""
         if self.client:
