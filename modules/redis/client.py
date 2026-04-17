@@ -235,11 +235,14 @@ class RedisQueueClient:
 
     def blocking_move_pending_to_processing(
         self, timeout: int = 5
-    ) -> dict[str, Any] | None:
+    ) -> tuple[str, dict[str, Any]] | None:
         """Pending -> Processing 원자적 이동 (BLMOVE).
 
         BRPOP + LPUSH 2-step race 를 제거하기 위해 Redis 6.2.0+ 의 BLMOVE 사용.
         https://redis.io/docs/latest/commands/blmove/
+
+        Returns:
+            (raw_str, parsed) 튜플. 호출자는 raw_str 을 LREM 원본 비교에 써야 한다.
         """
         if not self.client:
             raise RuntimeError("Redis client not connected")
@@ -257,7 +260,7 @@ class RedisQueueClient:
             raw = cast(str, raw_any)
             try:
                 message: dict[str, Any] = json.loads(raw)
-                return message
+                return raw, message
             except json.JSONDecodeError as e:
                 logger.error(
                     f"BLMOVE received malformed JSON, moving to DLQ: {e}, "

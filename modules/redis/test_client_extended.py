@@ -11,18 +11,20 @@ from modules.redis.client import RedisQueueClient
 
 class TestBlockingMovePendingToProcessing:
     @patch("modules.redis.client.redis.Redis")
-    def test_returns_parsed_message_when_available(
+    def test_returns_raw_and_parsed_when_available(
         self, mock_redis_class, sample_message
     ):
         mock_client = MagicMock()
         mock_client.ping.return_value = True
-        mock_client.blmove.return_value = json.dumps(sample_message)
+        raw = json.dumps(sample_message)
+        mock_client.blmove.return_value = raw
         mock_redis_class.return_value = mock_client
 
         client = RedisQueueClient()
         result = client.blocking_move_pending_to_processing(timeout=5)
 
-        assert result == sample_message
+        # Phase 9 fix: (raw_str, parsed) 튜플 반환
+        assert result == (raw, sample_message)
         mock_client.blmove.assert_called_once()
         kwargs = mock_client.blmove.call_args.kwargs
         assert kwargs["src"] == "RIGHT"

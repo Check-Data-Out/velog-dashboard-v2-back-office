@@ -1,3 +1,4 @@
+import json
 import logging
 import signal
 import sys
@@ -186,22 +187,23 @@ class StatsRefreshConsumer:
             try:
                 assert self.redis_client is not None
                 # BLMOVE: pending -> processing 원자적 이동 (V1 취약점 제거)
-                message = (
-                    self.redis_client.blocking_move_pending_to_processing(
-                        timeout=self.redis_config.BLOCKING_TIMEOUT
-                    )
+                popped = self.redis_client.blocking_move_pending_to_processing(
+                    timeout=self.redis_config.BLOCKING_TIMEOUT
                 )
 
-                if message is None:
+                if popped is None:
                     consecutive_errors = 0
                     continue
 
                 consecutive_errors = 0
                 self.stats["last_message_at"] = time.time()
 
-                # Envelope 보강 + lifecycle mark_processing
-                message = ensure_envelope(message)
-                self._process_message(message)
+                # raw_str = processing 큐의 실제 저장 문자열 (LREM 원본 비교용)
+                raw_str, message = popped
+                # ensure_envelope 은 processing 큐 저장 값을 변경하지 않음;
+                # 단지 consumer 내부 처리용으로만 필드를 보강한다.
+                enriched = ensure_envelope(message)
+                self._process_message(enriched, raw_str=raw_str)
 
             except KeyboardInterrupt:
                 logger.info("Received keyboard interrupt")
@@ -242,23 +244,26 @@ class StatsRefreshConsumer:
                 # Backoff before retrying (max 32s)
                 time.sleep(2 ** min(consecutive_errors, 5))
 
-    def _process_message(self, message: dict) -> None:
+    def _process_message(
+        self, message: dict, raw_str: str | None = None
+    ) -> None:
         """Process a single message.
 
         Phase 5 설계: BLMOVE 로 이미 processing 큐에 들어간 상태이므로
         push_to_processing 중복 호출을 제거하고, lifecycle 상태 전이를 수행한다.
-        완료 후 processing 큐에서 원본을 LREM 으로 제거.
-        """
-        import json as _json
+        완료 후 processing 큐에서 원본(raw_str) 을 LREM 으로 제거한다.
 
+        Args:
+            message: ensure_envelope 로 보강된 dict (consumer 내부 처리용)
+            raw_str: processing 큐에 저장된 **원본 문자열**. None 이면 message 로부터
+                직렬화한 값을 사용 (구 호환). LREM 정확 일치를 위해 원본 raw 필수.
+        """
         self.processing_message = True
         self.stats["processed"] += 1
 
-        # BLMOVE 가 저장한 processing 엔트리는 pending 에 있던 원본과 동일.
-        # ensure_envelope 로 보강된 메시지는 pending 원본과 다를 수 있으므로
-        # 구 envelope(보강 전) 기준 raw 도 시도해야 하지만, 여기서는 보강 후
-        # 직렬화로 엔트리를 식별한다. BLMOVE 직후 이므로 키 순서는 보존됨.
-        original_raw = _json.dumps(message)
+        # LREM 원본 비교용: BLMOVE 가 반환한 raw_str 그대로 사용.
+        # raw_str 가 없으면 보강된 message 로 fallback (테스트 편의).
+        original_raw = raw_str if raw_str is not None else json.dumps(message)
         request_id = message.get("requestId")
 
         # lifecycle: mark_processing (Phase 6 admin 경로에서 mark_queued 가 선행됨.

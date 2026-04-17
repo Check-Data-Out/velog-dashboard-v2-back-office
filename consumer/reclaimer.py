@@ -125,6 +125,9 @@ class ProcessingReclaimer:
                         },
                     )
                 else:
+                    # DB 상태를 FAILED 로 전환해야 consumer 가 재소비 시
+                    # mark_processing(FAILED→PROCESSING) 전이를 받을 수 있다.
+                    self._safe_mark_failed(msg, "reclaimed")
                     # retryCount 는 0 으로 리셋 (플랜 설계)
                     msg["retryCount"] = 0
                     self.redis_client.enqueue_message(msg)
@@ -148,6 +151,20 @@ class ProcessingReclaimer:
             )
         except Exception as e:
             logger.warning(f"reclaim mark_dlq failed: {e}")
+
+    def _safe_mark_failed(self, msg: dict, reason: str) -> None:
+        """reclaim 시 DB 상태를 FAILED 로 전환 (다음 mark_processing 을 허용).
+
+        ops_tracking 장애 시에도 reclaimer 본체는 계속 동작 (fail-open).
+        """
+        try:
+            self._lifecycle_service().mark_failed(
+                request_id=msg["requestId"],
+                error=f"reclaimed: {reason}",
+                retry_count=int(msg.get("retryCount", 0)),
+            )
+        except Exception as e:
+            logger.warning(f"reclaim mark_failed failed: {e}")
 
     def loop(self) -> None:
         """daemon thread 진입점. shutdown_event 가 set 될 때까지 반복."""

@@ -129,10 +129,13 @@ class RequestLifecycleService:
     def mark_dlq(
         self, request_id: str, error: str, reclaimed_count: int = 0
     ) -> StatsRefreshRequest | None:
-        # FAILED (reclaim 재시도 한도 초과) 에서만 DLQ 진입 허용
+        # FAILED (재시도 한도 초과) 또는 PROCESSING (reclaim 중 직접 DLQ) 에서 진입 허용
         return self._transition(
             request_id,
-            from_statuses=[StatsRefreshRequestStatus.FAILED],
+            from_statuses=[
+                StatsRefreshRequestStatus.FAILED,
+                StatsRefreshRequestStatus.PROCESSING,
+            ],
             status=StatsRefreshRequestStatus.DLQ,
             reclaimed_count=reclaimed_count,
             last_error=_truncate(error),

@@ -99,11 +99,19 @@ class TestMarkProcessingSuccessFailed:
         service.mark_queued(rid, user.id, None)
         assert service.mark_success(rid) is None
 
-    def test_mark_dlq_rejected_from_processing_status(self, service, user):
-        # PROCESSING -> DLQ 는 허용되지 않음 (FAILED 경유 필수)
+    def test_mark_dlq_allowed_from_processing_status(self, service, user):
+        # Phase 9 fix: reclaim 경로에서 PROCESSING -> DLQ 직접 전이 허용
         rid = str(uuid.uuid4())
         service.mark_queued(rid, user.id, None)
         service.mark_processing(rid)
+        obj = service.mark_dlq(rid, "reclaim-direct")
+        assert obj is not None
+        assert obj.status == StatsRefreshRequestStatus.DLQ
+
+    def test_mark_dlq_rejected_from_queued_status(self, service, user):
+        # QUEUED -> DLQ 는 여전히 금지 (PROCESSING 또는 FAILED 경유 필수)
+        rid = str(uuid.uuid4())
+        service.mark_queued(rid, user.id, None)
         assert service.mark_dlq(rid, "direct-dlq") is None
 
 
