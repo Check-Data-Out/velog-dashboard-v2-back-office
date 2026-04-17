@@ -60,8 +60,8 @@ class StatsRefreshConsumer:
         self._reclaimer_thread: threading.Thread | None = None
         self._lifecycle = None  # 지연 import
 
-        # Statistics
-        self.stats = {
+        # Statistics (dict[str, Any] — last_message_at 만 None 가능)
+        self.stats: dict = {
             "processed": 0,
             "succeeded": 0,
             "failed": 0,

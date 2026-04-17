@@ -54,15 +54,16 @@ class ProcessingReclaimer:
             dt = dateparse.parse_datetime(ts)
             if dt is None:
                 return 0.0
-            return dt.timestamp()
+            return float(dt.timestamp())
         except (ValueError, TypeError):
             return 0.0
 
     def _is_stale(self, msg: dict, now_epoch: float) -> bool:
         enqueued = self._parse_epoch(msg.get("enqueuedAt"))
-        return (
-            now_epoch - enqueued
-        ) >= self.config.RECLAIM_VISIBILITY_TIMEOUT_SEC
+        return bool(
+            (now_epoch - enqueued)
+            >= self.config.RECLAIM_VISIBILITY_TIMEOUT_SEC
+        )
 
     # ------------------------------------------------------------------
     # Public API

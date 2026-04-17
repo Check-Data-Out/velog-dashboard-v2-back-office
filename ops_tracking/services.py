@@ -45,15 +45,19 @@ class RequestLifecycleService:
             "lifecycle: mark_queued",
             extra={"request_id": str(request_id), "created": created},
         )
-        return obj
+        return obj  # type: ignore[no-any-return]
 
     def _transition(
         self,
         request_id: str,
-        from_statuses: list[str],
+        from_statuses,
         **update_fields,
     ) -> StatsRefreshRequest | None:
-        """허용된 이전 상태일 때만 UPDATE. race-safe 상태 전이 (architect #1)."""
+        """허용된 이전 상태일 때만 UPDATE. race-safe 상태 전이 (architect #1).
+
+        from_statuses: StatsRefreshRequestStatus enum 또는 str 의 리스트.
+        Django __in 은 enum/문자열 모두 수용.
+        """
         updated = StatsRefreshRequest.objects.filter(
             request_id=request_id, status__in=from_statuses
         ).update(**update_fields)
@@ -78,7 +82,7 @@ class RequestLifecycleService:
                 )
             return None
         try:
-            return StatsRefreshRequest.objects.get(request_id=request_id)
+            return StatsRefreshRequest.objects.get(request_id=request_id)  # type: ignore[no-any-return]
         except StatsRefreshRequest.DoesNotExist:
             return None
 

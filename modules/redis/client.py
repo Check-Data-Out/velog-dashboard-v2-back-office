@@ -245,15 +245,16 @@ class RedisQueueClient:
             raise RuntimeError("Redis client not connected")
 
         try:
-            raw = self.client.blmove(
+            raw_any = self.client.blmove(
                 first_list=self.config.QUEUE_STATS_REFRESH,
                 second_list=self.config.QUEUE_STATS_REFRESH_PROCESSING,
                 timeout=timeout,
                 src="RIGHT",
                 dest="LEFT",
             )
-            if not raw:
+            if not raw_any:
                 return None
+            raw = cast(str, raw_any)
             try:
                 message: dict[str, Any] = json.loads(raw)
                 return message
@@ -266,7 +267,7 @@ class RedisQueueClient:
                 self.client.lrem(
                     self.config.QUEUE_STATS_REFRESH_PROCESSING, 1, raw
                 )
-                self._push_raw_to_failed(str(raw), str(e))
+                self._push_raw_to_failed(raw, str(e))
                 return None
         except RedisError as e:
             logger.error(f"Redis error in BLMOVE: {e}")

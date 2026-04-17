@@ -11,7 +11,7 @@ from django.db.models import Exists, OuterRef
 from utils.utils import get_local_now_date
 
 
-class PostStatsMonitoringManager(models.Manager):
+class PostStatsMonitoringManager(models.Manager):  # type: ignore[misc]
     """Post 의 오늘 통계 유무를 질의하는 전용 Manager.
 
     사용처:

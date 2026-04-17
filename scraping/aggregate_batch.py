@@ -53,6 +53,12 @@ def main() -> None:
     for p in processes:
         p.join()
 
+    # Plan.md Phase 8 훅 — 배치 완료 후 누락 임계 초과 시 Slack 알림
+    # (Django setup 이 setup_django import 로 이미 완료된 상태)
+    from scraping.batch_notify import notify_after_batch
+
+    notify_after_batch()
+
 
 # Django에서 발생하는 RuntimeWarning 무시
 warnings.filterwarnings(
