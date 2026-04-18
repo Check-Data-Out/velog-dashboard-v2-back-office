@@ -124,3 +124,5 @@ def _patched_get_urls() -> list[URLPattern | URLResolver]:
 
 
 admin.site.get_urls = _patched_get_urls  # type: ignore[assignment]
+# admin index 페이지 상단에 운영 대시보드 빠른 링크 패널 표시
+admin.site.index_template = "admin/queue_monitor_index.html"
