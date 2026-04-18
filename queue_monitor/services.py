@@ -67,6 +67,10 @@ class QueueMonitorService:
 
         retryCount 는 0 으로 리셋. reclaimedCount 는 유지 (poison pill 방어).
         LREM 은 반드시 **원본 raw 문자열** 로 호출해야 Redis 저장값과 정확 일치.
+
+        실패 복구: LREM 성공 후 enqueue 실패 시 best-effort 로 DLQ 에 재삽입해
+        데이터 유실을 방지한다 (완전 원자화는 Lua/transaction 이 필요하지만
+        본 플랜은 과한 추상화를 지양 — 본 분기가 튈 확률은 Redis 장애 시점에 한정).
         """
         failed_queue = self.config.QUEUE_STATS_REFRESH_FAILED
         for raw_str, msg in self.redis_client.get_messages(
@@ -82,7 +86,19 @@ class QueueMonitorService:
                 return False
             msg["retryCount"] = 0
             msg["lastAttemptAt"] = None
-            self.redis_client.enqueue_message(msg)
+            try:
+                self.redis_client.enqueue_message(msg)
+            except Exception as e:
+                logger.error(
+                    f"retry_failed_message: pending enqueue 실패 — DLQ 에 복구 시도 ({request_id}): {e}"
+                )
+                try:
+                    self.redis_client.push_to_failed(msg)
+                except Exception as restore_err:
+                    logger.error(
+                        f"retry_failed_message: DLQ 복구도 실패 ({request_id}): {restore_err}"
+                    )
+                return False
             logger.info(
                 f"retry_failed_message: pending 복귀 완료 ({request_id})"
             )

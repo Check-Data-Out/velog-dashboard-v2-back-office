@@ -118,6 +118,55 @@ class TestReclaimOnce:
         assert counts["dlq"] == 1
         client.push_to_failed.assert_called_once_with(bad_parsed)
 
+    def test_malformed_entry_lrem_miss_does_not_push_to_dlq(self):
+        """리뷰: malformed entry LREM 실패 시 DLQ 중복 적재 방지."""
+        client = _make_client()
+        client.remove_message.return_value = 0  # race: 이미 다른 주기가 처리
+        bad_parsed = {"_raw": "garbage", "_error": "JSONDecodeError"}
+        client.get_messages.return_value = [("garbage", bad_parsed)]
+        reclaimer = _make_reclaimer(client)
+        counts = reclaimer.reclaim_once(now_epoch=time.time())
+        assert counts["dlq"] == 0
+        client.push_to_failed.assert_not_called()
+
+    def test_uses_processing_started_at_over_enqueued_at(self):
+        """리뷰: pending 장기대기 메시지가 BLMOVE 직후 즉시 stale 되지 않음."""
+        client = _make_client()
+        now = time.time()
+        msg = {
+            "requestId": "rid-new-processing",
+            # pending 에서 1시간 대기했지만 방금 processing 으로 넘어옴
+            "enqueuedAt": time.strftime(
+                "%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(now - 3600)
+            ),
+            "processingStartedAt": time.strftime(
+                "%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(now - 5)
+            ),
+        }
+        client.get_messages.return_value = [(json.dumps(msg), msg)]
+        reclaimer = _make_reclaimer(client, visibility=600)
+        counts = reclaimer.reclaim_once(now_epoch=now)
+        # processingStartedAt 이 fresh 이므로 reclaim 하지 않음
+        assert counts["fresh"] == 1
+        assert counts["reclaimed"] == 0
+
+    def test_invalid_reclaimed_count_does_not_crash(self):
+        """리뷰: reclaimedCount 가 None/비숫자여도 메시지 유실 금지."""
+        client = _make_client()
+        now = time.time()
+        msg = {
+            "requestId": "rid-bad",
+            "processingStartedAt": time.strftime(
+                "%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(now - 9999)
+            ),
+            "reclaimedCount": "bad",
+        }
+        client.get_messages.return_value = [(json.dumps(msg), msg)]
+        reclaimer = _make_reclaimer(client, visibility=600)
+        counts = reclaimer.reclaim_once(now_epoch=now)
+        # prev_count 가 0 으로 방어 → reclaim 1 로 정상 처리
+        assert counts["reclaimed"] == 1
+
 
 class TestLoop:
     def test_loop_stops_when_shutdown_event_set(self):

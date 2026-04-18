@@ -32,8 +32,17 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options) -> None:
-        cutoff = timezone.now() - timedelta(days=options["older_than_days"])
+        days = options["older_than_days"]
         chunk = options["chunk"]
+        if days <= 0:
+            raise SystemExit(
+                f"--older-than-days must be a positive integer (got {days})"
+            )
+        if chunk <= 0:
+            raise SystemExit(
+                f"--chunk must be a positive integer (got {chunk})"
+            )
+        cutoff = timezone.now() - timedelta(days=days)
         base_qs = StatsRefreshRequest.objects.filter(created_at__lt=cutoff)
         total = base_qs.count()
 

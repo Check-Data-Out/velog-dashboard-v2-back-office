@@ -54,6 +54,12 @@ def ensure_envelope(raw: dict) -> dict:
     if "reclaimedCount" not in msg:
         msg["reclaimedCount"] = 0
         generated.append("reclaimedCount")
+    else:
+        # 외부 producer 가 None / 비숫자 값을 넣은 경우 대비 (reclaimer 파싱 실패 방지)
+        try:
+            msg["reclaimedCount"] = int(msg["reclaimedCount"])
+        except (TypeError, ValueError):
+            msg["reclaimedCount"] = 0
 
     if "requestedBy" not in msg:
         msg["requestedBy"] = None

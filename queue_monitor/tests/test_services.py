@@ -93,6 +93,20 @@ class TestRetryFailedMessage:
         assert service.retry_failed_message("rid-1") is False
         mock_redis_client.enqueue_message.assert_not_called()
 
+    def test_restores_to_dlq_when_enqueue_fails(self, mock_redis_client):
+        """리뷰: LREM 성공 후 pending enqueue 실패 시 DLQ 복구로 유실 방지."""
+        raw = '{"requestId": "rid-2", "userId": 5}'
+        mock_redis_client.get_messages.return_value = [
+            (raw, {"requestId": "rid-2", "userId": 5})
+        ]
+        mock_redis_client.remove_message.return_value = 1
+        mock_redis_client.enqueue_message.side_effect = Exception("redis down")
+        mock_redis_client.push_to_failed = MagicMock()
+        service = QueueMonitorService(redis_client=mock_redis_client)
+        assert service.retry_failed_message("rid-2") is False
+        # 실패 시 DLQ 로 best-effort 복구 시도
+        mock_redis_client.push_to_failed.assert_called_once()
+
 
 class TestPurgeFailed:
     def test_returns_flushed_count(self, mock_redis_client):

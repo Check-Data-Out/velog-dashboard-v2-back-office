@@ -67,3 +67,11 @@ class TestEnsureEnvelope:
         result = ensure_envelope(raw)
         assert raw == {"userId": 3}
         assert result is not raw
+
+    def test_coerces_invalid_reclaimed_count_to_zero(self):
+        # 외부 producer 가 None/비숫자 를 넣어도 reclaimer int() 파싱 안전
+        assert ensure_envelope({"reclaimedCount": None})["reclaimedCount"] == 0
+        assert (
+            ensure_envelope({"reclaimedCount": "bad"})["reclaimedCount"] == 0
+        )
+        assert ensure_envelope({"reclaimedCount": 5})["reclaimedCount"] == 5

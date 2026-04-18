@@ -138,7 +138,6 @@ class UserAdmin(admin.ModelAdmin):
             )
 
         lifecycle = RequestLifecycleService()
-        inflight = lifecycle.has_inflight_for_users(user_pk_list)
 
         # request.user 는 Django auth.User 이고 StatsRefreshRequest.requested_by 는
         # users.User FK 이므로 email 매칭으로 users.User id 를 찾아 보조. 매칭 실패 시 None.
@@ -153,38 +152,43 @@ class UserAdmin(admin.ModelAdmin):
 
         service = QueueMonitorService()
         queued = 0
+        inflight_skipped = 0
+        failed = 0
         for user_id in user_pk_list:
-            if user_id in inflight:
-                continue
             envelope = build_envelope(
                 user_id=user_id, requested_by=requester_id
             )
-            # StatsRefreshRequest 먼저 생성 (consumer 가 mark_processing 할 수 있도록)
-            lifecycle.mark_queued(
+            # try_mark_queued_if_no_inflight: user_id 원자 가드.
+            # 동시 요청 race 에서 두 번째 호출은 None 반환 → 중복 enqueue 차단.
+            row = lifecycle.try_mark_queued_if_no_inflight(
                 request_id=envelope["requestId"],
                 user_id=user_id,
                 requested_by=requester_id,
             )
+            if row is None:
+                inflight_skipped += 1
+                continue
             try:
                 service.redis_client.enqueue_message(envelope)
             except Exception as e:
-                # Redis 실패 시 QUEUED 고아 행이 남으면 has_inflight 로 영구 차단됨.
-                # 상태 전이로는 QUEUED→DLQ 가 허용되지 않으므로 행을 직접 삭제한다.
                 logger.error(
                     f"update_stats: enqueue 실패 (user={user_id}): {e}"
                 )
                 StatsRefreshRequest.objects.filter(
                     request_id=envelope["requestId"]
                 ).delete()
+                failed += 1
                 continue
             queued += 1
 
-        skipped = len(user_pk_list) - queued
-        msg = f"{queued}건 큐에 추가됨"
-        if skipped:
-            msg += f", {skipped}건은 이미 진행중이어서 스킵"
-        msg += ". 진행 상황은 Queue Monitor 에서 확인하세요."
-        return self.message_user(request, msg, messages.SUCCESS)
+        parts = [f"{queued}건 큐에 추가됨"]
+        if inflight_skipped:
+            parts.append(f"{inflight_skipped}건은 이미 진행중이어서 스킵")
+        if failed:
+            parts.append(f"{failed}건은 Redis enqueue 실패")
+        msg = ", ".join(parts) + ". 진행 상황은 Queue Monitor 에서 확인하세요."
+        level = messages.ERROR if failed else messages.SUCCESS
+        return self.message_user(request, msg, level)
 
 
 @admin.register(QRLoginToken)

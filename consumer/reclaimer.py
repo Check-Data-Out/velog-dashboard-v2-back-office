@@ -2,9 +2,9 @@
 
 설계 원칙:
 - 단일 consumer 인스턴스 전제 → threading.Lock 만 사용 (분산 락 미사용)
-- Lua script 는 "1건 단위 claim" 만 담당 — 전수 스캔은 Python 에서 호출 루프
-- 현재 시각은 Python 에서 ARGV 로 전달 (클러스터 복제 안전)
-- 메시지에 enqueuedAt 없으면 ensure_envelope 가 이미 보강했다는 전제
+- stale 판정 기준은 `processingStartedAt` — BLMOVE 직후 consumer 가 기록한 시각.
+  pending 장기 대기 메시지가 BLMOVE 직후 즉시 stale 판정되는 race 를 방지.
+- fallback: processingStartedAt 없으면 enqueuedAt → lastAttemptAt 순서로 참고.
 """
 
 import logging
@@ -59,10 +59,20 @@ class ProcessingReclaimer:
             return 0.0
 
     def _is_stale(self, msg: dict, now_epoch: float) -> bool:
-        enqueued = self._parse_epoch(msg.get("enqueuedAt"))
+        # 우선순위: processingStartedAt (BLMOVE 시점) → lastAttemptAt → enqueuedAt
+        # 세 값 모두 없으면 판정 불가 → fresh 로 취급해 다음 주기로 미룸.
+        ref = (
+            msg.get("processingStartedAt")
+            or msg.get("lastAttemptAt")
+            or msg.get("enqueuedAt")
+        )
+        if not ref:
+            return False
+        started = self._parse_epoch(ref)
+        if started == 0.0:
+            return False
         return bool(
-            (now_epoch - enqueued)
-            >= self.config.RECLAIM_VISIBILITY_TIMEOUT_SEC
+            (now_epoch - started) >= self.config.RECLAIM_VISIBILITY_TIMEOUT_SEC
         )
 
     # ------------------------------------------------------------------
@@ -87,12 +97,19 @@ class ProcessingReclaimer:
                 # get_messages(with_raw=True) 는 JSON 파싱 실패 시
                 # {"_raw": ..., "_error": "JSONDecodeError"} 를 반환한다.
                 if not isinstance(parsed, dict) or "_error" in parsed:
-                    self.redis_client.remove_message(processing_queue, raw_str)
-                    self.redis_client.push_to_failed(
+                    # LREM 성공 후에만 DLQ 이동 — race 시 중복 DLQ 방지.
+                    removed = self.redis_client.remove_message(
+                        processing_queue, raw_str
+                    )
+                    if removed == 0:
+                        # 다른 주기가 이미 처리. skip.
+                        continue
+                    payload = (
                         parsed
                         if isinstance(parsed, dict)
                         else {"_raw": raw_str}
                     )
+                    self.redis_client.push_to_failed(payload)
                     counts["dlq"] += 1
                     continue
 
@@ -112,7 +129,12 @@ class ProcessingReclaimer:
                     )
                     continue
 
-                msg["reclaimedCount"] = int(msg.get("reclaimedCount", 0)) + 1
+                # reclaimedCount 가 외부 손상으로 비숫자일 수 있음. 방어적 파싱.
+                try:
+                    prev_count = int(msg.get("reclaimedCount", 0) or 0)
+                except (TypeError, ValueError):
+                    prev_count = 0
+                msg["reclaimedCount"] = prev_count + 1
                 if msg["reclaimedCount"] > self.config.RECLAIM_MAX_RECLAIMS:
                     self.redis_client.push_to_failed(msg)
                     counts["dlq"] += 1

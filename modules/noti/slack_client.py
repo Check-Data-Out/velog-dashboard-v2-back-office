@@ -8,6 +8,7 @@
 import json
 import logging
 from urllib import request as urlrequest
+from urllib.parse import urlparse
 
 import environ
 
@@ -39,6 +40,27 @@ def _cooldown_active(
         return False
 
 
+def _release_cooldown(redis_client: object, cooldown_key: str | None) -> None:
+    """전송 실패 시 cooldown 키 삭제 — 다음 요청이 바로 재시도 가능하도록."""
+    if not cooldown_key or redis_client is None:
+        return
+    try:
+        redis_client.client.delete(f"{_COOLDOWN_PREFIX}{cooldown_key}")  # type: ignore[attr-defined]
+    except Exception as e:
+        logger.warning(f"slack cooldown release failed: {e}")
+
+
+def _is_valid_https_webhook(url: str) -> bool:
+    """운영 실수 방지 — HTTPS scheme 만 허용."""
+    if not url:
+        return False
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    return parsed.scheme == "https" and bool(parsed.netloc)
+
+
 def notify_ops(
     text: str,
     *,
@@ -54,6 +76,11 @@ def notify_ops(
     webhook = _webhook_url()
     if not webhook:
         logger.debug("SLACK_OPS_WEBHOOK not set — skipping notification")
+        return False
+    if not _is_valid_https_webhook(webhook):
+        logger.error(
+            "SLACK_OPS_WEBHOOK scheme is not HTTPS — skipping for safety"
+        )
         return False
 
     if _cooldown_active(redis_client, cooldown_key, cooldown_sec):
@@ -71,8 +98,11 @@ def notify_ops(
         with urlrequest.urlopen(req, timeout=5) as resp:
             if 200 <= resp.status < 300:
                 return True
+            # 실패 시 cooldown 해제 — 30분 묵살 방지.
+            _release_cooldown(redis_client, cooldown_key)
             logger.warning(f"slack notify non-2xx: {resp.status}")
             return False
     except Exception as e:
+        _release_cooldown(redis_client, cooldown_key)
         logger.error(f"slack notify failed: {e}")
         return False

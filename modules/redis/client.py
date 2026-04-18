@@ -106,18 +106,17 @@ class RedisQueueClient:
             logger.error(f"Redis error while popping message: {e}")
             raise
 
-    def _push_raw_to_failed(self, raw_message: str, error: str) -> None:
+    def _push_raw_to_failed(self, raw_message: str, error: str) -> bool:
         """Push raw (unparseable) message to failed queue with error info.
 
-        Args:
-            raw_message: Original message string that failed to decode
-            error: Error message describing the failure
+        Returns:
+            True on success, False on Redis failure (호출자는 escalate 가능).
 
         Note:
             큐 크기가 MAX_FAILED_QUEUE_SIZE를 초과하면 오래된 메시지부터 삭제됩니다.
         """
         if not self.client:
-            return
+            return False
 
         try:
             # 원본 메시지와 에러 정보를 함께 저장
@@ -138,10 +137,12 @@ class RedisQueueClient:
                 self.config.MAX_FAILED_QUEUE_SIZE - 1,
             )
             logger.warning("Pushed malformed message to failed queue")
+            return True
         except RedisError as e:
             logger.error(
                 f"Failed to push malformed message to failed queue: {e}"
             )
+            return False
 
     def push_to_processing(self, message: dict[str, Any]) -> None:
         """Push message to processing queue.
@@ -266,11 +267,25 @@ class RedisQueueClient:
                     f"BLMOVE received malformed JSON, moving to DLQ: {e}, "
                     f"raw={raw!r}"
                 )
-                # processing 큐에서 제거하고 DLQ 로 옮김
-                self.client.lrem(
-                    self.config.QUEUE_STATS_REFRESH_PROCESSING, 1, raw
+                # LREM 성공 후에만 DLQ 이동 — lpush 실패 시에도 호출자에게 신호.
+                removed = cast(
+                    int,
+                    self.client.lrem(
+                        self.config.QUEUE_STATS_REFRESH_PROCESSING, 1, raw
+                    ),
                 )
-                self._push_raw_to_failed(raw, str(e))
+                if removed == 0:
+                    logger.warning(
+                        "Malformed entry LREM missed (already gone?)"
+                    )
+                    return None
+                dlq_ok = self._push_raw_to_failed(raw, str(e))
+                if not dlq_ok:
+                    # processing 에서는 지워졌고 DLQ 에도 못 넣음 → 에러 로그만
+                    # (sentry_sdk 는 모듈 레벨 import 없이 상위 레이어가 처리)
+                    logger.error(
+                        "malformed message lost after LREM (DLQ push failed)"
+                    )
                 return None
         except RedisError as e:
             logger.error(f"Redis error in BLMOVE: {e}")

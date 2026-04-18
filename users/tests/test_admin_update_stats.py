@@ -129,3 +129,21 @@ class TestUpdateStats:
 
         assert not hasattr(admin_module, "ScraperTargetUser")
         assert not hasattr(admin_module, "async_to_sync")
+
+    def test_enqueue_failure_marks_error_level(
+        self, superuser, target_users, stub_redis
+    ):
+        """리뷰: Redis enqueue 실패를 skip 이 아닌 에러로 표시."""
+        from django.contrib import messages as django_messages
+
+        stub_redis.redis_client.enqueue_message.side_effect = Exception(
+            "redis down"
+        )
+        admin_instance = _trigger_action(superuser, target_users)
+        # failed 카운트가 있으면 message level = ERROR
+        call_args = admin_instance.message_user.call_args
+        msg_text, level = call_args[0][1], call_args[0][2]
+        assert "Redis enqueue 실패" in msg_text
+        assert level == django_messages.ERROR
+        # 고아 행 없음 — 실패 시 삭제되어야 함
+        assert StatsRefreshRequest.objects.count() == 0

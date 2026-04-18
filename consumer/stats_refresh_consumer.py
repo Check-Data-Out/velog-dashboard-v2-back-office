@@ -31,6 +31,7 @@ from modules.redis.client import (
     get_redis_client,
     reset_redis_client,
 )
+from utils.utils import get_local_now
 
 logger = logging.getLogger("consumer")
 
@@ -165,9 +166,27 @@ class StatsRefreshConsumer:
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
     def _reconnect_with_backoff(self) -> None:
-        """Redis 연결을 backoff 재시도. tenacity 로 최대 30회."""
-        reset_redis_client()
-        self.redis_client = get_redis_client()
+        """Redis 연결을 backoff 재시도. tenacity 로 최대 30회.
+
+        주입된 redis_client 가 있으면 그 인스턴스를 다시 연결 시도.
+        singleton 재생성은 **오직 DI 없이 singleton 을 쓰던 경우** 에만 수행 —
+        테스트/운영에서 custom config 주입이 장애 이후 무효화되는 문제 방지.
+        """
+        if self._injected_redis_client is not None:
+            # 주입된 client 를 그대로 쓰되, 내부 연결만 재수립.
+            # RedisQueueClient._connect 는 __init__ 에서만 호출되므로
+            # close + 새 인스턴스를 동일 config 로 생성.
+            try:
+                self._injected_redis_client.close()
+            except Exception:
+                pass
+            self.redis_client = type(self._injected_redis_client)(
+                config=self._injected_redis_client.config
+            )
+            self._injected_redis_client = self.redis_client
+        else:
+            reset_redis_client()
+            self.redis_client = get_redis_client()
         assert self.redis_client is not None
         self.redis_client.client.ping()  # type: ignore[union-attr]
         logger.info("Redis reconnected successfully.")
@@ -198,11 +217,11 @@ class StatsRefreshConsumer:
                 consecutive_errors = 0
                 self.stats["last_message_at"] = time.time()
 
-                # raw_str = processing 큐의 실제 저장 문자열 (LREM 원본 비교용)
+                # raw_str = processing 큐의 실제 저장 문자열 (LREM 원본 비교용).
+                # processingStartedAt = BLMOVE 시점 기준 시각 (reclaimer visibility 판정용).
                 raw_str, message = popped
-                # ensure_envelope 은 processing 큐 저장 값을 변경하지 않음;
-                # 단지 consumer 내부 처리용으로만 필드를 보강한다.
                 enriched = ensure_envelope(message)
+                enriched["processingStartedAt"] = get_local_now().isoformat()
                 self._process_message(enriched, raw_str=raw_str)
 
             except KeyboardInterrupt:
@@ -266,13 +285,23 @@ class StatsRefreshConsumer:
         original_raw = raw_str if raw_str is not None else json.dumps(message)
         request_id = message.get("requestId")
 
+        def _safe_int(value) -> int:
+            """외부 producer 가 None / 비숫자를 넣어도 0 으로 방어."""
+            try:
+                return int(value or 0)
+            except (TypeError, ValueError):
+                return 0
+
+        retry_cnt = _safe_int(message.get("retryCount"))
+        reclaimed_cnt = _safe_int(message.get("reclaimedCount"))
+
         # lifecycle: mark_processing (Phase 6 admin 경로에서 mark_queued 가 선행됨.
         # 외부 producer 경로는 mark_queued 가 없을 수 있어 결과는 None 가능.)
         try:
             self._lifecycle_service().mark_processing(
                 request_id=request_id,
-                retry_count=int(message.get("retryCount", 0)),
-                reclaimed_count=int(message.get("reclaimedCount", 0)),
+                retry_count=retry_cnt,
+                reclaimed_count=reclaimed_cnt,
             )
         except Exception as e:
             logger.warning(f"mark_processing failed: {e}")
@@ -286,7 +315,7 @@ class StatsRefreshConsumer:
                 self._safe_lifecycle(
                     "mark_success",
                     request_id=request_id,
-                    retry_count=int(message.get("retryCount", 0)),
+                    retry_count=retry_cnt,
                 )
                 logger.info(
                     f"Message processed successfully. Stats: {self._get_stats_summary()}"
@@ -298,16 +327,21 @@ class StatsRefreshConsumer:
                     "mark_failed",
                     request_id=request_id,
                     error="process_with_retry returned False",
-                    retry_count=int(message.get("retryCount", 0)),
+                    retry_count=retry_cnt,
                 )
                 logger.error(
                     f"Message processing failed after all retries. Stats: {self._get_stats_summary()}"
                 )
 
-            # processing 큐에서 원본 제거
-            self.redis_client.remove_message(
+            # processing 큐에서 원본 제거 — 실패 시 reclaimer 가 중복 집을 수 있으므로 경고.
+            removed = self.redis_client.remove_message(
                 self.redis_config.QUEUE_STATS_REFRESH_PROCESSING, original_raw
             )
+            if removed == 0:
+                logger.warning(
+                    "processing 큐 LREM 실패 — reclaimer 가 재처리할 수 있음",
+                    extra={"requestId": request_id},
+                )
 
         except Exception as e:
             self.stats["failed"] += 1
@@ -316,15 +350,20 @@ class StatsRefreshConsumer:
             try:
                 assert self.redis_client is not None
                 self.redis_client.push_to_failed(message)
-                self.redis_client.remove_message(
+                removed = self.redis_client.remove_message(
                     self.redis_config.QUEUE_STATS_REFRESH_PROCESSING,
                     original_raw,
                 )
+                if removed == 0:
+                    logger.warning(
+                        "cleanup: processing LREM 실패",
+                        extra={"requestId": request_id},
+                    )
                 self._safe_lifecycle(
                     "mark_failed",
                     request_id=request_id,
                     error=str(e),
-                    retry_count=int(message.get("retryCount", 0)),
+                    retry_count=retry_cnt,
                 )
             except Exception as cleanup_error:
                 logger.error(f"Failed to cleanup after error: {cleanup_error}")

@@ -60,6 +60,59 @@ class TestMarkQueued:
         service.mark_queued(rid, user.id, None)  # 두 번 호출해도 행 1개
         assert StatsRefreshRequest.objects.count() == 1
 
+    def test_mark_queued_does_not_overwrite_terminal_status(
+        self, service, user
+    ):
+        """리뷰: SUCCESS/DLQ 를 inflight 로 되돌리면 안 됨."""
+        rid = str(uuid.uuid4())
+        service.mark_queued(rid, user.id, None)
+        service.mark_processing(rid)
+        service.mark_success(rid)
+        # 같은 request_id 로 다시 mark_queued → SUCCESS 유지
+        service.mark_queued(rid, user.id, None)
+        obj = StatsRefreshRequest.objects.get(request_id=rid)
+        assert obj.status == StatsRefreshRequestStatus.SUCCESS
+        assert obj.finished_at is not None
+
+    def test_transition_updates_updated_at(self, service, user):
+        """리뷰: QuerySet.update() 가 auto_now 를 안 돌리므로 명시 갱신."""
+        rid = str(uuid.uuid4())
+        obj = service.mark_queued(rid, user.id, None)
+        before = obj.updated_at
+        service.mark_processing(rid)
+        after = StatsRefreshRequest.objects.get(request_id=rid).updated_at
+        assert after > before
+
+
+class TestTryMarkQueuedIfNoInflight:
+    def test_creates_row_when_no_inflight(self, service, user):
+        rid = str(uuid.uuid4())
+        row = service.try_mark_queued_if_no_inflight(rid, user.id, None)
+        assert row is not None
+        assert row.status == StatsRefreshRequestStatus.QUEUED
+
+    def test_returns_none_when_inflight_exists(self, service, user):
+        """리뷰: 같은 user 에 QUEUED 가 있으면 두 번째 호출은 거부."""
+        service.try_mark_queued_if_no_inflight(
+            str(uuid.uuid4()), user.id, None
+        )
+        second = service.try_mark_queued_if_no_inflight(
+            str(uuid.uuid4()), user.id, None
+        )
+        assert second is None
+        assert StatsRefreshRequest.objects.filter(user=user).count() == 1
+
+    def test_allows_new_queue_after_terminal(self, service, user):
+        """SUCCESS 이후에는 같은 user 라도 재요청 가능."""
+        rid = str(uuid.uuid4())
+        service.try_mark_queued_if_no_inflight(rid, user.id, None)
+        service.mark_processing(rid)
+        service.mark_success(rid)
+        row = service.try_mark_queued_if_no_inflight(
+            str(uuid.uuid4()), user.id, None
+        )
+        assert row is not None
+
 
 class TestMarkProcessingSuccessFailed:
     def test_processing_success_transition(self, service, user):
