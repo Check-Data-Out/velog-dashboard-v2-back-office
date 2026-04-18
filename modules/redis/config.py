@@ -1,6 +1,18 @@
+import base64
+
 import environ
 
 env = environ.Env()
+
+
+def _resolve_password() -> str:
+    # django-environ 은 .env 파싱 시 `#` 이후를 주석으로 잘라버리므로,
+    # `#` 이 포함된 비밀번호는 REDIS_PASSWORD_B64 (base64) 로 제공한다.
+    b64: str = env("REDIS_PASSWORD_B64", default="")
+    if b64:
+        return base64.b64decode(b64).decode("utf-8")
+    raw: str = env("REDIS_PASSWORD", default="notion-check-plz")
+    return raw
 
 
 class RedisConfig:
@@ -8,7 +20,7 @@ class RedisConfig:
 
     HOST = env("REDIS_HOST", default="localhost")
     PORT = env.int("REDIS_PORT", default=6379)
-    PASSWORD = env("REDIS_PASSWORD", default="notion-check-plz")
+    PASSWORD = _resolve_password()
     DB = env.int("REDIS_DB", default=0)
 
     # Queue names (단일 소비자 + pending/processing/DLQ 3종)

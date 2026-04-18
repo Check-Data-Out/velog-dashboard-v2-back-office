@@ -1,0 +1,34 @@
+{% load i18n %}
+<nav class="vd2-subnav" aria-label="Queue Monitor">
+  <a href="{% url 'admin:queue_dashboard' %}" class="{% if active == 'dashboard' %}is-active{% endif %}">큐 상태</a>
+  <a href="{% url 'admin:queue_failed_list' %}" class="{% if active == 'failed' %}is-active{% endif %}">DLQ</a>
+  <a href="{% url 'admin:queue_purge' %}" class="danger {% if active == 'purge' %}is-active{% endif %}">DLQ 퍼지</a>
+  <span class="vd2-subnav-spacer"></span>
+  <a href="{% url 'admin:ops_tracking_statsrefreshrequest_changelist' %}">요청 기록</a>
+</nav>
+<style>
+.vd2-subnav {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 24px;
+  padding: 10px;
+  background: var(--darkened-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+.vd2-subnav a {
+  padding: 8px 16px;
+  border-radius: 6px;
+  color: var(--body-fg);
+  font-weight: 600;
+  font-size: 14px;
+  text-decoration: none;
+  border: 1px solid transparent;
+}
+.vd2-subnav a:hover { background: var(--body-bg); border-color: var(--border-color); }
+.vd2-subnav a.is-active { background: var(--primary); color: var(--primary-fg); }
+.vd2-subnav a.danger:hover { background: #ba2121; color: #fff; border-color: #ba2121; }
+.vd2-subnav a.danger.is-active { background: #ba2121; color: #fff; }
+.vd2-subnav-spacer { flex: 1; }
+</style>

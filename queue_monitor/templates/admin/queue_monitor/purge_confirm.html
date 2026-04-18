@@ -1,14 +1,79 @@
 {% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}DLQ 전체 삭제 | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a> &rsaquo;
+  <a href="{% url 'admin:queue_dashboard' %}">Queue Monitor</a> &rsaquo;
+  <a href="{% url 'admin:queue_failed_list' %}">DLQ</a> &rsaquo; 전체 삭제
+</div>
+{% endblock %}
+
 {% block content %}
-<h1>DLQ 전체 삭제 확인</h1>
-<p>현재 DLQ 크기: <b>{{ failed_count }}</b>건</p>
-<p style="color:#c00">
-  이 작업은 되돌릴 수 없습니다. 계속하려면 확인 버튼을 눌러주세요.
+{% include "admin/queue_monitor/_subnav.html" with active="purge" %}
+
+<h1 style="margin:0 0 16px;">DLQ 퍼지</h1>
+
+<p class="errornote" style="font-size:14px;">
+  <strong>되돌릴 수 없습니다.</strong> DLQ 의 모든 메시지를 삭제합니다.
 </p>
+
+<div class="module" style="padding:20px;margin:16px 0 24px;border-radius:10px;">
+  <div style="font-size:13px;color:var(--body-quiet-color);text-transform:uppercase;letter-spacing:0.05em;font-weight:700;">
+    DLQ 크기
+  </div>
+  <div style="font-size:44px;font-weight:700;color:#ba2121;line-height:1.1;margin-top:6px;">
+    {{ failed_count }}건
+  </div>
+</div>
+
 <form method="post">
   {% csrf_token %}
   <input type="hidden" name="confirm" value="yes" />
-  <button type="submit">네, 전체 삭제합니다</button>
-  <a href="{% url 'admin:queue_failed_list' %}">취소</a>
+  <div class="vd2-actions">
+    <a href="{% url 'admin:queue_failed_list' %}" class="vd2-btn vd2-btn--ghost">취소</a>
+    <button type="submit" class="vd2-btn vd2-btn--danger">DLQ 전체 삭제</button>
+  </div>
 </form>
+
+<style>
+.vd2-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 16px 20px;
+  background: var(--darkened-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+.vd2-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.vd2-btn--ghost {
+  background: var(--body-bg);
+  color: var(--body-fg);
+}
+.vd2-btn--ghost:hover { background: var(--darkened-bg); }
+.vd2-btn--danger {
+  background: #ba2121;
+  color: #fff;
+  border-color: #ba2121;
+}
+.vd2-btn--danger:hover { background: #a41818; border-color: #a41818; }
+</style>
 {% endblock %}

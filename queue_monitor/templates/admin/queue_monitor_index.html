@@ -3,23 +3,23 @@
 
 {% block content %}
 <div class="module" style="margin-bottom:16px;">
-  <h2>{% trans "운영 대시보드" %}</h2>
+  <h2>{% trans "운영 메뉴" %}</h2>
   <table>
     <tr>
-      <th><a href="{% url 'admin:queue_dashboard' %}">큐 상태 대시보드</a></th>
-      <td>pending / processing / failed 큐 깊이와 최근 지표</td>
+      <th><a href="{% url 'admin:queue_dashboard' %}">큐 상태</a></th>
+      <td>pending / processing / failed 수</td>
     </tr>
     <tr>
-      <th><a href="{% url 'admin:queue_failed_list' %}">DLQ 관리</a></th>
-      <td>실패 메시지 목록, 개별 retry, 전체 purge</td>
+      <th><a href="{% url 'admin:queue_failed_list' %}">DLQ</a></th>
+      <td>실패 메시지 retry / purge</td>
     </tr>
     <tr>
-      <th><a href="{% url 'admin:ops_tracking_statsrefreshrequest_changelist' %}">Stats Refresh 요청 추적</a></th>
-      <td>누가 언제 요청했고 성공/실패 상태 조회</td>
+      <th><a href="{% url 'admin:ops_tracking_statsrefreshrequest_changelist' %}">Stats Refresh 요청 기록</a></th>
+      <td>요청자 / 상태 / 재시도 횟수</td>
     </tr>
     <tr>
-      <th><a href="{% url 'admin:posts_post_changelist' %}?stats_status=missing">오늘 통계 누락 포스트</a></th>
-      <td>Post 리스트에서 오늘자 통계가 없는 활성 포스트만</td>
+      <th><a href="{% url 'admin:posts_post_changelist' %}?stats_status=missing">통계 누락 포스트</a></th>
+      <td>오늘자 통계 없는 활성 포스트</td>
     </tr>
   </table>
 </div>
