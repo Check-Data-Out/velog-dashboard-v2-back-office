@@ -168,14 +168,11 @@ class TestMarkProcessingSuccessFailed:
 
 class TestHasInflightForUsers:
     def test_detects_queued_and_processing_as_inflight(self, service, user):
-        rid_q = str(uuid.uuid4())
-        rid_p = str(uuid.uuid4())
-        service.mark_queued(rid_q, user.id, None)
-        service.mark_queued(rid_p, user.id, None)
-        service.mark_processing(rid_p)
-
-        inflight = service.has_inflight_for_users([user.id])
-        assert inflight == {user.id}
+        rid = str(uuid.uuid4())
+        service.mark_queued(rid, user.id, None)
+        assert service.has_inflight_for_users([user.id]) == {user.id}
+        service.mark_processing(rid)
+        assert service.has_inflight_for_users([user.id]) == {user.id}
 
     def test_ignores_success_and_failed(self, service, user):
         rid = str(uuid.uuid4())

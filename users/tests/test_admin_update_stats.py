@@ -99,9 +99,8 @@ class TestUpdateStats:
         # 큐잉 실행 안 됨
         stub_redis.redis_client.enqueue_message.assert_not_called()
         assert StatsRefreshRequest.objects.count() == 0
-        # ERROR 메시지
         call_args = admin_instance.message_user.call_args
-        assert call_args[0][2] is not None  # messages.ERROR
+        assert call_args[0][2] == django_messages.ERROR
 
     def test_skips_users_with_inflight_request(
         self, superuser, target_users, stub_redis

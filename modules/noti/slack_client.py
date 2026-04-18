@@ -29,7 +29,11 @@ def _webhook_url() -> str:
 def _cooldown_active(
     redis_client: object, cooldown_key: str | None, cooldown_sec: int
 ) -> bool:
-    """cooldown_key 가 주어지고 Redis 에 이미 존재하면 True 반환. 없으면 SET 후 False."""
+    """cooldown 상태. 이미 있으면 True, 새로 획득하면 False.
+
+    Redis 장애 시 fail-closed: cooldown 을 보장할 수 없으면 True(차단) 반환해
+    의도치 않은 연속 전송을 막는다.
+    """
     if not cooldown_key or redis_client is None:
         return False
     key = f"{COOLDOWN_PREFIX}{cooldown_key}"
@@ -38,8 +42,8 @@ def _cooldown_active(
         acquired = redis_client.client.set(key, "1", nx=True, ex=cooldown_sec)  # type: ignore[attr-defined]
         return bool(acquired is None or acquired is False)
     except Exception as e:
-        logger.warning(f"slack cooldown check failed: {e}")
-        return False
+        logger.warning(f"slack cooldown check failed (fail-closed): {e}")
+        return True
 
 
 def _release_cooldown(redis_client: object, cooldown_key: str | None) -> None:

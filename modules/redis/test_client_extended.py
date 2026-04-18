@@ -126,10 +126,14 @@ class TestFlushQueue:
     def test_returns_size_then_deletes(self, mock_redis_class):
         mock_client = MagicMock()
         mock_client.ping.return_value = True
-        mock_client.llen.return_value = 42
+        # pipeline().__enter__ → pipe, pipe.execute() → [llen, delete] 결과
+        pipe = MagicMock()
+        pipe.execute.return_value = [42, True]
+        mock_client.pipeline.return_value.__enter__.return_value = pipe
         mock_redis_class.return_value = mock_client
 
         client = RedisQueueClient()
         removed = client.flush_queue("any-queue")
         assert removed == 42
-        mock_client.delete.assert_called_once_with("any-queue")
+        pipe.llen.assert_called_once_with("any-queue")
+        pipe.delete.assert_called_once_with("any-queue")

@@ -11,17 +11,20 @@ env = environ.Env()
 
 
 def notify_after_batch() -> None:
-    """'오늘 통계 누락' 포스트 수가 임계 초과면 Slack 알림."""
-    threshold = env.int("MISSING_POSTS_THRESHOLD", default=100)
-    missing = Post.get_posts_missing_today_stats_queryset().count()
-    if missing <= threshold:
-        logger.info(
-            f"batch notify: missing={missing} under threshold={threshold}"
-        )
-        return
+    """'오늘 통계 누락' 포스트 수가 임계 초과면 Slack 알림.
 
-    text = f"[velog-dashboard-v2] 오늘 통계 누락 포스트 {missing}건이 임계({threshold}) 초과"
+    알림 계산/전송 실패가 배치 main job 을 죽이지 않도록 전체를 try/except 로 감싼다.
+    """
     try:
+        threshold = env.int("MISSING_POSTS_THRESHOLD", default=100)
+        missing = Post.get_posts_missing_today_stats_queryset().count()
+        if missing <= threshold:
+            logger.info(
+                f"batch notify: missing={missing} under threshold={threshold}"
+            )
+            return
+
+        text = f"[velog-dashboard-v2] 오늘 통계 누락 포스트 {missing}건이 임계({threshold}) 초과"
         redis_client = None
         try:
             redis_client = get_redis_client()

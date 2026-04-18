@@ -24,9 +24,7 @@ class StatsRefreshRequestStatus(models.TextChoices):
 
 
 class StatsRefreshRequest(TimeStampedModel):
-    request_id = models.UUIDField(
-        unique=True, db_index=True, verbose_name="요청 ID"
-    )
+    request_id = models.UUIDField(unique=True, verbose_name="요청 ID")
     user = models.ForeignKey(
         "users.User",
         on_delete=models.CASCADE,
@@ -45,7 +43,6 @@ class StatsRefreshRequest(TimeStampedModel):
         max_length=16,
         choices=StatsRefreshRequestStatus.choices,
         default=StatsRefreshRequestStatus.QUEUED,
-        db_index=True,
         verbose_name="상태",
     )
     retry_count = models.PositiveSmallIntegerField(
@@ -65,6 +62,20 @@ class StatsRefreshRequest(TimeStampedModel):
         verbose_name = "Stats Refresh 요청"
         verbose_name_plural = "Stats Refresh 요청 목록"
         indexes = [models.Index(fields=["status", "-created_at"])]
+        constraints = [
+            # 동일 user 에 대해 QUEUED/PROCESSING 행은 최대 1개 — DB 레벨에서
+            # phantom read race 를 차단. Postgres partial unique index 로 생성.
+            models.UniqueConstraint(
+                fields=["user"],
+                condition=models.Q(
+                    status__in=[
+                        StatsRefreshRequestStatus.QUEUED,
+                        StatsRefreshRequestStatus.PROCESSING,
+                    ]
+                ),
+                name="uniq_inflight_per_user",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.request_id} ({self.status})"

@@ -151,7 +151,22 @@ class ProcessingReclaimer:
                         retry_count=msg["retryCount"],
                     )
                     msg["retryCount"] = 0
-                    self.redis_client.enqueue_message(msg)
+                    try:
+                        self.redis_client.enqueue_message(msg)
+                    except Exception as e:
+                        # LREM 은 이미 완료됐으므로 pending 재투입 실패 시 DLQ 로
+                        # best-effort 대피. 실패해도 reclaimer 본체는 계속 동작.
+                        logger.error(
+                            f"reclaim enqueue failed, moving to DLQ - requestId={rid}: {e}"
+                        )
+                        try:
+                            self.redis_client.push_to_failed(msg)
+                        except Exception as restore_err:
+                            logger.error(
+                                f"reclaim DLQ fallback failed (message lost) - requestId={rid}: {restore_err}"
+                            )
+                        counts["dlq"] += 1
+                        continue
                     counts["reclaimed"] += 1
                     logger.info(
                         f"reclaim returned to pending - requestId={rid}, reclaimedCount={msg['reclaimedCount']}"

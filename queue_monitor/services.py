@@ -13,6 +13,7 @@ import logging
 from consumer.envelope import build_envelope
 from modules.redis.client import RedisQueueClient, get_redis_client
 from modules.redis.config import RedisConfig
+from ops_tracking.services import RequestLifecycleService
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,18 @@ class QueueMonitorService:
                         f"retry_failed_message: DLQ 복구도 실패 ({request_id}): {restore_err}"
                     )
                 return False
+            # DB 상태를 FAILED 로 전환해야 consumer 가 재소비 시
+            # mark_processing(FAILED→PROCESSING) 전이를 받을 수 있다.
+            try:
+                RequestLifecycleService().mark_failed(
+                    request_id=request_id,
+                    error="admin retry from DLQ",
+                    retry_count=0,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"retry_failed_message: lifecycle.mark_failed 실패 ({request_id}): {e}"
+                )
             logger.info(
                 f"retry_failed_message: pending 복귀 완료 ({request_id})"
             )

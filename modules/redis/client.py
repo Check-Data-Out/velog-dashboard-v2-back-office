@@ -355,14 +355,17 @@ class RedisQueueClient:
             return 0
 
     def flush_queue(self, queue_name: str) -> int:
-        """큐 전체 삭제. 삭제 전 크기를 반환."""
+        """큐 전체 삭제. LLEN + DELETE 를 MULTI/EXEC 로 원자화하여
+        감사 count 와 실제 삭제 범위가 동일한 스냅샷이 되도록 한다."""
         if not self.client:
             raise RuntimeError("Redis client not connected")
 
         try:
-            size = cast(int, self.client.llen(queue_name))
-            self.client.delete(queue_name)
-            return size
+            with self.client.pipeline(transaction=True) as pipe:
+                pipe.llen(queue_name)
+                pipe.delete(queue_name)
+                size, _ = pipe.execute()
+            return cast(int, size)
         except RedisError as e:
             logger.error(f"Failed to flush {queue_name}: {e}")
             return 0

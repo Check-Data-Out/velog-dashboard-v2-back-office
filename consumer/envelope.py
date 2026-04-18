@@ -33,27 +33,32 @@ def build_envelope(
     }
 
 
-def _coerce_int(value: object) -> int:
-    """None / 비숫자 값을 0 으로 정규화."""
+def _coerce_non_negative_int(value: object) -> int:
+    """None / 비숫자 / 음수 값을 0 으로 정규화."""
     try:
-        return int(value or 0)
+        parsed = int(value or 0)
     except (TypeError, ValueError):
         return 0
+    return max(parsed, 0)
 
 
 def ensure_envelope(raw: dict) -> dict:
-    """누락된 필드를 consumer 측에서 보강. 기존 필드는 덮어쓰지 않음.
+    """누락되거나 손상된 필드를 consumer 측에서 보강.
 
-    숫자 필드(retryCount, reclaimedCount) 는 외부 producer 가 손상된 값을
-    넣은 경우에 대비해 정규화까지 수행 — reclaimer/consumer 하류에서 이 함수를
-    통과한 뒤에는 int 임을 전제할 수 있다.
+    숫자 필드는 음수/None/비숫자를 0 으로 클램프, 필수 문자열 필드는
+    None/빈값이 들어온 경우에도 값을 채운다 (`setdefault` 는 falsy 통과하므로
+    명시적 검사 필요). 하류(reclaimer, consumer) 는 이 함수를 통과한 뒤
+    필드가 정상 타입임을 전제한다.
     """
     msg = dict(raw)  # shallow copy
     now_iso = get_local_now().isoformat()
 
-    msg.setdefault("requestId", str(uuid.uuid4()))
-    msg.setdefault("enqueuedAt", msg.get("requestedAt", now_iso))
-    msg.setdefault("requestedBy", None)
-    msg["retryCount"] = _coerce_int(msg.get("retryCount"))
-    msg["reclaimedCount"] = _coerce_int(msg.get("reclaimedCount"))
+    if not msg.get("requestId"):
+        msg["requestId"] = str(uuid.uuid4())
+    if not msg.get("enqueuedAt"):
+        msg["enqueuedAt"] = msg.get("requestedAt") or now_iso
+    if "requestedBy" not in msg:
+        msg["requestedBy"] = None
+    msg["retryCount"] = _coerce_non_negative_int(msg.get("retryCount"))
+    msg["reclaimedCount"] = _coerce_non_negative_int(msg.get("reclaimedCount"))
     return msg

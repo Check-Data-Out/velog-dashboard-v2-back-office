@@ -6,7 +6,7 @@ consumer 가 동일 메시지를 reclaim 재처리해도 행이 중복되지 않
 
 import logging
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from ops_tracking.models import StatsRefreshRequest, StatsRefreshRequestStatus
@@ -79,30 +79,20 @@ class RequestLifecycleService:
     ) -> StatsRefreshRequest | None:
         """동일 user 에 inflight(QUEUED/PROCESSING) 가 없을 때만 QUEUED 생성.
 
-        user_id 단위 원자적 중복 가드. admin 경로에서 같은 사용자 동시 요청이
-        서로 다른 request_id 로 각각 통과하는 race 를 차단한다.
+        DB 레벨 partial unique index(uniq_inflight_per_user) 로 race 를 방지.
+        동시 요청 중 한 건은 IntegrityError 로 실패하고 None 을 받는다.
         """
-        with transaction.atomic():
-            inflight = (
-                StatsRefreshRequest.objects.select_for_update()
-                .filter(
+        try:
+            with transaction.atomic():
+                obj = StatsRefreshRequest.objects.create(
+                    request_id=request_id,
                     user_id=user_id,
-                    status__in=[
-                        StatsRefreshRequestStatus.QUEUED,
-                        StatsRefreshRequestStatus.PROCESSING,
-                    ],
+                    requested_by_id=requested_by,
+                    status=StatsRefreshRequestStatus.QUEUED,
                 )
-                .exists()
-            )
-            if inflight:
-                return None
-            obj = StatsRefreshRequest.objects.create(
-                request_id=request_id,
-                user_id=user_id,
-                requested_by_id=requested_by,
-                status=StatsRefreshRequestStatus.QUEUED,
-            )
-        return obj  # type: ignore[no-any-return]
+            return obj  # type: ignore[no-any-return]
+        except IntegrityError:
+            return None
 
     def _transition(
         self,

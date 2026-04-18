@@ -150,7 +150,16 @@ class UserAdmin(admin.ModelAdmin):
                 .first()
             )
 
-        service = QueueMonitorService()
+        try:
+            service = QueueMonitorService()
+        except Exception as e:
+            logger.error(f"update_stats: Redis 초기화 실패: {e}")
+            return self.message_user(
+                request,
+                f"Redis 연결 실패로 요청을 처리할 수 없습니다: {e}",
+                messages.ERROR,
+            )
+
         queued = 0
         inflight_skipped = 0
         failed = 0
