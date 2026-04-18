@@ -222,6 +222,12 @@ class StatsRefreshConsumer:
                 raw_str, message = popped
                 enriched = ensure_envelope(message)
                 enriched["processingStartedAt"] = get_local_now().isoformat()
+                # processingStartedAt 을 Redis processing 큐에도 반영해야
+                # reclaimer 가 enqueuedAt 으로 fallback 하지 않는다.
+                # (pending 장기 대기 후 BLMOVE 된 메시지가 즉시 stale 판정되는 race 방지)
+                new_raw = json.dumps(enriched)
+                if self.redis_client.replace_processing_head(new_raw):
+                    raw_str = new_raw
                 self._process_message(enriched, raw_str=raw_str)
 
             except KeyboardInterrupt:

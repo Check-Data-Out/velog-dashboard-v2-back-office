@@ -107,8 +107,16 @@ class ProcessingReclaimer:
                         if isinstance(parsed, dict)
                         else {"_raw": raw_str}
                     )
-                    self.redis_client.push_to_failed(payload)
-                    counts["dlq"] += 1
+                    # LREM 은 이미 성공했으므로 DLQ push 실패해도 재처리 불가.
+                    # best-effort 로 시도하고, 실패 시 로그만 남겨 유실을 surface 한다.
+                    try:
+                        self.redis_client.push_to_failed(payload)
+                        counts["dlq"] += 1
+                    except Exception as dlq_err:
+                        logger.error(
+                            f"reclaim DLQ push failed (corrupt msg lost) - "
+                            f"raw={raw_str[:200]!r}: {dlq_err}"
+                        )
                     continue
 
                 msg = ensure_envelope(parsed)
@@ -130,8 +138,14 @@ class ProcessingReclaimer:
                 msg["reclaimedCount"] = msg["reclaimedCount"] + 1
                 rid = msg.get("requestId")
                 if msg["reclaimedCount"] > self.config.RECLAIM_MAX_RECLAIMS:
-                    self.redis_client.push_to_failed(msg)
-                    counts["dlq"] += 1
+                    # LREM 완료 후 DLQ push 가 실패해도 reclaimer 는 계속 동작해야 한다.
+                    try:
+                        self.redis_client.push_to_failed(msg)
+                        counts["dlq"] += 1
+                    except Exception as dlq_err:
+                        logger.error(
+                            f"reclaim DLQ push failed (message lost) - requestId={rid}: {dlq_err}"
+                        )
                     self._safe_lifecycle(
                         "mark_dlq",
                         request_id=msg["requestId"],
@@ -142,6 +156,23 @@ class ProcessingReclaimer:
                         f"reclaim moved to DLQ (max exceeded) - requestId={rid}, reclaimedCount={msg['reclaimedCount']}"
                     )
                 else:
+                    # Terminal 가드: DB 가 이미 SUCCESS/DLQ 이면 pending 재투입 금지.
+                    # 시나리오: consumer 가 mark_success 후 LREM 이 미스된 상태에서 reclaimer 가
+                    # 같은 메시지를 집으면, 재투입 시 완료된 요청이 중복 처리된다.
+                    # row 없음 또는 조회 실패는 fail-open 으로 기존 경로 유지 (external producer 대비).
+                    if self._is_terminal(msg["requestId"]):
+                        logger.warning(
+                            f"reclaim skipped re-enqueue (already terminal) - requestId={rid}"
+                        )
+                        try:
+                            self.redis_client.push_to_failed(msg)
+                            counts["dlq"] += 1
+                        except Exception as dlq_err:
+                            logger.error(
+                                f"reclaim DLQ fallback failed (message lost) - requestId={rid}: {dlq_err}"
+                            )
+                        continue
+
                     # DB 상태를 FAILED 로 전환해야 consumer 가 재소비 시
                     # mark_processing(FAILED→PROCESSING) 전이를 받을 수 있다.
                     self._safe_lifecycle(
@@ -173,12 +204,29 @@ class ProcessingReclaimer:
                     )
         return counts
 
-    def _safe_lifecycle(self, method: str, **kwargs) -> None:
-        """lifecycle 호출 실패 시에도 reclaimer 본체는 계속 동작 (fail-open)."""
+    def _safe_lifecycle(self, method: str, **kwargs):
+        """lifecycle 호출 실패 시에도 reclaimer 본체는 계속 동작 (fail-open).
+
+        Returns:
+            lifecycle method 의 반환값. 예외 발생 시 None.
+        """
         try:
-            getattr(self._lifecycle_service(), method)(**kwargs)
+            return getattr(self._lifecycle_service(), method)(**kwargs)
         except Exception as e:
             logger.warning(f"reclaim lifecycle.{method} failed: {e}")
+            return None
+
+    def _is_terminal(self, request_id: str) -> bool:
+        """DB lifecycle 상태가 SUCCESS/DLQ 인지 확인. 조회 실패 시 False (fail-open).
+
+        row missing 이나 DB 에러를 terminal 로 취급하면 external producer 경로나
+        테스트 환경에서 과다하게 DLQ 로 돌아가므로, 명확히 terminal 인 경우에만 True.
+        """
+        try:
+            return bool(self._lifecycle_service().is_terminal(request_id))
+        except Exception as e:
+            logger.warning(f"reclaim is_terminal check failed: {e}")
+            return False
 
     def loop(self) -> None:
         """daemon thread 진입점. shutdown_event 가 set 될 때까지 반복."""

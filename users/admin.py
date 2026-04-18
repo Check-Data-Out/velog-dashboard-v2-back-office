@@ -125,17 +125,23 @@ class UserAdmin(admin.ModelAdmin):
         - QUEUED/PROCESSING 으로 이미 진행 중인 사용자는 스킵
         - 각 user 에 대해 envelope 생성 + pending 큐 LPUSH + StatsRefreshRequest 생성
         """
-        user_pk_list = list(queryset.values_list("pk", flat=True))
-        logger.info(
-            f"{request.user} 가 {user_pk_list} 사용자 통계 업데이트를 큐에 요청했습니다."
-        )
-
-        if len(user_pk_list) > _MAX_UPDATE_STATS_SELECTION:
+        # 선택 제한 가드를 먼저 — 대량 선택 시 전체 PK materialize/로깅 방지.
+        selected_count = queryset.count()
+        if selected_count > _MAX_UPDATE_STATS_SELECTION:
+            logger.info(
+                f"{request.user} 가 {selected_count} 명 선택 "
+                f"(제한 {_MAX_UPDATE_STATS_SELECTION} 초과) — 거절"
+            )
             return self.message_user(
                 request,
                 f"{_MAX_UPDATE_STATS_SELECTION} 명 이하로 선택해주세요.",
                 messages.ERROR,
             )
+
+        user_pk_list = list(queryset.values_list("pk", flat=True))
+        logger.info(
+            f"{request.user} 가 {user_pk_list} 사용자 통계 업데이트를 큐에 요청했습니다."
+        )
 
         lifecycle = RequestLifecycleService()
 

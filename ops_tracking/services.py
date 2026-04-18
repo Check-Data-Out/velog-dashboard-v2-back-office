@@ -149,11 +149,13 @@ class RequestLifecycleService:
     def mark_success(
         self, request_id: str, retry_count: int = 0
     ) -> StatsRefreshRequest | None:
+        # 재처리 성공 시 이전 last_error 초기화 — 성공 요청이 실패처럼 보이지 않도록.
         return self._transition(
             request_id,
             from_statuses=[StatsRefreshRequestStatus.PROCESSING],
             status=StatsRefreshRequestStatus.SUCCESS,
             retry_count=retry_count,
+            last_error="",
             finished_at=timezone.now(),
         )
 
@@ -183,6 +185,18 @@ class RequestLifecycleService:
             last_error=_truncate(error),
             finished_at=timezone.now(),
         )
+
+    def is_terminal(self, request_id: str) -> bool:
+        """현재 DB 상태가 SUCCESS/DLQ 인지 확인. row 없으면 False (fail-open)."""
+        try:
+            status = (
+                StatsRefreshRequest.objects.filter(request_id=request_id)
+                .values_list("status", flat=True)
+                .first()
+            )
+        except Exception:
+            return False
+        return status in TERMINAL_STATUSES
 
     def has_inflight_for_users(self, user_ids: list[int]) -> set[int]:
         """QUEUED 또는 PROCESSING 상태로 이미 진행 중인 user_id 집합 반환."""

@@ -52,6 +52,7 @@
   </table>
 </div>
 
+{% if total %}
 <p class="paginator" style="margin-top:16px;">
   {% if prev_offset is not None %}<a href="?offset={{ prev_offset }}&limit={{ limit }}">← 이전</a>{% endif %}
   <span style="margin:0 12px;color:var(--body-quiet-color);">
@@ -59,6 +60,7 @@
   </span>
   {% if next_offset %}<a href="?offset={{ next_offset }}&limit={{ limit }}">다음 →</a>{% endif %}
 </p>
+{% endif %}
 
 <style>
 .vd2-table-wrap { padding: 0; border-radius: 10px; overflow: hidden; }

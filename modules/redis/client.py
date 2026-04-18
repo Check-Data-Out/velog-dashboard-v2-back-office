@@ -342,6 +342,31 @@ class RedisQueueClient:
             logger.error(f"Failed to enqueue message: {e}")
             raise
 
+    def replace_processing_head(self, new_raw: str) -> bool:
+        """Processing 큐 index 0 을 new_raw 로 교체 (LSET 0).
+
+        BLMOVE 직후 consumer 가 processingStartedAt 을 enrich 한 JSON 을
+        Redis 저장값에 반영하기 위해 사용한다. reclaimer 가 큐를 스캔할 때
+        processingStartedAt 을 볼 수 있게 되어 pending 장기대기 메시지가
+        BLMOVE 직후 즉시 stale 로 판정되는 race 를 방지한다.
+
+        단일 consumer 전제이므로 BLMOVE → LSET 0 사이에 head 가 바뀌지 않는다.
+        LSET 실패(빈 큐/out-of-range 등) 시 False 반환 — 호출자는 원본 raw 로 fallback.
+
+        Returns:
+            LSET 성공 여부
+        """
+        if not self.client:
+            raise RuntimeError("Redis client not connected")
+        try:
+            self.client.lset(
+                self.config.QUEUE_STATS_REFRESH_PROCESSING, 0, new_raw
+            )
+            return True
+        except RedisError as e:
+            logger.warning(f"Failed to LSET processing head: {e}")
+            return False
+
     def remove_message(self, queue_name: str, message_str: str) -> int:
         """큐에서 문자열이 일치하는 메시지 1건 제거 (LREM count=1). 제거된 수 반환."""
         if not self.client:

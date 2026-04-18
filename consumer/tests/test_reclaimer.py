@@ -162,6 +162,95 @@ class TestReclaimOnce:
         assert counts["reclaimed"] == 1
 
 
+class TestDlqResilience:
+    """리뷰: LREM 이후 DLQ push 실패에도 reclaimer 가 계속 동작해야 한다."""
+
+    def test_dlq_push_failure_does_not_crash_max_reclaim_branch(self):
+        client = _make_client()
+        client.push_to_failed.side_effect = Exception("redis down")
+        now = time.time()
+        poison = {
+            "requestId": "rid-poison",
+            "enqueuedAt": time.strftime(
+                "%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(now - 9999)
+            ),
+            "reclaimedCount": 3,
+        }
+        client.get_messages.return_value = [(json.dumps(poison), poison)]
+        reclaimer = _make_reclaimer(client, visibility=600, max_reclaims=3)
+        # 예외 없이 반환, dlq 카운트는 증가하지 않음 (DLQ push 실패)
+        counts = reclaimer.reclaim_once(now_epoch=now)
+        assert counts["dlq"] == 0
+        client.push_to_failed.assert_called_once()
+
+    def test_dlq_push_failure_on_corrupt_json_does_not_crash(self):
+        client = _make_client()
+        client.push_to_failed.side_effect = Exception("redis down")
+        bad_parsed = {"_raw": "garbage", "_error": "JSONDecodeError"}
+        client.get_messages.return_value = [("garbage", bad_parsed)]
+        reclaimer = _make_reclaimer(client)
+        counts = reclaimer.reclaim_once(now_epoch=time.time())
+        assert counts["dlq"] == 0
+        client.push_to_failed.assert_called_once()
+
+
+class TestTerminalGuardBeforeReenqueue:
+    """리뷰: DB 가 SUCCESS/DLQ 인 요청은 pending 재투입하지 않는다."""
+
+    def test_terminal_request_goes_to_dlq_instead_of_reenqueue(self):
+        client = _make_client()
+        now = time.time()
+        stale = {
+            "requestId": "rid-terminal",
+            "userId": 1,
+            "enqueuedAt": time.strftime(
+                "%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(now - 1000)
+            ),
+            "reclaimedCount": 0,
+            "retryCount": 1,
+        }
+        client.get_messages.return_value = [(json.dumps(stale), stale)]
+        reclaimer = _make_reclaimer(client, visibility=600)
+        lifecycle_stub = MagicMock()
+        lifecycle_stub.is_terminal.return_value = True
+        reclaimer._lifecycle = lifecycle_stub
+
+        counts = reclaimer.reclaim_once(now_epoch=now)
+
+        # pending 재투입 금지, 대신 DLQ 로 대피. mark_failed 는 호출되지 않음.
+        client.enqueue_message.assert_not_called()
+        client.push_to_failed.assert_called_once()
+        lifecycle_stub.mark_failed.assert_not_called()
+        assert counts["reclaimed"] == 0
+        assert counts["dlq"] == 1
+
+    def test_non_terminal_request_proceeds_to_reenqueue(self):
+        client = _make_client()
+        now = time.time()
+        stale = {
+            "requestId": "rid-normal",
+            "userId": 2,
+            "enqueuedAt": time.strftime(
+                "%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(now - 1000)
+            ),
+            "reclaimedCount": 0,
+            "retryCount": 1,
+        }
+        client.get_messages.return_value = [(json.dumps(stale), stale)]
+        reclaimer = _make_reclaimer(client, visibility=600)
+        lifecycle_stub = MagicMock()
+        lifecycle_stub.is_terminal.return_value = False
+        reclaimer._lifecycle = lifecycle_stub
+
+        counts = reclaimer.reclaim_once(now_epoch=now)
+
+        # terminal 이 아니면 기존 경로: mark_failed + enqueue
+        client.enqueue_message.assert_called_once()
+        lifecycle_stub.mark_failed.assert_called_once()
+        assert counts["reclaimed"] == 1
+        assert counts["dlq"] == 0
+
+
 class TestLoop:
     def test_loop_stops_when_shutdown_event_set(self):
         client = _make_client()
