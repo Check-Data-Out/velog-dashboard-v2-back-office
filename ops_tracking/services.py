@@ -13,16 +13,16 @@ from ops_tracking.models import StatsRefreshRequest, StatsRefreshRequestStatus
 
 logger = logging.getLogger(__name__)
 
-_LAST_ERROR_MAX_LEN = 2000
+LAST_ERROR_MAX_LEN = 2000
 
 # terminal 상태 — 이 상태의 요청은 mark_queued 로 되돌릴 수 없다.
-_TERMINAL_STATUSES = (
+TERMINAL_STATUSES = (
     StatsRefreshRequestStatus.SUCCESS,
     StatsRefreshRequestStatus.DLQ,
 )
 
 
-def _truncate(text: str, max_len: int = _LAST_ERROR_MAX_LEN) -> str:
+def _truncate(text: str, max_len: int = LAST_ERROR_MAX_LEN) -> str:
     if not text:
         return ""
     if len(text) <= max_len:
@@ -51,7 +51,7 @@ class RequestLifecycleService:
                 .filter(request_id=request_id)
                 .first()
             )
-            if existing and existing.status in _TERMINAL_STATUSES:
+            if existing and existing.status in TERMINAL_STATUSES:
                 logger.warning(
                     f"mark_queued skipped (terminal status={existing.status}) "
                     f"request_id={request_id}"

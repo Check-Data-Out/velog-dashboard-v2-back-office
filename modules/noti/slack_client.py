@@ -17,8 +17,8 @@ import environ
 logger = logging.getLogger(__name__)
 
 env = environ.Env()
-_COOLDOWN_PREFIX = "vd2:ops:slack:cooldown:"
-_DEFAULT_COOLDOWN_SEC = 1800
+COOLDOWN_PREFIX = "vd2:ops:slack:cooldown:"
+DEFAULT_COOLDOWN_SEC = 1800
 
 
 def _webhook_url() -> str:
@@ -32,7 +32,7 @@ def _cooldown_active(
     """cooldown_key 가 주어지고 Redis 에 이미 존재하면 True 반환. 없으면 SET 후 False."""
     if not cooldown_key or redis_client is None:
         return False
-    key = f"{_COOLDOWN_PREFIX}{cooldown_key}"
+    key = f"{COOLDOWN_PREFIX}{cooldown_key}"
     try:
         # SET NX EX: 없을 때만 설정 + TTL. 이미 있으면 False.
         acquired = redis_client.client.set(key, "1", nx=True, ex=cooldown_sec)  # type: ignore[attr-defined]
@@ -47,7 +47,7 @@ def _release_cooldown(redis_client: object, cooldown_key: str | None) -> None:
     if not cooldown_key or redis_client is None:
         return
     try:
-        redis_client.client.delete(f"{_COOLDOWN_PREFIX}{cooldown_key}")  # type: ignore[attr-defined]
+        redis_client.client.delete(f"{COOLDOWN_PREFIX}{cooldown_key}")  # type: ignore[attr-defined]
     except Exception as e:
         logger.warning(f"slack cooldown release failed: {e}")
 
@@ -67,7 +67,7 @@ def notify_ops(
     text: str,
     *,
     cooldown_key: str | None = None,
-    cooldown_sec: int = _DEFAULT_COOLDOWN_SEC,
+    cooldown_sec: int = DEFAULT_COOLDOWN_SEC,
     redis_client: object = None,
 ) -> bool:
     """운영 Slack 채널로 단순 텍스트 알림.
