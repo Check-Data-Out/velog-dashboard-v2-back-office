@@ -138,7 +138,7 @@ poetry run pre-commit run --all-files
 
 ## Queue 운영 (Back-office)
 
-백오피스 큐 운영 기능 (plan.md / F1~F9 구현) 관련 가이드.
+백오피스 큐 운영 기능 가이드 — stats refresh 큐 모니터링, DLQ 관리, 컨슈머 헬스체크, 요청 추적, 배치 알림.
 
 ### Admin URL
 
