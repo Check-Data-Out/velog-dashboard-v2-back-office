@@ -31,6 +31,7 @@ from modules.redis.client import (
     get_redis_client,
     reset_redis_client,
 )
+from ops_tracking.services import RequestLifecycleService
 from utils.utils import get_local_now
 
 logger = logging.getLogger("consumer")
@@ -150,10 +151,7 @@ class StatsRefreshConsumer:
         self._reclaimer_thread.start()
 
     def _lifecycle_service(self):
-        """RequestLifecycleService 지연 import (circular 회피)."""
         if self._lifecycle is None:
-            from ops_tracking.services import RequestLifecycleService
-
             self._lifecycle = RequestLifecycleService()
         return self._lifecycle
 

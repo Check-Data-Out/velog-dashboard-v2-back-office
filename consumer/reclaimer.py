@@ -16,6 +16,7 @@ from django.utils import dateparse
 from consumer.envelope import ensure_envelope
 from modules.redis.client import RedisQueueClient
 from modules.redis.config import RedisConfig
+from ops_tracking.services import RequestLifecycleService
 
 logger = logging.getLogger("consumer")
 
@@ -40,10 +41,7 @@ class ProcessingReclaimer:
     # ------------------------------------------------------------------
 
     def _lifecycle_service(self):
-        """RequestLifecycleService 지연 import (circular 회피)."""
         if self._lifecycle is None:
-            from ops_tracking.services import RequestLifecycleService
-
             self._lifecycle = RequestLifecycleService()
         return self._lifecycle
 

@@ -2,11 +2,15 @@ import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.contrib import messages as django_messages
+from django.contrib.admin.sites import AdminSite
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory
 
+import users.admin as admin_module
 from ops_tracking.models import StatsRefreshRequest, StatsRefreshRequestStatus
 from ops_tracking.services import RequestLifecycleService
+from users.admin import UserAdmin
 from users.models import User
 
 pytestmark = pytest.mark.django_db
@@ -49,17 +53,12 @@ def stub_redis():
 
 def _trigger_action(superuser, users):
     """UserAdmin.update_stats 를 request 객체와 함께 직접 호출."""
-    from django.contrib.admin.sites import AdminSite
-
-    from users.admin import UserAdmin
-    from users.models import User as UserModel
-
-    admin_instance = UserAdmin(UserModel, AdminSite())
+    admin_instance = UserAdmin(User, AdminSite())
     factory = RequestFactory()
     request = factory.post("/admin/users/user/")
     request.user = superuser
     admin_instance.message_user = MagicMock()
-    qs = UserModel.objects.filter(pk__in=[u.pk for u in users])
+    qs = User.objects.filter(pk__in=[u.pk for u in users])
     admin_instance.update_stats(request, qs)
     return admin_instance
 
@@ -120,8 +119,6 @@ class TestUpdateStats:
         self, superuser, target_users, stub_redis
     ):
         # ScraperTargetUser 가 users.admin 모듈에서 더이상 import 되지 않음을 검증
-        import users.admin as admin_module
-
         assert not hasattr(admin_module, "ScraperTargetUser")
         assert not hasattr(admin_module, "async_to_sync")
 
@@ -129,8 +126,6 @@ class TestUpdateStats:
         self, superuser, target_users, stub_redis
     ):
         """리뷰: Redis enqueue 실패를 skip 이 아닌 에러로 표시."""
-        from django.contrib import messages as django_messages
-
         stub_redis.redis_client.enqueue_message.side_effect = Exception(
             "redis down"
         )

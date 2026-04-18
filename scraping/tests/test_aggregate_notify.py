@@ -51,10 +51,10 @@ class TestNotifyAfterBatch:
             _make_post(user, i, with_today_stats=False)
         monkeypatch.setenv("MISSING_POSTS_THRESHOLD", "2")
         with patch(
-            "modules.noti.slack_client.notify_ops", return_value=True
+            "scraping.batch_notify.notify_ops", return_value=True
         ) as mock_notify:
             with patch(
-                "modules.redis.client.get_redis_client", return_value=None
+                "scraping.batch_notify.get_redis_client", return_value=None
             ):
                 notify_after_batch()
         mock_notify.assert_called_once()
@@ -64,6 +64,6 @@ class TestNotifyAfterBatch:
     def test_skips_when_under_threshold(self, user, monkeypatch):
         _make_post(user, 0, with_today_stats=False)
         monkeypatch.setenv("MISSING_POSTS_THRESHOLD", "100")
-        with patch("modules.noti.slack_client.notify_ops") as mock_notify:
+        with patch("scraping.batch_notify.notify_ops") as mock_notify:
             notify_after_batch()
         mock_notify.assert_not_called()

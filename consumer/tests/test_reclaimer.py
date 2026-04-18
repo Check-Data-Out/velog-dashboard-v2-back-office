@@ -1,7 +1,9 @@
 import json
+import threading
 import time
 from unittest.mock import MagicMock
 
+from consumer.reclaimer import ProcessingReclaimer
 from modules.redis.config import RedisConfig
 
 
@@ -16,8 +18,6 @@ def _make_client():
 
 
 def _make_reclaimer(client, visibility=600, max_reclaims=3):
-    from consumer.reclaimer import ProcessingReclaimer
-
     class _TestConfig(RedisConfig):
         RECLAIM_VISIBILITY_TIMEOUT_SEC = visibility
         RECLAIM_MAX_RECLAIMS = max_reclaims
@@ -164,10 +164,6 @@ class TestReclaimOnce:
 
 class TestLoop:
     def test_loop_stops_when_shutdown_event_set(self):
-        import threading
-
-        from consumer.reclaimer import ProcessingReclaimer
-
         client = _make_client()
         event = threading.Event()
 

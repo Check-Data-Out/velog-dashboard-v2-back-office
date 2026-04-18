@@ -17,6 +17,7 @@ import warnings
 
 import setup_django  # noqa
 
+from scraping.batch_notify import notify_after_batch
 from scraping.main import Scraper
 from utils.utils import split_range
 
@@ -52,9 +53,6 @@ def main() -> None:
 
     for p in processes:
         p.join()
-
-    # 배치 완료 후 누락 임계 초과 시 Slack 알림 (setup_django 로 ORM 이미 준비됨).
-    from scraping.batch_notify import notify_after_batch
 
     notify_after_batch()
 

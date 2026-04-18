@@ -2,16 +2,16 @@ import logging
 
 import environ
 
+from modules.noti.slack_client import notify_ops
+from modules.redis.client import get_redis_client
+from posts.models import Post
+
 logger = logging.getLogger("scraping")
 env = environ.Env()
 
 
 def notify_after_batch() -> None:
     """'오늘 통계 누락' 포스트 수가 임계 초과면 Slack 알림."""
-    from modules.noti.slack_client import notify_ops
-    from modules.redis.client import get_redis_client
-    from posts.models import Post
-
     threshold = env.int("MISSING_POSTS_THRESHOLD", default=100)
     missing = Post.get_posts_missing_today_stats_queryset().count()
     if missing <= threshold:
