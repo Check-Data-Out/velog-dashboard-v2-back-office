@@ -1,8 +1,3 @@
-"""RedisQueueClient 확장 메서드 테스트.
-
-BLMOVE / get_messages / enqueue_message / remove_message / flush_queue.
-"""
-
 import json
 from unittest.mock import MagicMock, patch
 

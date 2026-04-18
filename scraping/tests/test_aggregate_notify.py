@@ -1,5 +1,3 @@
-"""aggregate_batch notify_after_batch 테스트 — 임계 초과 시에만 notify_ops 호출."""
-
 import uuid
 from datetime import timedelta
 from unittest.mock import patch

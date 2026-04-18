@@ -1,5 +1,3 @@
-"""RequestLifecycleService 테스트."""
-
 import uuid
 
 import pytest

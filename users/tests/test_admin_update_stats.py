@@ -1,8 +1,3 @@
-"""users/admin.update_stats 큐 기반 동작 테스트.
-
-동기 ScraperTargetUser 호출 제거 확인 + 중복 요청 가드 + lifecycle 기록.
-"""
-
 import uuid
 from unittest.mock import MagicMock, patch
 

@@ -1,5 +1,3 @@
-"""Redis / Queue 설정."""
-
 import environ
 
 env = environ.Env()

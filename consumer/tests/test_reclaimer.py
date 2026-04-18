@@ -1,9 +1,3 @@
-"""ProcessingReclaimer 테스트.
-
-MagicMock 으로 get_messages/remove_message/enqueue/push_to_failed 동작을 검증한다.
-Redis 명령 자체의 원자성은 redis-py/fakeredis 계약이므로 여기서는 행위만 본다.
-"""
-
 import json
 import time
 from unittest.mock import MagicMock

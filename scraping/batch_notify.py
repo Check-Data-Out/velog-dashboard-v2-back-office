@@ -1,5 +1,3 @@
-"""배치 완료 후 Slack 알림 훅."""
-
 import logging
 
 import environ

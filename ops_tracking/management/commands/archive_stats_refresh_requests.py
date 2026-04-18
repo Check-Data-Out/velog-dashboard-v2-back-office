@@ -1,5 +1,3 @@
-"""오래된 StatsRefreshRequest 삭제 (90일 기본)."""
-
 import logging
 from datetime import timedelta
 

@@ -1,5 +1,3 @@
-"""Consumer 프로세스 설정."""
-
 import environ
 
 from modules.redis.config import RedisConfig  # noqa: F401  re-export

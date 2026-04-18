@@ -1,5 +1,3 @@
-"""/healthz 핸들러 단위 테스트 (BaseHTTPRequestHandler 로직만 검증)."""
-
 import json
 import time
 from unittest.mock import MagicMock

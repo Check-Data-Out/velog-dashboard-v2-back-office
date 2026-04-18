@@ -1,5 +1,3 @@
-"""QueueMonitorService 테스트 (RedisQueueClient mock)."""
-
 from unittest.mock import MagicMock
 
 import pytest

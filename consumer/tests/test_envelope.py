@@ -1,5 +1,3 @@
-"""consumer/envelope.py 테스트."""
-
 from consumer.envelope import build_envelope, ensure_envelope
 
 

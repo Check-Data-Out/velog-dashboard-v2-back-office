@@ -1,10 +1,3 @@
-"""Consumer `/healthz` HTTP 엔드포인트.
-
-- stdlib http.server 기반 daemon thread
-- 127.0.0.1 bind only (외부 노출 금지)
-- last_heartbeat_at 가 STALE_THRESHOLD 이내이고 Redis ping 가능하면 200, 아니면 503
-"""
-
 import http.server
 import json
 import logging
