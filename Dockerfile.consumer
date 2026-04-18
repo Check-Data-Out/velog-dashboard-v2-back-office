@@ -49,9 +49,6 @@ COPY . .
 # Create consumer logs directory (Django의 logs/와 분리)
 RUN mkdir -p /app/consumer-logs
 
-# Plan.md Phase 7: healthz 내부 HTTP 서버를 curl 없이 stdlib 로 체크
-# start_period=20s 는 Redis/Django 로딩 여유. interval=30s 실무 권장.
-# 주의: start_interval 은 Docker 25+ 에서 동작, 하위 호환을 위해 미사용.
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=20s \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8081/healthz',timeout=3).status==200 else 1)"
 

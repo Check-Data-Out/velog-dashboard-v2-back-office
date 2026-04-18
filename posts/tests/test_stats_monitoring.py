@@ -1,4 +1,4 @@
-"""Phase 1 — PostStatsMonitoringManager 및 PostAdmin StatsStatusFilter 테스트."""
+"""PostStatsMonitoringManager 및 PostAdmin StatsStatusFilter 테스트."""
 
 import uuid
 from datetime import timedelta

@@ -1,12 +1,8 @@
-"""Consumer 프로세스 전용 설정.
-
-RedisConfig 는 modules.redis.config 로 이동. 여기서는 하위호환을 위해
-re-export 만 유지. 신규 코드는 ``from modules.redis.config import RedisConfig`` 사용 권장.
-"""
+"""Consumer 프로세스 설정."""
 
 import environ
 
-from modules.redis.config import RedisConfig  # noqa: F401  (re-export)
+from modules.redis.config import RedisConfig  # noqa: F401  re-export
 
 env = environ.Env()
 

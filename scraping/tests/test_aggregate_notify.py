@@ -1,7 +1,4 @@
-"""Phase 8 — aggregate_batch._notify_after_batch 테스트.
-
-핵심은 임계 초과 시에만 notify_ops 호출.
-"""
+"""aggregate_batch notify_after_batch 테스트 — 임계 초과 시에만 notify_ops 호출."""
 
 import uuid
 from datetime import timedelta

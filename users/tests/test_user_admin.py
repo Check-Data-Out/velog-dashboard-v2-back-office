@@ -62,5 +62,4 @@ class TestUserAdmin:
         # 로깅 확인
         mock_logger.assert_called_once()
 
-    # Phase 6 — update_stats 의 동기 경로 테스트는
-    # users/tests/test_admin_update_stats.py 로 이전되었습니다.
+    # update_stats 동기 경로 테스트는 users/tests/test_admin_update_stats.py 로 이전됨.

@@ -45,7 +45,6 @@ class Post(TimeStampedModel):
 
     @classmethod
     def get_posts_missing_today_stats_queryset(cls) -> models.QuerySet:
-        """Plan.md F7 하위호환 API — stats_monitor.missing_today_stats() 위임."""
         return cls.stats_monitor.missing_today_stats()
 
     def __str__(self) -> str:

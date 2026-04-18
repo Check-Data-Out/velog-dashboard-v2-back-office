@@ -1,8 +1,4 @@
-"""Redis/Queue 설정.
-
-consumer 패키지에서 이곳으로 이동. consumer 는 modules 에 의존하는
-것이 맞고, modules 가 consumer 를 역참조하는 구조를 정리하기 위한 것.
-"""
+"""Redis / Queue 설정."""
 
 import environ
 
