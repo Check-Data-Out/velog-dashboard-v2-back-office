@@ -32,7 +32,7 @@ class RedisConfig:
         "REDIS_MAX_FAILED_QUEUE_SIZE", default=10000
     )
 
-    # Reclaimer settings (Phase 5 에서 실사용)
+    # Reclaimer — processing 큐 stuck 메시지 복구 설정
     RECLAIM_VISIBILITY_TIMEOUT_SEC = env.int(
         "RECLAIM_VISIBILITY_TIMEOUT_SEC", default=600
     )

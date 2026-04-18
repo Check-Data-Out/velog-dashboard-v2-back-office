@@ -1,8 +1,8 @@
-"""배치 완료 후 Slack 알림 훅 (Plan.md Phase 8 / F9).
+"""배치 완료 후 Slack 알림 훅.
 
-aggregate_batch.py 의 `import setup_django` (sys.path 기반 스크립트 import) 가
-테스트에서 모듈로 import 불가해서 분리. 본 모듈은 Django setup 이 끝난
-이후에만 호출되도록 aggregate_batch.main() 에서 지연 import 하여 쓴다.
+aggregate_batch.py 의 ``import setup_django`` (sys.path 기반 스크립트 import) 가
+테스트에서 모듈로 import 불가하기 때문에 분리한 파일. Django setup 이 끝난
+이후에만 호출되도록 ``aggregate_batch.main()`` 에서 지연 import 하여 사용.
 """
 
 import logging

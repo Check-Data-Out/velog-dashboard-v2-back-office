@@ -231,7 +231,7 @@ class RedisQueueClient:
             return 0
 
     # ------------------------------------------------------------------
-    # Plan.md Phase 2 신규 메서드 — Queue Monitor / Reclaimer 공용
+    # Queue Monitor / Reclaimer 공용 — BLMOVE / 범위 조회 / 원자적 제거
     # ------------------------------------------------------------------
 
     def blocking_move_pending_to_processing(

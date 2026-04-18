@@ -1,7 +1,7 @@
 """StatsRefreshRequest — stats refresh 요청의 라이프사이클 추적.
 
-Plan.md §5 Phase 4: "누가/언제 실패했는지" 조회를 위한 전용 테이블.
-요청 당 1 행, request_id (uuid4) unique. 상태 전이는 RequestLifecycleService.
+"누가 / 언제 / 성공·실패했는지" 를 조회하기 위한 전용 테이블. 요청 당 1 행,
+request_id (uuid4) unique. 상태 전이는 :class:`RequestLifecycleService` 가 담당.
 """
 
 from django.db import models

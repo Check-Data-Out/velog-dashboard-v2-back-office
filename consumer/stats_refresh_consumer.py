@@ -168,23 +168,25 @@ class StatsRefreshConsumer:
     def _reconnect_with_backoff(self) -> None:
         """Redis 연결을 backoff 재시도. tenacity 로 최대 30회.
 
-        주입된 redis_client 가 있으면 그 인스턴스를 다시 연결 시도.
-        singleton 재생성은 **오직 DI 없이 singleton 을 쓰던 경우** 에만 수행 —
-        테스트/운영에서 custom config 주입이 장애 이후 무효화되는 문제 방지.
+        주입된 redis_client 가 있고 실제 RedisQueueClient 인 경우 동일 config 로
+        재인스턴스화. mock/fake 주입 시엔 singleton 경로로 fallback — mock 이
+        config 인자를 요구하지 않아 ``TypeError`` 로 튀는 문제 방어.
         """
-        if self._injected_redis_client is not None:
-            # 주입된 client 를 그대로 쓰되, 내부 연결만 재수립.
-            # RedisQueueClient._connect 는 __init__ 에서만 호출되므로
-            # close + 새 인스턴스를 동일 config 로 생성.
+        injected = self._injected_redis_client
+        reconnected = False
+        if injected is not None and hasattr(injected, "config"):
             try:
-                self._injected_redis_client.close()
-            except Exception:
-                pass
-            self.redis_client = type(self._injected_redis_client)(
-                config=self._injected_redis_client.config
-            )
-            self._injected_redis_client = self.redis_client
-        else:
+                try:
+                    injected.close()
+                except Exception:
+                    pass
+                self.redis_client = type(injected)(config=injected.config)
+                self._injected_redis_client = self.redis_client
+                reconnected = True
+            except TypeError:
+                # mock/fake 처럼 config 인자를 안 받는 경우 singleton 으로 fallback.
+                reconnected = False
+        if not reconnected:
             reset_redis_client()
             self.redis_client = get_redis_client()
         assert self.redis_client is not None
@@ -194,14 +196,14 @@ class StatsRefreshConsumer:
     def _consume_loop(self) -> None:
         """Main consumption loop.
 
-        Plan.md Phase 5/7: BLMOVE 기반 원자적 pop, heartbeat 매 iteration 갱신,
-        max_consecutive_errors 를 ConsumerConfig.MAX_CONSECUTIVE_ERRORS (기본 30) 로.
+        BLMOVE 기반 원자적 pop, heartbeat 매 iteration 갱신,
+        max_consecutive_errors 는 ConsumerConfig.MAX_CONSECUTIVE_ERRORS (기본 30).
         """
         consecutive_errors = 0
         max_consecutive_errors = self.consumer_config.MAX_CONSECUTIVE_ERRORS
 
         while self.running:
-            # 매 iteration 에서 heartbeat 갱신 (Phase 7 healthz 의 idle false-stale 방지)
+            # 매 iteration 에서 heartbeat 갱신 — healthz 의 idle false-stale 방지
             self.stats["last_heartbeat_at"] = time.time()
             try:
                 assert self.redis_client is not None
@@ -268,9 +270,9 @@ class StatsRefreshConsumer:
     ) -> None:
         """Process a single message.
 
-        Phase 5 설계: BLMOVE 로 이미 processing 큐에 들어간 상태이므로
-        push_to_processing 중복 호출을 제거하고, lifecycle 상태 전이를 수행한다.
-        완료 후 processing 큐에서 원본(raw_str) 을 LREM 으로 제거한다.
+        BLMOVE 로 이미 processing 큐에 들어간 상태이므로 push_to_processing
+        중복 호출을 하지 않고 lifecycle 상태 전이만 수행한다. 완료 후 processing
+        큐에서 원본(raw_str) 을 LREM 으로 제거한다.
 
         Args:
             message: ensure_envelope 로 보강된 dict (consumer 내부 처리용)
@@ -285,18 +287,12 @@ class StatsRefreshConsumer:
         original_raw = raw_str if raw_str is not None else json.dumps(message)
         request_id = message.get("requestId")
 
-        def _safe_int(value) -> int:
-            """외부 producer 가 None / 비숫자를 넣어도 0 으로 방어."""
-            try:
-                return int(value or 0)
-            except (TypeError, ValueError):
-                return 0
+        # ensure_envelope 이 retryCount/reclaimedCount 를 int 로 정규화했다는 전제.
+        retry_cnt = message["retryCount"]
+        reclaimed_cnt = message["reclaimedCount"]
 
-        retry_cnt = _safe_int(message.get("retryCount"))
-        reclaimed_cnt = _safe_int(message.get("reclaimedCount"))
-
-        # lifecycle: mark_processing (Phase 6 admin 경로에서 mark_queued 가 선행됨.
-        # 외부 producer 경로는 mark_queued 가 없을 수 있어 결과는 None 가능.)
+        # lifecycle: mark_processing. admin 경로에서 mark_queued 가 선행됨.
+        # 외부 producer 경로는 mark_queued 가 없을 수 있어 결과는 None 가능.
         try:
             self._lifecycle_service().mark_processing(
                 request_id=request_id,
@@ -339,8 +335,7 @@ class StatsRefreshConsumer:
             )
             if removed == 0:
                 logger.warning(
-                    "processing 큐 LREM 실패 — reclaimer 가 재처리할 수 있음",
-                    extra={"requestId": request_id},
+                    f"processing LREM missed (reclaimer may re-pick) - requestId={request_id}"
                 )
 
         except Exception as e:
@@ -356,8 +351,7 @@ class StatsRefreshConsumer:
                 )
                 if removed == 0:
                     logger.warning(
-                        "cleanup: processing LREM 실패",
-                        extra={"requestId": request_id},
+                        f"cleanup: processing LREM missed - requestId={request_id}"
                     )
                 self._safe_lifecycle(
                     "mark_failed",

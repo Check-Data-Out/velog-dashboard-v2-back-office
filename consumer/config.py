@@ -19,11 +19,11 @@ class ConsumerConfig:
     GRACEFUL_SHUTDOWN_TIMEOUT = env.int(
         "CONSUMER_GRACEFUL_SHUTDOWN_TIMEOUT", default=30
     )
-    # Phase 7 준비: 연속 에러 허용치 (5 → 30 상향, env override 가능)
+    # 연속 에러 허용치 — 초과 시 하드 종료. Redis 블립에 과민 반응하지 않도록 30 기본.
     MAX_CONSECUTIVE_ERRORS = env.int(
         "CONSUMER_MAX_CONSECUTIVE_ERRORS", default=30
     )
-    # Phase 7 /healthz 포트 (내부 bind only)
+    # /healthz 포트 (내부 bind only)
     HEALTHZ_PORT = env.int("CONSUMER_HEALTHZ_PORT", default=8081)
     HEALTHZ_STALE_THRESHOLD_SEC = env.int(
         "CONSUMER_HEALTHZ_STALE_THRESHOLD_SEC", default=60

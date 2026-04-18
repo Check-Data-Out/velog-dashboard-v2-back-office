@@ -1,10 +1,10 @@
-"""Processing 큐 stuck 메시지 복구 (Plan.md Phase 5 핵심 / F3).
+"""Processing 큐 stuck 메시지 복구.
 
 설계 원칙:
-- 단일 consumer 인스턴스 전제 → threading.Lock 만 사용 (분산 락 미사용)
-- stale 판정 기준은 `processingStartedAt` — BLMOVE 직후 consumer 가 기록한 시각.
+- 단일 consumer 인스턴스 전제 → threading.Lock 만 사용 (분산 락 미사용).
+- stale 판정 기준은 ``processingStartedAt`` (BLMOVE 직후 consumer 가 기록).
   pending 장기 대기 메시지가 BLMOVE 직후 즉시 stale 판정되는 race 를 방지.
-- fallback: processingStartedAt 없으면 enqueuedAt → lastAttemptAt 순서로 참고.
+- fallback: ``processingStartedAt`` 이 없으면 ``lastAttemptAt`` → ``enqueuedAt``.
 """
 
 import logging
@@ -124,69 +124,48 @@ class ProcessingReclaimer:
                 )
                 if removed == 0:
                     logger.warning(
-                        "reclaim: LREM 원본 불일치 — 건너뜀",
-                        extra={"requestId": msg.get("requestId")},
+                        f"reclaim skipped (LREM missed) - requestId={msg.get('requestId')}"
                     )
                     continue
 
-                # reclaimedCount 가 외부 손상으로 비숫자일 수 있음. 방어적 파싱.
-                try:
-                    prev_count = int(msg.get("reclaimedCount", 0) or 0)
-                except (TypeError, ValueError):
-                    prev_count = 0
-                msg["reclaimedCount"] = prev_count + 1
+                # ensure_envelope 이미 통과한 메시지이므로 int 임이 보장됨.
+                msg["reclaimedCount"] = msg["reclaimedCount"] + 1
+                rid = msg.get("requestId")
                 if msg["reclaimedCount"] > self.config.RECLAIM_MAX_RECLAIMS:
                     self.redis_client.push_to_failed(msg)
                     counts["dlq"] += 1
-                    self._safe_mark_dlq(msg)
+                    self._safe_lifecycle(
+                        "mark_dlq",
+                        request_id=msg["requestId"],
+                        error="reclaim max exceeded",
+                        reclaimed_count=msg["reclaimedCount"],
+                    )
                     logger.warning(
-                        "reclaim: max 초과 → DLQ",
-                        extra={
-                            "requestId": msg.get("requestId"),
-                            "reclaimedCount": msg["reclaimedCount"],
-                        },
+                        f"reclaim moved to DLQ (max exceeded) - requestId={rid}, reclaimedCount={msg['reclaimedCount']}"
                     )
                 else:
                     # DB 상태를 FAILED 로 전환해야 consumer 가 재소비 시
                     # mark_processing(FAILED→PROCESSING) 전이를 받을 수 있다.
-                    self._safe_mark_failed(msg, "reclaimed")
-                    # retryCount 는 0 으로 리셋 (플랜 설계)
+                    self._safe_lifecycle(
+                        "mark_failed",
+                        request_id=msg["requestId"],
+                        error="reclaimed: reclaimed",
+                        retry_count=msg["retryCount"],
+                    )
                     msg["retryCount"] = 0
                     self.redis_client.enqueue_message(msg)
                     counts["reclaimed"] += 1
                     logger.info(
-                        "reclaim: pending 복귀",
-                        extra={
-                            "requestId": msg.get("requestId"),
-                            "reclaimedCount": msg["reclaimedCount"],
-                        },
+                        f"reclaim returned to pending - requestId={rid}, reclaimedCount={msg['reclaimedCount']}"
                     )
         return counts
 
-    def _safe_mark_dlq(self, msg: dict) -> None:
-        """ops_tracking 실패해도 reclaimer 본체는 계속 동작."""
+    def _safe_lifecycle(self, method: str, **kwargs) -> None:
+        """lifecycle 호출 실패 시에도 reclaimer 본체는 계속 동작 (fail-open)."""
         try:
-            self._lifecycle_service().mark_dlq(
-                request_id=msg["requestId"],
-                error="reclaim max exceeded",
-                reclaimed_count=int(msg.get("reclaimedCount", 0)),
-            )
+            getattr(self._lifecycle_service(), method)(**kwargs)
         except Exception as e:
-            logger.warning(f"reclaim mark_dlq failed: {e}")
-
-    def _safe_mark_failed(self, msg: dict, reason: str) -> None:
-        """reclaim 시 DB 상태를 FAILED 로 전환 (다음 mark_processing 을 허용).
-
-        ops_tracking 장애 시에도 reclaimer 본체는 계속 동작 (fail-open).
-        """
-        try:
-            self._lifecycle_service().mark_failed(
-                request_id=msg["requestId"],
-                error=f"reclaimed: {reason}",
-                retry_count=int(msg.get("retryCount", 0)),
-            )
-        except Exception as e:
-            logger.warning(f"reclaim mark_failed failed: {e}")
+            logger.warning(f"reclaim lifecycle.{method} failed: {e}")
 
     def loop(self) -> None:
         """daemon thread 진입점. shutdown_event 가 set 될 때까지 반복."""

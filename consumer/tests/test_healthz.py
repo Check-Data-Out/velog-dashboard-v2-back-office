@@ -1,4 +1,4 @@
-"""Phase 7 — /healthz 핸들러 단위 테스트 (BaseHTTPRequestHandler 로직만 검증)."""
+"""/healthz 핸들러 단위 테스트 (BaseHTTPRequestHandler 로직만 검증)."""
 
 import json
 import time

@@ -1,4 +1,4 @@
-"""Phase 2 — RedisQueueClient 확장 메서드 테스트.
+"""RedisQueueClient 확장 메서드 테스트.
 
 BLMOVE / get_messages / enqueue_message / remove_message / flush_queue.
 """
@@ -23,7 +23,7 @@ class TestBlockingMovePendingToProcessing:
         client = RedisQueueClient()
         result = client.blocking_move_pending_to_processing(timeout=5)
 
-        # Phase 9 fix: (raw_str, parsed) 튜플 반환
+        # (raw_str, parsed) 튜플 반환 — 호출자는 raw_str 로 LREM 원본 비교
         assert result == (raw, sample_message)
         mock_client.blmove.assert_called_once()
         kwargs = mock_client.blmove.call_args.kwargs

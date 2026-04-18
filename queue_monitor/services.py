@@ -1,12 +1,11 @@
-"""Queue Monitor 서비스 레이어 (thin-wrapper 제거 원칙).
+"""Queue Monitor 서비스 레이어.
 
-단순 조회 (get_queue_size, get_messages) 는 admin 에서 RedisQueueClient 를
-직접 호출하고, 본 서비스에는 **조율이 필요한 메서드** 만 둔다:
+조율이 필요한 메서드만 둔다:
   - enqueue_stats_refresh : envelope 생성 + push + 중복 요청 가드
   - retry_failed_message  : DLQ -> pending 이동 + retryCount 리셋
-  - purge_failed          : DLQ 전량 삭제 (+ 임계 알림 훅은 Phase 8)
+  - purge_failed          : DLQ 전량 삭제
 
-Plan.md §3.2, §5 Phase 3.
+단순 조회 (큐 크기, DLQ 목록 읽기) 는 admin 이 RedisQueueClient 를 직접 호출한다.
 """
 
 import logging

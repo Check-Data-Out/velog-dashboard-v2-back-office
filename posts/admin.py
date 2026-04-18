@@ -38,7 +38,7 @@ class UserGroupRangeFilter(admin.SimpleListFilter):
 
 
 class StatsStatusFilter(admin.SimpleListFilter):
-    """Plan.md F8 — 오늘 통계 누락 포스트만 보기 필터."""
+    """오늘 통계가 누락된 포스트만 보기 (운영자용 admin 필터)."""
 
     title = _("오늘 통계 상태")
     parameter_name = "stats_status"

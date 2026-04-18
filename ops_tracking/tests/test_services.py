@@ -1,4 +1,4 @@
-"""Phase 4 — RequestLifecycleService 테스트."""
+"""RequestLifecycleService 테스트."""
 
 import uuid
 
@@ -153,7 +153,7 @@ class TestMarkProcessingSuccessFailed:
         assert service.mark_success(rid) is None
 
     def test_mark_dlq_allowed_from_processing_status(self, service, user):
-        # Phase 9 fix: reclaim 경로에서 PROCESSING -> DLQ 직접 전이 허용
+        # reclaim 경로에서 PROCESSING -> DLQ 직접 전이 허용
         rid = str(uuid.uuid4())
         service.mark_queued(rid, user.id, None)
         service.mark_processing(rid)

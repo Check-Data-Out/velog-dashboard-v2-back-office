@@ -119,7 +119,7 @@ class UserAdmin(admin.ModelAdmin):
         description="선택된 사용자 통계 업데이트 요청 (큐에 추가, 진행은 Queue Monitor 에서 확인)"
     )
     def update_stats(self, request: HttpRequest, queryset: QuerySet[User]):
-        """Plan.md Phase 6 — 동기 ScraperTargetUser 호출 제거, 큐 기반으로 대체.
+        """선택된 사용자 통계 업데이트를 큐에 추가한다.
 
         - max 10명 선택 제한
         - QUEUED/PROCESSING 으로 이미 진행 중인 사용자는 스킵

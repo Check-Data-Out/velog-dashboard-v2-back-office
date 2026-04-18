@@ -1,4 +1,4 @@
-"""Consumer `/healthz` HTTP 엔드포인트 (Plan.md Phase 7 / F4).
+"""Consumer `/healthz` HTTP 엔드포인트.
 
 - stdlib http.server 기반 daemon thread
 - 127.0.0.1 bind only (외부 노출 금지)

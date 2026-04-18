@@ -48,7 +48,7 @@ class TestStatsRefreshConsumer:
     def test_process_message_success(
         self, mock_redis_client_class, mock_processor_class, sample_message
     ) -> None:
-        """메시지 처리 성공 테스트 (Phase 5: BLMOVE 기반 — push_to_processing 호출 없음)."""
+        """메시지 처리 성공 — BLMOVE 기반, push_to_processing 은 호출되지 않음."""
         mock_redis_client = Mock()
         mock_redis_client_class.return_value = mock_redis_client
 
@@ -61,7 +61,7 @@ class TestStatsRefreshConsumer:
         assert consumer.stats["processed"] == 1
         assert consumer.stats["succeeded"] == 1
         assert consumer.stats["failed"] == 0
-        # Phase 5: processing 큐 제거는 remove_message(queue, raw) 로 수행
+        # processing 큐 제거는 remove_message(queue, raw) 로 수행
         mock_redis_client.remove_message.assert_called_once()
         remove_args = mock_redis_client.remove_message.call_args[0]
         assert (

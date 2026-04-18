@@ -1,4 +1,4 @@
-"""Phase 3 — Queue Monitor Admin 뷰 테스트.
+"""Queue Monitor Admin 뷰 테스트.
 
 AdminSite 커스텀 URL (dashboard/failed/retry/purge) 동작과 staff 인증 검증.
 """

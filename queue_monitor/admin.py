@@ -1,7 +1,7 @@
 """Queue Monitor Admin — AdminSite 커스텀 URL 패턴.
 
-Plan.md Phase 3: Proxy Model 을 만들지 않고 AdminSite 의 `get_urls()` 를 확장해
-큐 대시보드 뷰를 등록한다. (Redis 상태는 DB 가 아니므로 Proxy Model 접근 부적합)
+Redis 상태는 DB 가 아니므로 Proxy Model 대신 AdminSite 의 ``get_urls()`` 를
+확장해 큐 대시보드/DLQ 뷰를 등록한다.
 
 URL:
     /admin/queue/dashboard/

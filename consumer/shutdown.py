@@ -1,7 +1,7 @@
 """Shutdown 신호를 main thread 가 수신하면 daemon thread 로 전파하는 Event.
 
-Plan.md Phase 5/7 전제: Python signal 은 main thread 에만 도착하므로,
-reclaimer/healthz 같은 daemon thread 에 종료 의도를 알리려면 threading.Event 사용.
+Python signal 은 main thread 에만 도착하므로 reclaimer/healthz 같은 daemon
+thread 에 종료 의도를 알리려면 threading.Event 를 통해 전달해야 한다.
 """
 
 import threading

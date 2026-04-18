@@ -1,8 +1,8 @@
 """Post 통계 모니터링용 Custom Manager.
 
-Plan.md Phase 1: Mixin 상속 대신 Manager 분리로 circular import 제거.
-AGENTS.md "함수 내부 import 금지" 준수를 위해 PostDailyStatistics 참조는
-`apps.get_model` registry 조회로 해결한다.
+Post 와 PostDailyStatistics 의 circular import 를 피하기 위해 Manager 로 분리.
+PostDailyStatistics 참조는 ``apps.get_model`` registry 조회로 해결해 파일 최상단
+import 규칙을 깨지 않는다.
 """
 
 from django.db import models

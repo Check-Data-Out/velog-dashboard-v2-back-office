@@ -1,4 +1,4 @@
-"""Phase 8 — Slack client 테스트 (webhook mock + cooldown)."""
+"""Slack client 테스트 (webhook mock + cooldown)."""
 
 from unittest.mock import MagicMock, patch
 

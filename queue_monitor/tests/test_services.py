@@ -1,4 +1,4 @@
-"""Phase 3 — QueueMonitorService 테스트 (RedisQueueClient mock)."""
+"""QueueMonitorService 테스트 (RedisQueueClient mock)."""
 
 from unittest.mock import MagicMock
 

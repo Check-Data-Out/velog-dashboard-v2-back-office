@@ -1,8 +1,10 @@
-"""Slack 웹훅 간단 클라이언트 (Plan.md Phase 8 / F9).
+"""Slack 웹훅 간단 클라이언트.
 
 - SLACK_OPS_WEBHOOK 환경변수 미설정 → no-op
-- 동일 cooldown_key 는 cooldown_sec (기본 1800=30분) 이내 중복 전송 차단
-  Redis 에 `vd2:ops:slack:cooldown:<key>` 를 TTL 로 기록
+- 동일 cooldown_key 는 cooldown_sec (기본 1800=30분) 이내 중복 전송 차단.
+  Redis 에 ``vd2:ops:slack:cooldown:<key>`` 를 TTL 로 기록.
+- 전송 실패 시 cooldown 키를 삭제해 다음 알림이 묵살되지 않도록 한다.
+- webhook 은 HTTPS 만 허용 (운영 실수 방어).
 """
 
 import json

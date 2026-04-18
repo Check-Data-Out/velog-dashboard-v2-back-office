@@ -1,7 +1,4 @@
-"""오래된 StatsRefreshRequest 삭제 (90일 기본) — 스켈레톤.
-
-Plan.md §9 결정 포인트 #2 보존 기간. 배포/스케줄링은 별도.
-"""
+"""오래된 StatsRefreshRequest 삭제 (90일 기본)."""
 
 import logging
 from datetime import timedelta

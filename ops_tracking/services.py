@@ -53,11 +53,8 @@ class RequestLifecycleService:
             )
             if existing and existing.status in _TERMINAL_STATUSES:
                 logger.warning(
-                    "lifecycle: mark_queued skipped (terminal status)",
-                    extra={
-                        "request_id": str(request_id),
-                        "status": existing.status,
-                    },
+                    f"mark_queued skipped (terminal status={existing.status}) "
+                    f"request_id={request_id}"
                 )
                 return existing  # type: ignore[no-any-return]
             obj, created = StatsRefreshRequest.objects.update_or_create(
@@ -70,8 +67,7 @@ class RequestLifecycleService:
                 },
             )
         logger.info(
-            "lifecycle: mark_queued",
-            extra={"request_id": str(request_id), "created": created},
+            f"lifecycle.mark_queued (created={created}) request_id={request_id}"
         )
         return obj  # type: ignore[no-any-return]
 
@@ -129,17 +125,12 @@ class RequestLifecycleService:
                     request_id=request_id
                 )
                 logger.warning(
-                    "lifecycle: transition rejected",
-                    extra={
-                        "request_id": str(request_id),
-                        "current_status": current.status,
-                        "to": update_fields.get("status"),
-                    },
+                    f"lifecycle transition rejected - request_id={request_id}, "
+                    f"current={current.status}, to={update_fields.get('status')}"
                 )
             except StatsRefreshRequest.DoesNotExist:
                 logger.warning(
-                    "lifecycle: row missing",
-                    extra={"request_id": str(request_id)},
+                    f"lifecycle row missing - request_id={request_id}"
                 )
             return None
         try:
