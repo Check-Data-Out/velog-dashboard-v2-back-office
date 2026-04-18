@@ -11,7 +11,7 @@ import logging
 import socketserver
 import threading
 import time
-from typing import Callable
+from collections.abc import Callable
 
 from consumer.config import ConsumerConfig
 from modules.redis.client import RedisQueueClient

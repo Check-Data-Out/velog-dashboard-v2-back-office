@@ -7,6 +7,7 @@ from django.urls import reverse
 from django.utils.html import format_html
 
 from consumer.envelope import build_envelope
+from ops_tracking.models import StatsRefreshRequest
 from ops_tracking.services import RequestLifecycleService
 from queue_monitor.services import QueueMonitorService
 from users.models import QRLoginToken, User
@@ -168,14 +169,10 @@ class UserAdmin(admin.ModelAdmin):
                 service.redis_client.enqueue_message(envelope)
             except Exception as e:
                 # Redis 실패 시 QUEUED 고아 행이 남으면 has_inflight 로 영구 차단됨.
-                # mark_dlq 로 최종 상태 전환하여 다음 요청이 가능하도록.
+                # 상태 전이로는 QUEUED→DLQ 가 허용되지 않으므로 행을 직접 삭제한다.
                 logger.error(
                     f"update_stats: enqueue 실패 (user={user_id}): {e}"
                 )
-                # mark_dlq 는 PROCESSING/FAILED 만 허용 → mark_failed 선행 불필요.
-                # 직접 삭제가 가장 안전: 빈 행 제거.
-                from ops_tracking.models import StatsRefreshRequest
-
                 StatsRefreshRequest.objects.filter(
                     request_id=envelope["requestId"]
                 ).delete()
