@@ -176,8 +176,12 @@ class StatsRefreshConsumer:
             try:
                 try:
                     injected.close()
-                except Exception:
-                    pass
+                except Exception as close_err:
+                    # 이미 끊어진 연결을 닫다 발생하는 오류는 재연결 경로에 영향 없음.
+                    # silent swallow 금지 (ruff S110/BLE001) — debug 로그로 관찰 가능하게.
+                    logger.debug(
+                        f"Redis close before reconnect raised (ignored): {close_err}"
+                    )
                 self.redis_client = type(injected)(config=injected.config)
                 self._injected_redis_client = self.redis_client
                 reconnected = True

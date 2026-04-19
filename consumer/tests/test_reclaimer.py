@@ -181,6 +181,7 @@ class TestDlqResilience:
     """리뷰: LREM 이후 DLQ push 실패에도 reclaimer 가 계속 동작해야 한다."""
 
     def test_dlq_push_failure_does_not_crash_max_reclaim_branch(self):
+        """DLQ push 실패 시: 예외 전파 금지 + mark_dlq 호출 금지 (DB/Redis drift 방지)."""
         client = _make_client()
         client.push_to_failed.side_effect = Exception("redis down")
         now = time.time()
@@ -193,10 +194,36 @@ class TestDlqResilience:
         }
         client.get_messages.return_value = [(json.dumps(poison), poison)]
         reclaimer = _make_reclaimer(client, visibility=600, max_reclaims=3)
-        # 예외 없이 반환, dlq 카운트는 증가하지 않음 (DLQ push 실패)
+        lifecycle_stub = MagicMock()
+        reclaimer._lifecycle = lifecycle_stub
+
         counts = reclaimer.reclaim_once(now_epoch=now)
+
         assert counts["dlq"] == 0
         client.push_to_failed.assert_called_once()
+        # DLQ push 실패 → DB lifecycle 도 DLQ 로 전이하지 않아야 drift 방지
+        lifecycle_stub.mark_dlq.assert_not_called()
+
+    def test_dlq_push_success_transitions_lifecycle_to_dlq(self):
+        """DLQ push 성공 시에만 mark_dlq 호출 — 반영 일관성 확인."""
+        client = _make_client()
+        now = time.time()
+        poison = {
+            "requestId": "rid-poison-ok",
+            "enqueuedAt": time.strftime(
+                "%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(now - 9999)
+            ),
+            "reclaimedCount": 3,
+        }
+        client.get_messages.return_value = [(json.dumps(poison), poison)]
+        reclaimer = _make_reclaimer(client, visibility=600, max_reclaims=3)
+        lifecycle_stub = MagicMock()
+        reclaimer._lifecycle = lifecycle_stub
+
+        counts = reclaimer.reclaim_once(now_epoch=now)
+
+        assert counts["dlq"] == 1
+        lifecycle_stub.mark_dlq.assert_called_once()
 
     def test_dlq_push_failure_on_corrupt_json_does_not_crash(self):
         client = _make_client()

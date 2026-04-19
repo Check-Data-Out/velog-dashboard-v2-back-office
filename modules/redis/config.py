@@ -11,7 +11,9 @@ def _resolve_password() -> str:
     b64: str = env("REDIS_PASSWORD_B64", default="")
     if b64:
         return base64.b64decode(b64).decode("utf-8")
-    raw: str = env("REDIS_PASSWORD", default="notion-check-plz")
+    # 기본값은 빈 문자열. .env 미설정 시 실제처럼 보이는 기본 비밀번호가 그대로
+    # 운영에 유출되는 것을 방지한다. Redis 서버가 AUTH 요구 시 명시적 실패로 surface.
+    raw: str = env("REDIS_PASSWORD", default="")
     return raw
 
 

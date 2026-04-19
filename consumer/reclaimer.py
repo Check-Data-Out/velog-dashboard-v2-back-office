@@ -140,23 +140,32 @@ class ProcessingReclaimer:
                 msg["reclaimedCount"] = msg["reclaimedCount"] + 1
                 rid = msg.get("requestId")
                 if msg["reclaimedCount"] > self.config.RECLAIM_MAX_RECLAIMS:
-                    # LREM 완료 후 DLQ push 가 실패해도 reclaimer 는 계속 동작해야 한다.
+                    # DLQ push 성공 후에만 DB 를 DLQ 로 전이한다.
+                    # push 실패 시 DB 만 DLQ 가 되면 Redis failed 큐에는 없고 운영자는
+                    # 재시도 대상조차 못 찾는 상태 drift 가 발생 → 실패면 mark_dlq skip.
+                    dlq_pushed = False
                     try:
                         self.redis_client.push_to_failed(msg)
+                        dlq_pushed = True
                         counts["dlq"] += 1
                     except Exception as dlq_err:
                         logger.error(
                             f"reclaim DLQ push failed (message lost) - requestId={rid}: {dlq_err}"
                         )
-                    self._safe_lifecycle(
-                        "mark_dlq",
-                        request_id=msg["requestId"],
-                        error="reclaim max exceeded",
-                        reclaimed_count=msg["reclaimedCount"],
-                    )
-                    logger.warning(
-                        f"reclaim moved to DLQ (max exceeded) - requestId={rid}, reclaimedCount={msg['reclaimedCount']}"
-                    )
+                    if dlq_pushed:
+                        self._safe_lifecycle(
+                            "mark_dlq",
+                            request_id=msg["requestId"],
+                            error="reclaim max exceeded",
+                            reclaimed_count=msg["reclaimedCount"],
+                        )
+                        logger.warning(
+                            f"reclaim moved to DLQ (max exceeded) - requestId={rid}, reclaimedCount={msg['reclaimedCount']}"
+                        )
+                    else:
+                        logger.error(
+                            f"reclaim DLQ push failed — lifecycle NOT transitioned to DLQ to avoid drift - requestId={rid}"
+                        )
                 else:
                     # DB 상태를 FAILED 로 전환해야 consumer 가 재소비 시
                     # mark_processing(FAILED→PROCESSING) 전이를 받을 수 있다.
