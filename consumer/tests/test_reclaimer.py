@@ -194,37 +194,13 @@ class TestDlqResilience:
         client.push_to_failed.assert_called_once()
 
 
-class TestTerminalGuardBeforeReenqueue:
-    """리뷰: DB 가 SUCCESS/DLQ 인 요청은 pending 재투입하지 않는다."""
+class TestMarkFailedResultGuardBeforeReenqueue:
+    """리뷰(공식 Django 근거): SELECT-then-UPDATE race 회피 위해 mark_failed 반환값 우선.
+    docs: https://docs.djangoproject.com/en/5.2/ref/models/querysets/#update
+    """
 
-    def test_terminal_request_goes_to_dlq_instead_of_reenqueue(self):
-        client = _make_client()
-        now = time.time()
-        stale = {
-            "requestId": "rid-terminal",
-            "userId": 1,
-            "enqueuedAt": time.strftime(
-                "%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(now - 1000)
-            ),
-            "reclaimedCount": 0,
-            "retryCount": 1,
-        }
-        client.get_messages.return_value = [(json.dumps(stale), stale)]
-        reclaimer = _make_reclaimer(client, visibility=600)
-        lifecycle_stub = MagicMock()
-        lifecycle_stub.is_terminal.return_value = True
-        reclaimer._lifecycle = lifecycle_stub
-
-        counts = reclaimer.reclaim_once(now_epoch=now)
-
-        # pending 재투입 금지, 대신 DLQ 로 대피. mark_failed 는 호출되지 않음.
-        client.enqueue_message.assert_not_called()
-        client.push_to_failed.assert_called_once()
-        lifecycle_stub.mark_failed.assert_not_called()
-        assert counts["reclaimed"] == 0
-        assert counts["dlq"] == 1
-
-    def test_non_terminal_request_proceeds_to_reenqueue(self):
+    def test_mark_failed_succeeds_reenqueues_without_is_terminal_check(self):
+        """전이 성공 시: SELECT 없이 바로 re-enqueue (race 없음 확정)."""
         client = _make_client()
         now = time.time()
         stale = {
@@ -239,14 +215,73 @@ class TestTerminalGuardBeforeReenqueue:
         client.get_messages.return_value = [(json.dumps(stale), stale)]
         reclaimer = _make_reclaimer(client, visibility=600)
         lifecycle_stub = MagicMock()
-        lifecycle_stub.is_terminal.return_value = False
+        lifecycle_stub.mark_failed.return_value = MagicMock()  # 전이 성공
         reclaimer._lifecycle = lifecycle_stub
 
         counts = reclaimer.reclaim_once(now_epoch=now)
 
-        # terminal 이 아니면 기존 경로: mark_failed + enqueue
+        # 성공 시 is_terminal 은 호출되지 않아야 함 (불필요한 SELECT 제거)
         client.enqueue_message.assert_called_once()
         lifecycle_stub.mark_failed.assert_called_once()
+        lifecycle_stub.is_terminal.assert_not_called()
+        assert counts["reclaimed"] == 1
+        assert counts["dlq"] == 0
+
+    def test_mark_failed_rejected_and_terminal_goes_to_dlq(self):
+        """전이 거부 + terminal: 완료된 요청 중복 처리 방지 위해 DLQ 대피."""
+        client = _make_client()
+        now = time.time()
+        stale = {
+            "requestId": "rid-terminal",
+            "userId": 1,
+            "enqueuedAt": time.strftime(
+                "%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(now - 1000)
+            ),
+            "reclaimedCount": 0,
+            "retryCount": 1,
+        }
+        client.get_messages.return_value = [(json.dumps(stale), stale)]
+        reclaimer = _make_reclaimer(client, visibility=600)
+        lifecycle_stub = MagicMock()
+        lifecycle_stub.mark_failed.return_value = None  # 전이 거부
+        lifecycle_stub.is_terminal.return_value = True  # SUCCESS/DLQ 확정
+        reclaimer._lifecycle = lifecycle_stub
+
+        counts = reclaimer.reclaim_once(now_epoch=now)
+
+        client.enqueue_message.assert_not_called()
+        client.push_to_failed.assert_called_once()
+        lifecycle_stub.mark_failed.assert_called_once()
+        lifecycle_stub.is_terminal.assert_called_once()
+        assert counts["reclaimed"] == 0
+        assert counts["dlq"] == 1
+
+    def test_mark_failed_rejected_but_non_terminal_still_reenqueues(self):
+        """전이 거부 + non-terminal (row missing 등): external producer 호환 재투입."""
+        client = _make_client()
+        now = time.time()
+        stale = {
+            "requestId": "rid-missing",
+            "userId": 3,
+            "enqueuedAt": time.strftime(
+                "%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(now - 1000)
+            ),
+            "reclaimedCount": 0,
+            "retryCount": 1,
+        }
+        client.get_messages.return_value = [(json.dumps(stale), stale)]
+        reclaimer = _make_reclaimer(client, visibility=600)
+        lifecycle_stub = MagicMock()
+        lifecycle_stub.mark_failed.return_value = None
+        lifecycle_stub.is_terminal.return_value = (
+            False  # row 없음/QUEUED/FAILED
+        )
+        reclaimer._lifecycle = lifecycle_stub
+
+        counts = reclaimer.reclaim_once(now_epoch=now)
+
+        client.enqueue_message.assert_called_once()
+        client.push_to_failed.assert_not_called()
         assert counts["reclaimed"] == 1
         assert counts["dlq"] == 0
 

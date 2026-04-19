@@ -156,31 +156,37 @@ class ProcessingReclaimer:
                         f"reclaim moved to DLQ (max exceeded) - requestId={rid}, reclaimedCount={msg['reclaimedCount']}"
                     )
                 else:
-                    # Terminal 가드: DB 가 이미 SUCCESS/DLQ 이면 pending 재투입 금지.
-                    # 시나리오: consumer 가 mark_success 후 LREM 이 미스된 상태에서 reclaimer 가
-                    # 같은 메시지를 집으면, 재투입 시 완료된 요청이 중복 처리된다.
-                    # row 없음 또는 조회 실패는 fail-open 으로 기존 경로 유지 (external producer 대비).
-                    if self._is_terminal(msg["requestId"]):
-                        logger.warning(
-                            f"reclaim skipped re-enqueue (already terminal) - requestId={rid}"
-                        )
-                        try:
-                            self.redis_client.push_to_failed(msg)
-                            counts["dlq"] += 1
-                        except Exception as dlq_err:
-                            logger.error(
-                                f"reclaim DLQ fallback failed (message lost) - requestId={rid}: {dlq_err}"
-                            )
-                        continue
-
                     # DB 상태를 FAILED 로 전환해야 consumer 가 재소비 시
                     # mark_processing(FAILED→PROCESSING) 전이를 받을 수 있다.
-                    self._safe_lifecycle(
+                    # mark_failed 는 `filter(status=PROCESSING).update(...)` — 단일 SQL
+                    # UPDATE 로 원자적이며 matched rows 수를 반환한다.
+                    # https://docs.djangoproject.com/en/5.2/ref/models/querysets/#update
+                    # 반환값으로 race-safe 전이 확인 (SELECT-then-UPDATE 회피).
+                    result = self._safe_lifecycle(
                         "mark_failed",
                         request_id=msg["requestId"],
                         error="reclaimed: reclaimed",
                         retry_count=msg["retryCount"],
                     )
+                    if result is None:
+                        # 전이 거부 — status != PROCESSING 이 확정. terminal(SUCCESS/DLQ)
+                        # 이면 완료된 요청 중복 처리 방지 위해 재투입 금지.
+                        # row missing 등 non-terminal 은 external producer 호환 경로 유지.
+                        if self._is_terminal(msg["requestId"]):
+                            logger.warning(
+                                f"reclaim skipped re-enqueue (mark_failed rejected, terminal) - requestId={rid}"
+                            )
+                            try:
+                                self.redis_client.push_to_failed(msg)
+                                counts["dlq"] += 1
+                            except Exception as dlq_err:
+                                logger.error(
+                                    f"reclaim DLQ fallback failed (message lost) - requestId={rid}: {dlq_err}"
+                                )
+                            continue
+                        logger.warning(
+                            f"reclaim mark_failed returned None (non-terminal), proceeding - requestId={rid}"
+                        )
                     msg["retryCount"] = 0
                     try:
                         self.redis_client.enqueue_message(msg)
