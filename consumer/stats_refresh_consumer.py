@@ -224,9 +224,10 @@ class StatsRefreshConsumer:
                 enriched["processingStartedAt"] = get_local_now().isoformat()
                 # processingStartedAt 을 Redis processing 큐에도 반영해야
                 # reclaimer 가 enqueuedAt 으로 fallback 하지 않는다.
-                # (pending 장기 대기 후 BLMOVE 된 메시지가 즉시 stale 판정되는 race 방지)
+                # CAS(LINDEX 0 == raw_str 일 때만 LSET) 로 reclaimer 가 head 를 LREM
+                # 한 경우에도 엉뚱한 메시지를 오염시키지 않는다.
                 new_raw = json.dumps(enriched)
-                if self.redis_client.replace_processing_head(new_raw):
+                if self.redis_client.replace_processing_head(raw_str, new_raw):
                     raw_str = new_raw
                 self._process_message(enriched, raw_str=raw_str)
 
@@ -297,14 +298,33 @@ class StatsRefreshConsumer:
 
         # lifecycle: mark_processing. admin 경로에서 mark_queued 가 선행됨.
         # 외부 producer 경로는 mark_queued 가 없을 수 있어 결과는 None 가능.
+        mp_result = None
         try:
-            self._lifecycle_service().mark_processing(
+            mp_result = self._lifecycle_service().mark_processing(
                 request_id=request_id,
                 retry_count=retry_cnt,
                 reclaimed_count=reclaimed_cnt,
             )
         except Exception as e:
             logger.warning(f"mark_processing failed: {e}")
+
+        # 전이가 거부됐고(QUEUED/FAILED 가 아니었음) 현재가 terminal(SUCCESS/DLQ) 이면
+        # Redis 에 남은 중복 메시지로 판단. 완료된 요청 재실행 방지 위해 processing
+        # 원본만 제거하고 종료한다. row missing 등 non-terminal 은 기존대로 진행.
+        if mp_result is None and self._is_terminal(request_id):
+            logger.warning(
+                f"mark_processing rejected and terminal - dropping duplicate: {request_id}"
+            )
+            try:
+                assert self.redis_client is not None
+                self.redis_client.remove_message(
+                    self.redis_config.QUEUE_STATS_REFRESH_PROCESSING,
+                    original_raw,
+                )
+            except Exception as e:
+                logger.error(f"terminal drop: processing LREM failed: {e}")
+            self.processing_message = False
+            return
 
         try:
             assert self.redis_client is not None
@@ -375,6 +395,14 @@ class StatsRefreshConsumer:
             getattr(self._lifecycle_service(), method)(**kwargs)
         except Exception as e:
             logger.warning(f"lifecycle.{method} failed: {e}")
+
+    def _is_terminal(self, request_id: str) -> bool:
+        """DB lifecycle 상태가 SUCCESS/DLQ 인지. 조회 실패 시 False (fail-open)."""
+        try:
+            return bool(self._lifecycle_service().is_terminal(request_id))
+        except Exception as e:
+            logger.warning(f"is_terminal check failed: {e}")
+            return False
 
     def _get_stats_summary(self) -> str:
         """Get consumer statistics summary.

@@ -84,7 +84,9 @@ class ProcessingReclaimer:
             {"reclaimed": n, "dlq": m, "fresh": k}
         """
         now_epoch = now_epoch if now_epoch is not None else time.time()
-        counts = {"reclaimed": 0, "dlq": 0, "fresh": 0}
+        # discarded: 이미 SUCCESS/DLQ 로 끝난 ghost 메시지(LREM miss 잔존물).
+        # DLQ 재투입 시 운영자가 완료된 요청을 재시도할 위험이 있어 로그만 남기고 drop.
+        counts = {"reclaimed": 0, "dlq": 0, "fresh": 0, "discarded": 0}
         processing_queue = self.config.QUEUE_STATS_REFRESH_PROCESSING
 
         with self._lock:
@@ -170,19 +172,14 @@ class ProcessingReclaimer:
                     )
                     if result is None:
                         # 전이 거부 — status != PROCESSING 이 확정. terminal(SUCCESS/DLQ)
-                        # 이면 완료된 요청 중복 처리 방지 위해 재투입 금지.
+                        # 이면 이미 완료된 요청이므로 DLQ 재투입 금지 (운영자 재시도 방지)
+                        # + pending 재투입 금지. LREM 이 이미 완료됐으니 로그만 남기고 drop.
                         # row missing 등 non-terminal 은 external producer 호환 경로 유지.
                         if self._is_terminal(msg["requestId"]):
                             logger.warning(
-                                f"reclaim skipped re-enqueue (mark_failed rejected, terminal) - requestId={rid}"
+                                f"reclaim dropped terminal ghost (not re-queued, not DLQ'd) - requestId={rid}"
                             )
-                            try:
-                                self.redis_client.push_to_failed(msg)
-                                counts["dlq"] += 1
-                            except Exception as dlq_err:
-                                logger.error(
-                                    f"reclaim DLQ fallback failed (message lost) - requestId={rid}: {dlq_err}"
-                                )
+                            counts["discarded"] += 1
                             continue
                         logger.warning(
                             f"reclaim mark_failed returned None (non-terminal), proceeding - requestId={rid}"

@@ -43,7 +43,12 @@ class TestReclaimOnce:
         client.get_messages.return_value = [(raw, stale)]
         reclaimer = _make_reclaimer(client, visibility=600)
         counts = reclaimer.reclaim_once(now_epoch=now)
-        assert counts == {"reclaimed": 1, "dlq": 0, "fresh": 0}
+        assert counts == {
+            "reclaimed": 1,
+            "dlq": 0,
+            "fresh": 0,
+            "discarded": 0,
+        }
         client.remove_message.assert_called_once_with(
             RedisConfig.QUEUE_STATS_REFRESH_PROCESSING, raw
         )
@@ -63,7 +68,12 @@ class TestReclaimOnce:
         client.get_messages.return_value = [(json.dumps(fresh), fresh)]
         reclaimer = _make_reclaimer(client, visibility=600)
         counts = reclaimer.reclaim_once(now_epoch=now)
-        assert counts == {"reclaimed": 0, "dlq": 0, "fresh": 1}
+        assert counts == {
+            "reclaimed": 0,
+            "dlq": 0,
+            "fresh": 1,
+            "discarded": 0,
+        }
         client.remove_message.assert_not_called()
         client.enqueue_message.assert_not_called()
 
@@ -81,7 +91,12 @@ class TestReclaimOnce:
         client.get_messages.return_value = [(json.dumps(stale), stale)]
         reclaimer = _make_reclaimer(client, visibility=600, max_reclaims=3)
         counts = reclaimer.reclaim_once(now_epoch=now)
-        assert counts == {"reclaimed": 0, "dlq": 1, "fresh": 0}
+        assert counts == {
+            "reclaimed": 0,
+            "dlq": 1,
+            "fresh": 0,
+            "discarded": 0,
+        }
         client.push_to_failed.assert_called_once()
         client.enqueue_message.assert_not_called()
 
@@ -227,8 +242,8 @@ class TestMarkFailedResultGuardBeforeReenqueue:
         assert counts["reclaimed"] == 1
         assert counts["dlq"] == 0
 
-    def test_mark_failed_rejected_and_terminal_goes_to_dlq(self):
-        """전이 거부 + terminal: 완료된 요청 중복 처리 방지 위해 DLQ 대피."""
+    def test_mark_failed_rejected_and_terminal_is_discarded(self):
+        """전이 거부 + terminal: DLQ 재투입 금지 (운영자 재시도 유발 방지) — 로그만 남기고 drop."""
         client = _make_client()
         now = time.time()
         stale = {
@@ -249,12 +264,14 @@ class TestMarkFailedResultGuardBeforeReenqueue:
 
         counts = reclaimer.reclaim_once(now_epoch=now)
 
+        # Terminal ghost: LREM 이 이미 제거했고 DB 도 최종 상태이므로 DLQ 재투입 금지.
         client.enqueue_message.assert_not_called()
-        client.push_to_failed.assert_called_once()
+        client.push_to_failed.assert_not_called()
         lifecycle_stub.mark_failed.assert_called_once()
         lifecycle_stub.is_terminal.assert_called_once()
         assert counts["reclaimed"] == 0
-        assert counts["dlq"] == 1
+        assert counts["dlq"] == 0
+        assert counts["discarded"] == 1
 
     def test_mark_failed_rejected_but_non_terminal_still_reenqueues(self):
         """전이 거부 + non-terminal (row missing 등): external producer 호환 재투입."""

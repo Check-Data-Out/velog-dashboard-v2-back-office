@@ -260,8 +260,17 @@ class RedisQueueClient:
                 return None
             raw = cast(str, raw_any)
             try:
-                message: dict[str, Any] = json.loads(raw)
-                return raw, message
+                parsed = json.loads(raw)
+                # json.loads 는 Any 반환 — list/str/number 도 가능.
+                # https://docs.python.org/3/library/json.html#json.loads
+                # dict 가 아니면 malformed 로 간주해 DLQ 로 보낸다.
+                if not isinstance(parsed, dict):
+                    raise json.JSONDecodeError(
+                        f"expected dict, got {type(parsed).__name__}",
+                        raw,
+                        0,
+                    )
+                return raw, cast(dict[str, Any], parsed)
             except json.JSONDecodeError as e:
                 logger.error(
                     f"BLMOVE received malformed JSON, moving to DLQ: {e}, "
@@ -316,9 +325,23 @@ class RedisQueueClient:
         with_raw_list: list[tuple[str, dict[str, Any]]] = []
         for raw in cast(list[str], raws):
             try:
-                parsed = json.loads(raw)
+                loaded = json.loads(raw)
             except json.JSONDecodeError:
-                parsed = {"_raw": raw, "_error": "JSONDecodeError"}
+                parsed: dict[str, Any] = {
+                    "_raw": raw,
+                    "_error": "JSONDecodeError",
+                }
+            else:
+                # json.loads → Any. list/str/number 도 가능하므로 dict 여부 검증.
+                # 호출부(admin/DLQ/reclaimer) 는 .get() 동작을 전제하므로 비-dict 는
+                # malformed 로 표시해 동일한 error 엔트리 포맷으로 반환한다.
+                if isinstance(loaded, dict):
+                    parsed = cast(dict[str, Any], loaded)
+                else:
+                    parsed = {
+                        "_raw": raw,
+                        "_error": f"NotADict:{type(loaded).__name__}",
+                    }
             if with_raw:
                 with_raw_list.append((raw, parsed))
             else:
@@ -342,29 +365,50 @@ class RedisQueueClient:
             logger.error(f"Failed to enqueue message: {e}")
             raise
 
-    def replace_processing_head(self, new_raw: str) -> bool:
-        """Processing 큐 index 0 을 new_raw 로 교체 (LSET 0).
+    # Lua CAS: head index 0 == expected_raw 일 때만 LSET.
+    # 전체 스크립트가 단일 atomic transaction 으로 실행된다.
+    # https://redis.io/docs/latest/commands/eval/
+    _REPLACE_HEAD_LUA = """
+    local current = redis.call('LINDEX', KEYS[1], 0)
+    if current == ARGV[1] then
+        redis.call('LSET', KEYS[1], 0, ARGV[2])
+        return 1
+    end
+    return 0
+    """
+
+    def replace_processing_head(self, expected_raw: str, new_raw: str) -> bool:
+        """Processing 큐 head 가 expected_raw 일 때만 new_raw 로 교체 (CAS).
 
         BLMOVE 직후 consumer 가 processingStartedAt 을 enrich 한 JSON 을
-        Redis 저장값에 반영하기 위해 사용한다. reclaimer 가 큐를 스캔할 때
-        processingStartedAt 을 볼 수 있게 되어 pending 장기대기 메시지가
-        BLMOVE 직후 즉시 stale 로 판정되는 race 를 방지한다.
+        Redis 저장값에 반영하기 위해 사용한다. reclaimer thread 가 BLMOVE 와
+        LSET 사이에 개입해 head 를 LREM 하는 race 를 Lua LINDEX+LSET CAS 로 차단.
 
-        단일 consumer 전제이므로 BLMOVE → LSET 0 사이에 head 가 바뀌지 않는다.
-        LSET 실패(빈 큐/out-of-range 등) 시 False 반환 — 호출자는 원본 raw 로 fallback.
+        단일 consumer 전제이지만 reclaimer daemon thread 와 동일 프로세스에서
+        동작하므로 BLMOVE→LSET 구간은 threading.Lock 으로 보호되지 않는다.
+        Lua 스크립트는 Redis 단일 서버에서 atomic 하게 실행된다.
+
+        Args:
+            expected_raw: BLMOVE 가 반환한 원본 raw 문자열
+            new_raw: processingStartedAt 이 enrich 된 새 raw 문자열
 
         Returns:
-            LSET 성공 여부
+            CAS 성공(head==expected 일 때 LSET 성공) 여부.
+            False 면 호출자는 expected_raw 를 계속 LREM 기준으로 사용해야 한다.
         """
         if not self.client:
             raise RuntimeError("Redis client not connected")
         try:
-            self.client.lset(
-                self.config.QUEUE_STATS_REFRESH_PROCESSING, 0, new_raw
+            result = self.client.eval(
+                self._REPLACE_HEAD_LUA,
+                1,  # numkeys
+                self.config.QUEUE_STATS_REFRESH_PROCESSING,
+                expected_raw,
+                new_raw,
             )
-            return True
+            return bool(cast(int, result))
         except RedisError as e:
-            logger.warning(f"Failed to LSET processing head: {e}")
+            logger.warning(f"Failed to CAS replace processing head: {e}")
             return False
 
     def remove_message(self, queue_name: str, message_str: str) -> int:

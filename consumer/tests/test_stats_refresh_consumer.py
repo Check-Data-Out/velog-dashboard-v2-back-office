@@ -94,6 +94,65 @@ class TestStatsRefreshConsumer:
         )
         mock_redis_client.remove_message.assert_called_once()
 
+    def test_mark_processing_rejected_and_terminal_drops_message(
+        self, mock_redis_client_class, mock_processor_class, sample_message
+    ) -> None:
+        """mark_processing 이 None + 현재 terminal 이면 processing 만 LREM + skip.
+
+        Redis 에 중복 남은 메시지로 이미 완료된 요청이 재실행되는 것을 막는다.
+        """
+        mock_redis_client = Mock()
+        mock_redis_client_class.return_value = mock_redis_client
+
+        consumer = StatsRefreshConsumer()
+        consumer.redis_client = mock_redis_client
+
+        # lifecycle: mark_processing → None (거부), is_terminal → True
+        lifecycle_stub = Mock()
+        lifecycle_stub.mark_processing.return_value = None
+        lifecycle_stub.is_terminal.return_value = True
+        consumer._lifecycle = lifecycle_stub
+
+        consumer.message_processor.process_with_retry = Mock(return_value=True)
+
+        consumer._process_message(sample_message, raw_str="orig-raw")
+
+        # 실제 처리는 호출되지 않아야 함
+        consumer.message_processor.process_with_retry.assert_not_called()
+        # processing 큐에서만 제거
+        mock_redis_client.remove_message.assert_called_once()
+        args = mock_redis_client.remove_message.call_args[0]
+        assert args[0] == consumer.redis_config.QUEUE_STATS_REFRESH_PROCESSING
+        assert args[1] == "orig-raw"
+        # DLQ 로도 보내지 않음
+        mock_redis_client.push_to_failed.assert_not_called()
+        lifecycle_stub.is_terminal.assert_called_once()
+
+    def test_mark_processing_rejected_but_not_terminal_still_processes(
+        self, mock_redis_client_class, mock_processor_class, sample_message
+    ) -> None:
+        """mark_processing None + non-terminal (row missing) 은 기존처럼 처리 진행.
+
+        external producer 호환을 위해 drop 하지 않는다.
+        """
+        mock_redis_client = Mock()
+        mock_redis_client_class.return_value = mock_redis_client
+
+        consumer = StatsRefreshConsumer()
+        consumer.redis_client = mock_redis_client
+
+        lifecycle_stub = Mock()
+        lifecycle_stub.mark_processing.return_value = None
+        lifecycle_stub.is_terminal.return_value = False  # row missing 등
+        consumer._lifecycle = lifecycle_stub
+
+        consumer.message_processor.process_with_retry = Mock(return_value=True)
+
+        consumer._process_message(sample_message, raw_str="orig-raw")
+
+        consumer.message_processor.process_with_retry.assert_called_once()
+        assert consumer.stats["succeeded"] == 1
+
     def test_get_stats_summary(
         self, mock_redis_client_class, mock_processor_class
     ) -> None:
