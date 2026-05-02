@@ -1,16 +1,20 @@
 import logging
 
-from asgiref.sync import async_to_sync
 from django.contrib import admin, messages
 from django.db.models import Count, Prefetch, QuerySet
 from django.http import HttpRequest
 from django.urls import reverse
 from django.utils.html import format_html
 
-from scraping.main import ScraperTargetUser
+from consumer.envelope import build_envelope
+from ops_tracking.models import StatsRefreshRequest
+from ops_tracking.services import RequestLifecycleService
+from queue_monitor.services import QueueMonitorService
 from users.models import QRLoginToken, User
 
 logger = logging.getLogger(__name__)
+
+_MAX_UPDATE_STATS_SELECTION = 10
 
 
 @admin.register(User)
@@ -112,36 +116,94 @@ class UserAdmin(admin.ModelAdmin):
         )
 
     @admin.action(
-        description="선택된 사용자 실시간 통계 업데이트 (1명 정도만 진행, 이상 timeout 발생 위험)"
+        description="선택된 사용자 통계 업데이트 요청 (큐에 추가, 진행은 Queue Monitor 에서 확인)"
     )
     def update_stats(self, request: HttpRequest, queryset: QuerySet[User]):
-        user_pk_list = list(queryset.values_list("pk", flat=True))
-        logger.info(
-            f"{request.user} 가 {user_pk_list} 사용자를 실시간 업데이트 시도 했습니다."
-        )
+        """선택된 사용자 통계 업데이트를 큐에 추가한다.
 
-        if len(user_pk_list) >= 3:
+        - max 10명 선택 제한
+        - QUEUED/PROCESSING 으로 이미 진행 중인 사용자는 스킵
+        - 각 user 에 대해 envelope 생성 + pending 큐 LPUSH + StatsRefreshRequest 생성
+        """
+        # 선택 제한 가드를 먼저 — 대량 선택 시 전체 PK materialize/로깅 방지.
+        selected_count = queryset.count()
+        if selected_count > _MAX_UPDATE_STATS_SELECTION:
+            logger.info(
+                f"{request.user} 가 {selected_count} 명 선택 "
+                f"(제한 {_MAX_UPDATE_STATS_SELECTION} 초과) — 거절"
+            )
             return self.message_user(
                 request,
-                f"3명 이상의 유저를 선택하지 말아주세요 >> {user_pk_list}",
+                f"{_MAX_UPDATE_STATS_SELECTION} 명 이하로 선택해주세요.",
                 messages.ERROR,
+            )
+
+        user_pk_list = list(queryset.values_list("pk", flat=True))
+        logger.info(
+            f"{request.user} 가 {user_pk_list} 사용자 통계 업데이트를 큐에 요청했습니다."
+        )
+
+        lifecycle = RequestLifecycleService()
+
+        # request.user 는 Django auth.User 이고 StatsRefreshRequest.requested_by 는
+        # users.User FK 이므로 email 매칭으로 users.User id 를 찾아 보조. 매칭 실패 시 None.
+        requester_id = None
+        requester_email = getattr(request.user, "email", None)
+        if requester_email:
+            requester_id = (
+                User.objects.filter(email=requester_email)
+                .values_list("id", flat=True)
+                .first()
             )
 
         try:
-            # 비동기 함수를 동기적으로 실행
-            async_to_sync(ScraperTargetUser(user_pk_list).run)()
+            service = QueueMonitorService()
         except Exception as e:
+            logger.error(f"update_stats: Redis 초기화 실패: {e}")
             return self.message_user(
                 request,
-                f"실시간 통계 업데이트를 실패했습니다 >> {e}, {e.__class__}",
+                f"Redis 연결 실패로 요청을 처리할 수 없습니다: {e}",
                 messages.ERROR,
             )
 
-        return self.message_user(
-            request,
-            f"{len(user_pk_list)} 명의 사용자 통계를 실시간 업데이트 성공했습니다.",
-            messages.SUCCESS,
-        )
+        queued = 0
+        inflight_skipped = 0
+        failed = 0
+        for user_id in user_pk_list:
+            envelope = build_envelope(
+                user_id=user_id, requested_by=requester_id
+            )
+            # try_mark_queued_if_no_inflight: user_id 원자 가드.
+            # 동시 요청 race 에서 두 번째 호출은 None 반환 → 중복 enqueue 차단.
+            row = lifecycle.try_mark_queued_if_no_inflight(
+                request_id=envelope["requestId"],
+                user_id=user_id,
+                requested_by=requester_id,
+            )
+            if row is None:
+                inflight_skipped += 1
+                continue
+            try:
+                service.redis_client.enqueue_message(envelope)
+            except Exception as e:
+                logger.error(
+                    f"update_stats: enqueue 실패 (user={user_id}): {e}"
+                )
+                StatsRefreshRequest.objects.filter(
+                    request_id=envelope["requestId"]
+                ).delete()
+                failed += 1
+                continue
+            queued += 1
+
+        parts = [f"{queued}건 큐에 추가됨"]
+        if inflight_skipped:
+            parts.append(f"{inflight_skipped}건은 이미 진행중이어서 스킵")
+        if failed:
+            parts.append(f"{failed}건은 Redis enqueue 실패")
+        msg = ", ".join(parts) + ". 진행 상황은 Queue Monitor 에서 확인하세요."
+        level = messages.ERROR if failed else messages.SUCCESS
+        return self.message_user(request, msg, level)
 
 
 @admin.register(QRLoginToken)

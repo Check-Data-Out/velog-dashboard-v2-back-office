@@ -1,0 +1,72 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}DLQ 관리 | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a> &rsaquo;
+  <a href="{% url 'admin:queue_dashboard' %}">Queue Monitor</a> &rsaquo; DLQ
+</div>
+{% endblock %}
+
+{% block content %}
+{% include "admin/queue_monitor/_subnav.html" with active="failed" %}
+
+<h1 style="margin:0 0 8px;">DLQ — 실패 메시지</h1>
+<p style="color:var(--body-quiet-color);margin:0 0 20px;">
+  총 <strong>{{ total }}</strong>건. Retry 누르면 pending 으로 다시 넣고 DB 상태는 FAILED 로 돌립니다.
+</p>
+
+<div class="module vd2-table-wrap">
+  <table id="result_list" class="vd2-dlq-table">
+    <thead>
+      <tr>
+        <th scope="col">requestId</th>
+        <th scope="col">userId</th>
+        <th scope="col" style="width:110px;">retryCount</th>
+        <th scope="col" style="width:200px;">lastAttemptAt</th>
+        <th scope="col" style="width:120px;">action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr class="{% cycle 'row1' 'row2' %}">
+        <td><code style="font-size:12px;">{{ item.requestId|default:"-" }}</code></td>
+        <td>{{ item.userId|default:"-" }}</td>
+        <td>{{ item.retryCount|default:0 }}</td>
+        <td>{{ item.lastAttemptAt|default:"-" }}</td>
+        <td>
+          {% if item.requestId %}
+          <form method="post" action="{% url 'admin:queue_retry' item.requestId %}" style="margin:0;">
+            {% csrf_token %}
+            <button type="submit" class="button">Retry</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" class="vd2-empty">비어있음</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if total %}
+<p class="paginator" style="margin-top:16px;">
+  {% if prev_offset is not None %}<a href="?offset={{ prev_offset }}&limit={{ limit }}">← 이전</a>{% endif %}
+  <span style="margin:0 12px;color:var(--body-quiet-color);">
+    {{ offset|add:1 }}–{% if next_offset %}{{ next_offset }}{% else %}{{ total }}{% endif %} / {{ total }}
+  </span>
+  {% if next_offset %}<a href="?offset={{ next_offset }}&limit={{ limit }}">다음 →</a>{% endif %}
+</p>
+{% endif %}
+
+<style>
+.vd2-table-wrap { padding: 0; border-radius: 10px; overflow: hidden; }
+.vd2-dlq-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.vd2-dlq-table th, .vd2-dlq-table td { padding: 12px 14px; vertical-align: middle; }
+.vd2-dlq-table tbody tr:hover { background: var(--darkened-bg); }
+.vd2-empty { text-align: center; padding: 40px 0 !important; color: var(--body-quiet-color); font-size: 14px; }
+</style>
+{% endblock %}

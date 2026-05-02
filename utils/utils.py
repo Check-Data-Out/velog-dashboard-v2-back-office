@@ -33,7 +33,10 @@ def get_local_now_date() -> datetime:
 def to_local_date(dt: datetime) -> datetime:
     """datetime 을 django timezone 을 따르는 date 로 cating 하는 함수"""
     local_dt = timezone.localtime(dt, timezone=timezone.get_current_timezone())
-    return local_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    result: datetime = local_dt.replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return result
 
 
 def parse_json(

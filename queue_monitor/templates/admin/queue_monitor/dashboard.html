@@ -1,0 +1,83 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}큐 대시보드 | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a> &rsaquo; Queue Monitor
+</div>
+{% endblock %}
+
+{% block content %}
+{% include "admin/queue_monitor/_subnav.html" with active="dashboard" %}
+
+<h1 style="margin:0 0 8px;">큐 상태</h1>
+<p style="color:var(--body-quiet-color);margin:0 0 24px;">
+  stats-refresh 큐의 pending / processing / failed 현황. 새로고침 시 갱신됩니다.
+</p>
+
+<div class="vd2-grid">
+  <section class="vd2-card">
+    <div class="vd2-card-label">Pending</div>
+    <div class="vd2-card-value">{{ stats.pending }}</div>
+    <div class="vd2-card-hint">대기 중</div>
+  </section>
+  <section class="vd2-card">
+    <div class="vd2-card-label">Processing</div>
+    <div class="vd2-card-value">{{ stats.processing }}</div>
+    <div class="vd2-card-hint">처리 중</div>
+  </section>
+  <section class="vd2-card vd2-card--danger">
+    <div class="vd2-card-label">Failed (DLQ)</div>
+    <div class="vd2-card-value">{{ stats.failed }}</div>
+    <div class="vd2-card-hint">실패 누적</div>
+  </section>
+</div>
+
+<div class="module vd2-quick">
+  <h2>바로가기</h2>
+  <div class="vd2-quick-body">
+    <a href="{% url 'admin:queue_failed_list' %}" class="button">DLQ 열기</a>
+    <a href="{% url 'admin:ops_tracking_statsrefreshrequest_changelist' %}" class="button">요청 기록</a>
+    <a href="{% url 'admin:posts_post_changelist' %}?stats_status=missing" class="button">통계 누락 포스트</a>
+    <a href="{% url 'admin:queue_purge' %}" class="button deletelink">DLQ 퍼지</a>
+  </div>
+</div>
+
+<style>
+.vd2-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin: 0 0 32px;
+}
+.vd2-card {
+  background: var(--body-bg);
+  border: 1px solid var(--border-color);
+  border-left: 4px solid var(--primary);
+  border-radius: 10px;
+  padding: 20px 24px;
+}
+.vd2-card--danger { border-left-color: #ba2121; }
+.vd2-card-label {
+  font-size: 12px;
+  color: var(--body-quiet-color);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+.vd2-card-value {
+  font-size: 44px;
+  font-weight: 700;
+  margin-top: 6px;
+  line-height: 1.1;
+  color: var(--body-fg);
+}
+.vd2-card--danger .vd2-card-value { color: #ba2121; }
+.vd2-card-hint { font-size: 13px; color: var(--body-quiet-color); margin-top: 8px; }
+.vd2-quick { padding: 16px 20px; }
+.vd2-quick h2 { margin: 0 0 12px; padding: 0; background: none; color: var(--body-fg); font-size: 14px; }
+.vd2-quick-body { display: flex; flex-wrap: wrap; gap: 8px; }
+</style>
+{% endblock %}

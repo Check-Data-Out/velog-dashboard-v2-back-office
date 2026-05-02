@@ -17,6 +17,7 @@ import warnings
 
 import setup_django  # noqa
 
+from scraping.batch_notify import notify_after_batch
 from scraping.main import Scraper
 from utils.utils import split_range
 
@@ -52,6 +53,8 @@ def main() -> None:
 
     for p in processes:
         p.join()
+
+    notify_after_batch()
 
 
 # Django에서 발생하는 RuntimeWarning 무시

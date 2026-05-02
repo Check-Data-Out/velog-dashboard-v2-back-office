@@ -22,11 +22,12 @@ def mock_redis_client():
 
 @pytest.fixture
 def sample_message():
-    """Sample stats refresh message."""
+    """Sample stats refresh message (ensure_envelope 통과 이후 형태 가정)."""
     return {
         "userId": 123,
         "requestedAt": "2025-12-12T10:30:00Z",
         "retryCount": 0,
+        "reclaimedCount": 0,
     }
 
 

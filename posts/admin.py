@@ -37,6 +37,23 @@ class UserGroupRangeFilter(admin.SimpleListFilter):
         return queryset
 
 
+class StatsStatusFilter(admin.SimpleListFilter):
+    """오늘 통계가 누락된 포스트만 보기 (운영자용 admin 필터)."""
+
+    title = _("오늘 통계 상태")
+    parameter_name = "stats_status"
+
+    def lookups(self, request: HttpRequest, model_admin):
+        return [("missing", _("오늘 통계 누락"))]
+
+    def queryset(self, request: HttpRequest, queryset: QuerySet[Post]):
+        if self.value() == "missing":
+            # list() 로 전부 로드하지 않고 서브쿼리로 넘겨 Django 가 JOIN/서브쿼리 최적화 수행
+            missing_ids = Post.stats_monitor.missing_today_stats().values("pk")
+            return queryset.filter(pk__in=missing_ids)
+        return queryset
+
+
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
     list_display = [
@@ -47,7 +64,7 @@ class PostAdmin(admin.ModelAdmin):
         "created_at",
     ]
     search_fields = ["user__id", "user__email"]
-    list_filter = [UserGroupRangeFilter]
+    list_filter = [UserGroupRangeFilter, StatsStatusFilter]
 
     def get_queryset(self, request):
         """쿼리셋 최적화: N+1 문제 해결"""

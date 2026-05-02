@@ -1,0 +1,38 @@
+{% extends "admin/base.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block branding %}
+<div id="site-name"><a href="{% url 'admin:index' %}">{{ site_header|default:_('Django administration') }}</a></div>
+{% if user.is_anonymous %}{% include "admin/color_theme_toggle.html" %}{% endif %}
+{% endblock %}
+
+{% block nav-global %}
+{% if user.is_authenticated %}
+<nav class="vd2-opsnav" aria-label="운영 메뉴">
+  <a href="{% url 'admin:queue_dashboard' %}">큐 상태</a>
+  <a href="{% url 'admin:queue_failed_list' %}">DLQ</a>
+  <a href="{% url 'admin:ops_tracking_statsrefreshrequest_changelist' %}">요청 기록</a>
+  <a href="{% url 'admin:posts_post_changelist' %}?stats_status=missing">통계 누락</a>
+</nav>
+<style>
+.vd2-opsnav { display: inline-flex; gap: 6px; margin-left: 16px; }
+.vd2-opsnav a {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.2);
+  color: var(--header-link-color);
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1;
+  text-decoration: none;
+}
+.vd2-opsnav a:hover {
+  background: var(--primary);
+  color: var(--primary-fg);
+  border-color: var(--primary);
+}
+</style>
+{% endif %}
+{% endblock %}

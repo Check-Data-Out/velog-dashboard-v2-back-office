@@ -49,5 +49,8 @@ COPY . .
 # Create consumer logs directory (Django의 logs/와 분리)
 RUN mkdir -p /app/consumer-logs
 
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=20s \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8081/healthz',timeout=3).status==200 else 1)"
+
 # Run consumer (poetry 없이 직접 python 실행)
 CMD ["python", "-m", "consumer.stats_refresh_consumer"]
