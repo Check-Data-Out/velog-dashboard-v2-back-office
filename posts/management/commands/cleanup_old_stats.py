@@ -10,6 +10,8 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
 from django.utils import timezone
 
+from modules.noti.slack_client import notify_ops
+from modules.redis.client import get_redis_client
 from posts.models import PostDailyStatistics
 
 logger = logging.getLogger(__name__)
@@ -86,6 +88,7 @@ class Command(BaseCommand):
             return
 
         started_at = time.monotonic()
+        redis_client = self._safe_redis_client()
         try:
             dropped_chunks, cutoff_ts = self._drop_chunks_and_get_cutoff(
                 months
@@ -93,6 +96,11 @@ class Command(BaseCommand):
             orm_deleted = self._orm_fallback(cutoff_ts, chunk)
         except Exception as e:
             logger.exception("cleanup_old_stats failed")
+            notify_ops(
+                text=f"[velog-dashboard-v2] PostDailyStatistics 정리 실패: {e}",
+                cooldown_key=COOLDOWN_KEY,
+                redis_client=redis_client,
+            )
             raise CommandError(str(e)) from e
         elapsed = time.monotonic() - started_at
         logger.info(
@@ -102,9 +110,29 @@ class Command(BaseCommand):
             orm_deleted,
             elapsed,
         )
+        notify_ops(
+            text=(
+                f"[velog-dashboard-v2] PostDailyStatistics 정리 완료\n"
+                f"- cutoff: {cutoff_ts.isoformat()}\n"
+                f"- dropped_chunks: {dropped_chunks}\n"
+                f"- orm_deleted: {orm_deleted}\n"
+                f"- elapsed: {elapsed:.2f}s"
+            ),
+            cooldown_key=COOLDOWN_KEY,
+            redis_client=redis_client,
+        )
         self.stdout.write(
             f"dropped {dropped_chunks} chunks, {orm_deleted} orm rows"
         )
+
+    @staticmethod
+    def _safe_redis_client():
+        """Redis 미가용 시 워닝만 남기고 None 반환 (배치는 계속)."""
+        try:
+            return get_redis_client()
+        except Exception as e:
+            logger.warning("redis unavailable: %s", e)
+            return None
 
     def _drop_chunks_and_get_cutoff(self, months: int) -> tuple[int, datetime]:
         """drop_chunks 호출 + cutoff_ts 산출.

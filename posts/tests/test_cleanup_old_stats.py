@@ -30,6 +30,21 @@ def _mock_cursor(fetchall_return=None, fetchone_return=None):
     return fake_cm, fake_cursor
 
 
+@pytest.fixture(autouse=True)
+def quiet_external_calls(monkeypatch):
+    """Slack/Redis 외부 호출 차단. notify mock 을 반환해 검증 가능."""
+    notify_mock = MagicMock()
+    monkeypatch.setattr(
+        "posts.management.commands.cleanup_old_stats.get_redis_client",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        "posts.management.commands.cleanup_old_stats.notify_ops",
+        notify_mock,
+    )
+    return notify_mock
+
+
 @pytest.mark.parametrize(
     "args",
     [
@@ -147,7 +162,9 @@ def test_second_run_is_noop_after_cleanup(post_stats_factory):
         call_command("cleanup_old_stats", "--force")
 
 
-def test_drop_chunks_error_raises_command_error():
+def test_drop_chunks_error_raises_command_error_and_notifies_failure(
+    quiet_external_calls,
+):
     with patch(
         DROP_CHUNKS_HELPER,
         side_effect=ProgrammingError(
@@ -156,6 +173,48 @@ def test_drop_chunks_error_raises_command_error():
     ):
         with pytest.raises(CommandError):
             call_command("cleanup_old_stats", "--force")
+    assert quiet_external_calls.called
+    assert "실패" in quiet_external_calls.call_args.kwargs["text"]
+
+
+@pytest.mark.django_db
+def test_notify_ops_called_on_success(quiet_external_calls):
+    cutoff = timezone.now() - timedelta(days=180)
+    with patch(DROP_CHUNKS_HELPER, return_value=(0, cutoff)):
+        call_command("cleanup_old_stats", "--force")
+    assert quiet_external_calls.called
+    assert (
+        quiet_external_calls.call_args.kwargs["cooldown_key"]
+        == "cleanup-old-stats"
+    )
+    assert "정리 완료" in quiet_external_calls.call_args.kwargs["text"]
+
+
+@pytest.mark.django_db
+def test_notify_ops_not_called_in_dry_run(
+    post_stats_factory, quiet_external_calls
+):
+    post_stats_factory(date=timezone.now() - timedelta(days=200))
+    call_command("cleanup_old_stats", "--dry-run", "--force")
+    assert not quiet_external_calls.called
+
+
+@pytest.mark.django_db
+def test_redis_unavailable_does_not_fail_batch(monkeypatch, caplog):
+    """get_redis_client 가 예외를 raise 해도 배치는 정상 종료."""
+    monkeypatch.setattr(
+        "posts.management.commands.cleanup_old_stats.get_redis_client",
+        MagicMock(side_effect=ConnectionError("redis down")),
+    )
+    cutoff = timezone.now() - timedelta(days=180)
+    with (
+        patch(DROP_CHUNKS_HELPER, return_value=(0, cutoff)),
+        caplog.at_level(
+            "WARNING", logger="posts.management.commands.cleanup_old_stats"
+        ),
+    ):
+        call_command("cleanup_old_stats", "--force")
+    assert any("redis" in r.getMessage().lower() for r in caplog.records)
 
 
 @pytest.mark.django_db
