@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from django.core.management import call_command
+from django.db.utils import ProgrammingError
 from django.utils import timezone
 
 from posts.management.commands.cleanup_old_stats import Command
@@ -123,3 +124,29 @@ def test_orm_fallback_deletes_rows_below_cutoff(post_stats_factory):
         call_command("cleanup_old_stats", "--force")
     assert not PostDailyStatistics.objects.filter(pk=old_stats.pk).exists()
     assert PostDailyStatistics.objects.filter(pk=new_stats.pk).exists()
+
+
+@pytest.mark.django_db
+def test_empty_table_runs_without_error():
+    cutoff = timezone.now() - timedelta(days=180)
+    with patch(DROP_CHUNKS_HELPER, return_value=(0, cutoff)):
+        call_command("cleanup_old_stats", "--force")
+
+
+@pytest.mark.django_db
+def test_second_run_idempotent_after_first():
+    cutoff = timezone.now() - timedelta(days=180)
+    with patch(DROP_CHUNKS_HELPER, return_value=(0, cutoff)):
+        call_command("cleanup_old_stats", "--force")
+        call_command("cleanup_old_stats", "--force")
+
+
+def test_drop_chunks_error_raises_system_exit():
+    with patch(
+        DROP_CHUNKS_HELPER,
+        side_effect=ProgrammingError(
+            "function drop_chunks(...) does not exist"
+        ),
+    ):
+        with pytest.raises(SystemExit):
+            call_command("cleanup_old_stats", "--force")

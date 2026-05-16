@@ -84,8 +84,14 @@ class Command(BaseCommand):
             )
             return
 
-        dropped_chunks, cutoff_ts = self._drop_chunks_and_get_cutoff(months)
-        orm_deleted = self._orm_fallback(cutoff_ts, chunk)
+        try:
+            dropped_chunks, cutoff_ts = self._drop_chunks_and_get_cutoff(
+                months
+            )
+            orm_deleted = self._orm_fallback(cutoff_ts, chunk)
+        except Exception as e:
+            logger.exception("cleanup_old_stats failed")
+            raise SystemExit(1) from e
         self.stdout.write(
             f"dropped {dropped_chunks} chunks, {orm_deleted} orm rows"
         )
