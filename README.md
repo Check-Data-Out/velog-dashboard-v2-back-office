@@ -181,6 +181,17 @@ poetry run pre-commit run --all-files
 
 외부 producer(velog-dashboard 웹) 가 보낸 메시지는 필요한 신규 필드(`requestId`, `enqueuedAt`, `reclaimedCount`, `requestedBy`, `processingStartedAt`) 가 누락되어 있어도 consumer 의 `ensure_envelope` 가 자동 보강한다. 외부 변경 불필요.
 
+### Stats 데이터 정리 (cleanup_old_stats)
+
+`PostDailyStatistics` 의 6개월 이전 데이터를 TimescaleDB `drop_chunks` + ORM 폴백으로 정리. 매월 1일 KST 04:00 cron 자동 실행 (`.github/workflows/run-monthly-stats-cleanup.yaml`).
+
+```bash
+# 로컬 dry-run
+poetry run python manage.py cleanup_old_stats --dry-run --force
+# 운영 수동 실행 (workflow_dispatch)
+gh workflow run "Monthly Stats Cleanup" -f retention_months=6 -f dry_run=true -f force=true
+```
+
 ---
 
 ## Runserver
