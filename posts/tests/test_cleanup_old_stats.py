@@ -199,6 +199,44 @@ def test_notify_ops_not_called_in_dry_run(
     assert not quiet_external_calls.called
 
 
+def test_default_retention_months_is_6():
+    """AC-2 — `--retention-months` 기본값 6."""
+    cmd = Command()
+    parser = cmd.create_parser("manage.py", "cleanup_old_stats")
+    ns = parser.parse_args([])
+    assert ns.retention_months == 6
+
+
+@pytest.mark.django_db
+def test_orm_fallback_aborts_when_delete_returns_zero(caplog):
+    """AC-10 zero-delete guard — delete 가 0 반환 시 break + warning."""
+    cmd = Command()
+    cutoff = timezone.now() - timedelta(days=180)
+    with patch(
+        "posts.management.commands.cleanup_old_stats.PostDailyStatistics.objects"
+    ) as mock_objects:
+        # filter().count() = 5, filter().values_list()[:N] = [1..5], filter().delete() = (0, {})
+        mock_qs = MagicMock()
+        mock_qs.count.return_value = 5
+        mock_qs.values_list.return_value.__getitem__.return_value = [
+            1,
+            2,
+            3,
+            4,
+            5,
+        ]
+        mock_qs.delete.return_value = (0, {})
+        mock_objects.filter.return_value = mock_qs
+        with caplog.at_level(
+            "WARNING", logger="posts.management.commands.cleanup_old_stats"
+        ):
+            result = cmd._orm_fallback(cutoff, chunk=5)
+    assert result == 0
+    assert any("delete returned 0" in r.getMessage() for r in caplog.records)
+    # delete 가 1번만 호출되고 break 되어야 함
+    assert mock_qs.delete.call_count == 1
+
+
 @pytest.mark.django_db
 def test_redis_unavailable_does_not_fail_batch(monkeypatch, caplog):
     """get_redis_client 가 예외를 raise 해도 배치는 정상 종료."""
