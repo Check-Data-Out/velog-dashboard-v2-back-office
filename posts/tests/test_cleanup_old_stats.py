@@ -1,11 +1,14 @@
 """cleanup_old_stats management command 테스트."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from io import StringIO
 from unittest.mock import patch
 
 import pytest
 from django.core.management import call_command
+from django.utils import timezone
+
+from posts.models import PostDailyStatistics
 
 
 @pytest.mark.parametrize(
@@ -55,3 +58,16 @@ def test_force_bypasses_day_guard():
         out = StringIO()
         call_command("cleanup_old_stats", "--force", stdout=out)
         assert "skipping" not in out.getvalue().lower()
+
+
+@pytest.mark.django_db
+def test_dry_run_reports_summary_and_keeps_rows(post_stats_factory):
+    old_stats = post_stats_factory(date=timezone.now() - timedelta(days=200))
+    out = StringIO()
+    call_command("cleanup_old_stats", "--dry-run", "--force", stdout=out)
+    output = out.getvalue()
+    assert "cutoff=" in output
+    assert "chunks=" in output
+    assert "rows~=" in output
+    # dry-run 은 실제 행을 건드리지 않아야 함 (drop_chunks 미호출의 implicit 검증)
+    assert PostDailyStatistics.objects.filter(pk=old_stats.pk).exists()
