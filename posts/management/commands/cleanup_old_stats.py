@@ -2,6 +2,7 @@
 
 import logging
 import math
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -84,6 +85,7 @@ class Command(BaseCommand):
             )
             return
 
+        started_at = time.monotonic()
         try:
             dropped_chunks, cutoff_ts = self._drop_chunks_and_get_cutoff(
                 months
@@ -92,6 +94,14 @@ class Command(BaseCommand):
         except Exception as e:
             logger.exception("cleanup_old_stats failed")
             raise SystemExit(1) from e
+        elapsed = time.monotonic() - started_at
+        logger.info(
+            "cleanup_old_stats: cutoff=%s dropped_chunks=%d orm_deleted=%d elapsed=%.2fs",
+            cutoff_ts.isoformat(),
+            dropped_chunks,
+            orm_deleted,
+            elapsed,
+        )
         self.stdout.write(
             f"dropped {dropped_chunks} chunks, {orm_deleted} orm rows"
         )

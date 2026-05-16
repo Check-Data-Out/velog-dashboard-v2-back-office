@@ -150,3 +150,18 @@ def test_drop_chunks_error_raises_system_exit():
     ):
         with pytest.raises(SystemExit):
             call_command("cleanup_old_stats", "--force")
+
+
+@pytest.mark.django_db
+def test_summary_log_contains_key_fields(caplog):
+    cutoff = timezone.now() - timedelta(days=180)
+    with (
+        patch(DROP_CHUNKS_HELPER, return_value=(3, cutoff)),
+        caplog.at_level(
+            "INFO", logger="posts.management.commands.cleanup_old_stats"
+        ),
+    ):
+        call_command("cleanup_old_stats", "--force")
+    log_text = " ".join(r.getMessage() for r in caplog.records)
+    for token in ("cutoff=", "dropped_chunks=", "orm_deleted="):
+        assert token in log_text, f"missing token: {token} in {log_text!r}"
