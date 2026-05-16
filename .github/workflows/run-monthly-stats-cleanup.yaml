@@ -1,0 +1,99 @@
+name: Monthly Stats Cleanup
+
+on:
+  workflow_dispatch:
+    inputs:
+      retention_months:
+        description: '보존 개월 수'
+        required: false
+        default: '6'
+      dry_run:
+        description: 'dry-run 여부 (true/false)'
+        required: false
+        default: 'true'
+      force:
+        description: 'KST 1~2일 day-guard 우회 (true/false)'
+        required: false
+        default: 'true'
+  schedule:
+    # UTC 1일 19:00 = KST 2일 04:00 — day-guard 가 KST day in (1, 2) 양일 허용.
+    - cron: "0 19 1 * *"
+
+jobs:
+  monthly-stats-cleanup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.13.0
+
+      - name: Install Poetry
+        uses: abatilo/actions-poetry@v2
+        with:
+          poetry-version: 1.8.4
+
+      - name: Setup a local virtual environment
+        run: |
+          poetry config virtualenvs.create true --local
+          poetry config virtualenvs.in-project true --local
+
+      - name: Define a cache for the virtual environment
+        uses: actions/cache@v4
+        with:
+          path: ./.venv
+          key: venv-${{ hashFiles('poetry.lock') }}-${{ runner.os }}
+
+      - name: Install dependencies
+        run: poetry install --with dev
+
+      - name: Create .env.prod file
+        run: |
+          echo "SECRET_KEY=${{ secrets.SECRET_KEY }}" >> .env.prod
+          echo "DEBUG=False" >> .env.prod
+          echo "DATABASE_ENGINE=${{ secrets.DATABASE_ENGINE }}" >> .env.prod
+          echo "DATABASE_NAME=${{ secrets.DATABASE_NAME }}" >> .env.prod
+          echo "POSTGRES_USER=${{ secrets.POSTGRES_USER }}" >> .env.prod
+          echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" >> .env.prod
+          echo "POSTGRES_HOST=${{ secrets.POSTGRES_HOST }}" >> .env.prod
+          echo "POSTGRES_PORT=${{ secrets.POSTGRES_PORT }}" >> .env.prod
+          echo "REDIS_HOST=${{ secrets.REDIS_HOST }}" >> .env.prod
+          echo "REDIS_PORT=${{ secrets.REDIS_PORT }}" >> .env.prod
+          echo "REDIS_PASSWORD_B64=${{ secrets.REDIS_PASSWORD_B64 }}" >> .env.prod
+          echo "REDIS_DB=${{ secrets.REDIS_DB }}" >> .env.prod
+          echo "SLACK_OPS_WEBHOOK=${{ secrets.SLACK_OPS_WEBHOOK }}" >> .env.prod
+
+      - name: Run cleanup_old_stats
+        id: cleanup
+        timeout-minutes: 30
+        env:
+          DJANGO_SETTINGS_MODULE: backoffice.settings.prod
+        run: |
+          set -e
+          ARGS="--retention-months ${{ github.event.inputs.retention_months || '6' }}"
+          if [ "${{ github.event.inputs.dry_run || 'false' }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          if [ "${{ github.event.inputs.force || 'false' }}" = "true" ]; then
+            ARGS="$ARGS --force"
+          fi
+          poetry run python manage.py cleanup_old_stats $ARGS
+
+      - name: Get Current KST Time
+        if: always()
+        run: echo "KST_TIME=$(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
+
+      - name: Send Slack Notification on Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "*Monthly Stats Cleanup*\n\n❌ *Status:* Failure\n📅 *Timestamp (KST):* ${{ env.KST_TIME }}\n🔗 *Workflow URL:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow>"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
