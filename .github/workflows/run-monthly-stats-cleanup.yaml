@@ -73,6 +73,9 @@ jobs:
         env:
           DJANGO_SETTINGS_MODULE: backoffice.settings.prod
         run: |
+          # schedule 트리거 시 github.event.inputs 가 모두 null → fallback 적용:
+          #   retention_months='6', dry_run='false' (실제 삭제), force='false'
+          # day-guard 는 KST day in (1, 2) 양일 허용이라 cron(KST 2일) 정상 진입.
           set -e
           ARGS="--retention-months ${{ github.event.inputs.retention_months || '6' }}"
           if [ "${{ github.event.inputs.dry_run || 'false' }}" = "true" ]; then

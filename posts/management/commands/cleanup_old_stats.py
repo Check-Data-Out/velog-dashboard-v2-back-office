@@ -74,7 +74,7 @@ class Command(BaseCommand):
                 )
                 cutoff_ts = cursor.fetchone()[0]
                 cursor.execute(
-                    "SELECT count(*) FROM show_chunks(%s, older_than => %s)",
+                    "SELECT count(*) FROM show_chunks(%s::regclass, older_than => %s)",
                     [HYPERTABLE_NAME, cutoff_ts],
                 )
                 chunk_count = cursor.fetchone()[0]
@@ -139,18 +139,19 @@ class Command(BaseCommand):
 
         Django 기본 autocommit 환경에서 `SET LOCAL` 이 효과를 가지려면
         명시적 트랜잭션이 필요하므로 transaction.atomic() 으로 감싼다.
+        cutoff_ts 를 먼저 산출해 drop_chunks 와 ORM 폴백이 동일 시점을 공유.
         """
         with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute("SET LOCAL statement_timeout = 0")
             cursor.execute(
-                "SELECT drop_chunks(%s, older_than => NOW() - make_interval(months => %s))",
-                [HYPERTABLE_NAME, months],
-            )
-            dropped_rows = cursor.fetchall()
-            cursor.execute(
                 "SELECT NOW() - make_interval(months => %s)", [months]
             )
             cutoff_ts = cursor.fetchone()[0]
+            cursor.execute(
+                "SELECT drop_chunks(%s::regclass, older_than => %s)",
+                [HYPERTABLE_NAME, cutoff_ts],
+            )
+            dropped_rows = cursor.fetchall()
         return len(dropped_rows), cutoff_ts
 
     def _orm_fallback(self, cutoff_ts: datetime, chunk: int) -> int:
@@ -160,7 +161,7 @@ class Command(BaseCommand):
         ).count()
         if remaining == 0:
             return 0
-        max_iterations = math.ceil(remaining / chunk) + 10
+        max_iterations = min(math.ceil(remaining / chunk) + 10, 1000)
         orm_deleted = 0
         for _ in range(max_iterations):
             ids = list(
