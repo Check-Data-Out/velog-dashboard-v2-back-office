@@ -8,7 +8,13 @@ import pytest
 from django.core.management import call_command
 from django.utils import timezone
 
+from posts.management.commands.cleanup_old_stats import Command
 from posts.models import PostDailyStatistics
+
+DROP_CHUNKS_HELPER = "posts.management.commands.cleanup_old_stats.Command._drop_chunks_and_get_cutoff"
+ORM_FALLBACK_HELPER = (
+    "posts.management.commands.cleanup_old_stats.Command._orm_fallback"
+)
 
 
 def _mock_cursor(fetchall_return=None, fetchone_return=None):
@@ -50,16 +56,14 @@ def test_invalid_args_raise_system_exit(args):
     ],
 )
 def test_day_guard_only_passes_on_kst_day_1_or_2(utc_dt, should_skip):
-    fake_cm, _ = _mock_cursor()
+    cutoff = timezone.now() - timedelta(days=180)
     with (
         patch(
             "posts.management.commands.cleanup_old_stats.timezone.now",
             return_value=utc_dt,
         ),
-        patch(
-            "posts.management.commands.cleanup_old_stats.connection.cursor",
-            return_value=fake_cm,
-        ),
+        patch(DROP_CHUNKS_HELPER, return_value=(0, cutoff)),
+        patch(ORM_FALLBACK_HELPER, return_value=0),
     ):
         out = StringIO()
         call_command("cleanup_old_stats", stdout=out)
@@ -69,16 +73,14 @@ def test_day_guard_only_passes_on_kst_day_1_or_2(utc_dt, should_skip):
 
 def test_force_bypasses_day_guard():
     # KST 16일 — guard 라면 skip 이지만 --force 는 우회해야 함
-    fake_cm, _ = _mock_cursor()
+    cutoff = timezone.now() - timedelta(days=180)
     with (
         patch(
             "posts.management.commands.cleanup_old_stats.timezone.now",
             return_value=datetime(2026, 5, 15, 19, 0, tzinfo=UTC),
         ),
-        patch(
-            "posts.management.commands.cleanup_old_stats.connection.cursor",
-            return_value=fake_cm,
-        ),
+        patch(DROP_CHUNKS_HELPER, return_value=(0, cutoff)),
+        patch(ORM_FALLBACK_HELPER, return_value=0),
     ):
         out = StringIO()
         call_command("cleanup_old_stats", "--force", stdout=out)
@@ -98,13 +100,26 @@ def test_dry_run_reports_summary_and_keeps_rows(post_stats_factory):
     assert PostDailyStatistics.objects.filter(pk=old_stats.pk).exists()
 
 
-def test_drop_chunks_called_with_ts2_signature_and_statement_timeout():
+def test_drop_chunks_helper_uses_ts2_signature_and_statement_timeout():
+    """helper 단위 검증 — call_command 거치지 않고 SQL 토큰만 확인."""
     fake_cm, fake_cursor = _mock_cursor()
     with patch(
         "posts.management.commands.cleanup_old_stats.connection.cursor",
         return_value=fake_cm,
     ):
-        call_command("cleanup_old_stats", "--force")
+        Command()._drop_chunks_and_get_cutoff(6)
     executed = [str(c.args[0]) for c in fake_cursor.execute.mock_calls]
     assert any("drop_chunks" in s and "older_than" in s for s in executed)
     assert any("statement_timeout" in s for s in executed)
+
+
+@pytest.mark.django_db
+def test_orm_fallback_deletes_rows_below_cutoff(post_stats_factory):
+    """helper mock + 실제 ORM fallback 동작 검증."""
+    old_stats = post_stats_factory(date=timezone.now() - timedelta(days=200))
+    new_stats = post_stats_factory(date=timezone.now() - timedelta(days=30))
+    cutoff = timezone.now() - timedelta(days=180)
+    with patch(DROP_CHUNKS_HELPER, return_value=(0, cutoff)):
+        call_command("cleanup_old_stats", "--force")
+    assert not PostDailyStatistics.objects.filter(pk=old_stats.pk).exists()
+    assert PostDailyStatistics.objects.filter(pk=new_stats.pk).exists()
