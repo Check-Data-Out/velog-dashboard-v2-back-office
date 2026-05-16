@@ -79,4 +79,12 @@ class Command(BaseCommand):
             )
             return
 
-        self.stdout.write("would proceed (drop_chunks impl in next phase)")
+        with connection.cursor() as cursor:
+            cursor.execute("SET LOCAL statement_timeout = 0")
+            cursor.execute(
+                "SELECT drop_chunks(%s, older_than => NOW() - make_interval(months => %s))",
+                [HYPERTABLE_NAME, months],
+            )
+            dropped_rows = cursor.fetchall()
+        dropped_chunks = len(dropped_rows)
+        self.stdout.write(f"dropped {dropped_chunks} chunks")

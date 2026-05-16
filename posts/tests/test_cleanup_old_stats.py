@@ -2,13 +2,24 @@
 
 from datetime import UTC, datetime, timedelta
 from io import StringIO
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.core.management import call_command
 from django.utils import timezone
 
 from posts.models import PostDailyStatistics
+
+
+def _mock_cursor(fetchall_return=None, fetchone_return=None):
+    """connection.cursor() 컨텍스트 매니저 mock 헬퍼."""
+    fake_cm = MagicMock()
+    fake_cursor = fake_cm.__enter__.return_value
+    fake_cursor.fetchall.return_value = fetchall_return or []
+    fake_cursor.fetchone.return_value = fetchone_return or (
+        timezone.now() - timedelta(days=180),
+    )
+    return fake_cm, fake_cursor
 
 
 @pytest.mark.parametrize(
@@ -39,9 +50,16 @@ def test_invalid_args_raise_system_exit(args):
     ],
 )
 def test_day_guard_only_passes_on_kst_day_1_or_2(utc_dt, should_skip):
-    with patch(
-        "posts.management.commands.cleanup_old_stats.timezone.now",
-        return_value=utc_dt,
+    fake_cm, _ = _mock_cursor()
+    with (
+        patch(
+            "posts.management.commands.cleanup_old_stats.timezone.now",
+            return_value=utc_dt,
+        ),
+        patch(
+            "posts.management.commands.cleanup_old_stats.connection.cursor",
+            return_value=fake_cm,
+        ),
     ):
         out = StringIO()
         call_command("cleanup_old_stats", stdout=out)
@@ -51,9 +69,16 @@ def test_day_guard_only_passes_on_kst_day_1_or_2(utc_dt, should_skip):
 
 def test_force_bypasses_day_guard():
     # KST 16일 — guard 라면 skip 이지만 --force 는 우회해야 함
-    with patch(
-        "posts.management.commands.cleanup_old_stats.timezone.now",
-        return_value=datetime(2026, 5, 15, 19, 0, tzinfo=UTC),
+    fake_cm, _ = _mock_cursor()
+    with (
+        patch(
+            "posts.management.commands.cleanup_old_stats.timezone.now",
+            return_value=datetime(2026, 5, 15, 19, 0, tzinfo=UTC),
+        ),
+        patch(
+            "posts.management.commands.cleanup_old_stats.connection.cursor",
+            return_value=fake_cm,
+        ),
     ):
         out = StringIO()
         call_command("cleanup_old_stats", "--force", stdout=out)
@@ -71,3 +96,15 @@ def test_dry_run_reports_summary_and_keeps_rows(post_stats_factory):
     assert "rows~=" in output
     # dry-run 은 실제 행을 건드리지 않아야 함 (drop_chunks 미호출의 implicit 검증)
     assert PostDailyStatistics.objects.filter(pk=old_stats.pk).exists()
+
+
+def test_drop_chunks_called_with_ts2_signature_and_statement_timeout():
+    fake_cm, fake_cursor = _mock_cursor()
+    with patch(
+        "posts.management.commands.cleanup_old_stats.connection.cursor",
+        return_value=fake_cm,
+    ):
+        call_command("cleanup_old_stats", "--force")
+    executed = [str(c.args[0]) for c in fake_cursor.execute.mock_calls]
+    assert any("drop_chunks" in s and "older_than" in s for s in executed)
+    assert any("statement_timeout" in s for s in executed)
