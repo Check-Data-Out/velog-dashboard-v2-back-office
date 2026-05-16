@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db.utils import ProgrammingError
 from django.utils import timezone
 
@@ -38,8 +39,8 @@ def _mock_cursor(fetchall_return=None, fetchone_return=None):
         ["--chunk", "-5"],
     ],
 )
-def test_invalid_args_raise_system_exit(args):
-    with pytest.raises(SystemExit):
+def test_invalid_args_raise_command_error(args):
+    with pytest.raises(CommandError):
         call_command("cleanup_old_stats", *args)
 
 
@@ -101,6 +102,7 @@ def test_dry_run_reports_summary_and_keeps_rows(post_stats_factory):
     assert PostDailyStatistics.objects.filter(pk=old_stats.pk).exists()
 
 
+@pytest.mark.django_db
 def test_drop_chunks_helper_uses_ts2_signature_and_statement_timeout():
     """helper 단위 검증 — call_command 거치지 않고 SQL 토큰만 확인."""
     fake_cm, fake_cursor = _mock_cursor()
@@ -134,21 +136,25 @@ def test_empty_table_runs_without_error():
 
 
 @pytest.mark.django_db
-def test_second_run_idempotent_after_first():
+def test_second_run_is_noop_after_cleanup(post_stats_factory):
+    """1차 실행 후 데이터 정리됨 → 2차 실행은 빈 ORM 폴백으로 정상 종료."""
+    old_stats = post_stats_factory(date=timezone.now() - timedelta(days=200))
     cutoff = timezone.now() - timedelta(days=180)
     with patch(DROP_CHUNKS_HELPER, return_value=(0, cutoff)):
         call_command("cleanup_old_stats", "--force")
+        assert not PostDailyStatistics.objects.filter(pk=old_stats.pk).exists()
+        # 2차 실행 — orm count = 0, exception 없이 종료
         call_command("cleanup_old_stats", "--force")
 
 
-def test_drop_chunks_error_raises_system_exit():
+def test_drop_chunks_error_raises_command_error():
     with patch(
         DROP_CHUNKS_HELPER,
         side_effect=ProgrammingError(
             "function drop_chunks(...) does not exist"
         ),
     ):
-        with pytest.raises(SystemExit):
+        with pytest.raises(CommandError):
             call_command("cleanup_old_stats", "--force")
 
 

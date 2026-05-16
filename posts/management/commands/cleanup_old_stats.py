@@ -6,8 +6,8 @@ import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from django.core.management.base import BaseCommand
-from django.db import connection
+from django.core.management.base import BaseCommand, CommandError
+from django.db import connection, transaction
 from django.utils import timezone
 
 from posts.models import PostDailyStatistics
@@ -52,11 +52,11 @@ class Command(BaseCommand):
         months = options["retention_months"]
         chunk = options["chunk"]
         if months <= 0:
-            raise SystemExit(
+            raise CommandError(
                 f"--retention-months must be positive (got {months})"
             )
         if chunk <= 0:
-            raise SystemExit(f"--chunk must be positive (got {chunk})")
+            raise CommandError(f"--chunk must be positive (got {chunk})")
 
         if not options["force"] and timezone.now().astimezone(KST).day not in (
             1,
@@ -93,7 +93,7 @@ class Command(BaseCommand):
             orm_deleted = self._orm_fallback(cutoff_ts, chunk)
         except Exception as e:
             logger.exception("cleanup_old_stats failed")
-            raise SystemExit(1) from e
+            raise CommandError(str(e)) from e
         elapsed = time.monotonic() - started_at
         logger.info(
             "cleanup_old_stats: cutoff=%s dropped_chunks=%d orm_deleted=%d elapsed=%.2fs",
@@ -107,8 +107,12 @@ class Command(BaseCommand):
         )
 
     def _drop_chunks_and_get_cutoff(self, months: int) -> tuple[int, datetime]:
-        """drop_chunks 호출 + cutoff_ts 산출. 동일 cursor 안에서 처리."""
-        with connection.cursor() as cursor:
+        """drop_chunks 호출 + cutoff_ts 산출.
+
+        Django 기본 autocommit 환경에서 `SET LOCAL` 이 효과를 가지려면
+        명시적 트랜잭션이 필요하므로 transaction.atomic() 으로 감싼다.
+        """
+        with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute("SET LOCAL statement_timeout = 0")
             cursor.execute(
                 "SELECT drop_chunks(%s, older_than => NOW() - make_interval(months => %s))",
@@ -145,4 +149,9 @@ class Command(BaseCommand):
                 logger.warning("orm fallback: delete returned 0 — abort")
                 break
             orm_deleted += deleted
+        else:
+            logger.warning(
+                "orm fallback: max_iterations=%d reached without drain",
+                max_iterations,
+            )
         return orm_deleted
