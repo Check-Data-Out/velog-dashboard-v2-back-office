@@ -49,6 +49,7 @@ jobs:
 
       - name: Create .env.prod file
         run: |
+          # run-daily-aggre-set*.yaml 와 동일한 secrets 구조 + Redis/Slack 보강
           echo "SECRET_KEY=${{ secrets.SECRET_KEY }}" >> .env.prod
           echo "DEBUG=False" >> .env.prod
           echo "DATABASE_ENGINE=${{ secrets.DATABASE_ENGINE }}" >> .env.prod
@@ -57,6 +58,16 @@ jobs:
           echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" >> .env.prod
           echo "POSTGRES_HOST=${{ secrets.POSTGRES_HOST }}" >> .env.prod
           echo "POSTGRES_PORT=${{ secrets.POSTGRES_PORT }}" >> .env.prod
+          echo "AES_KEY_0=${{ secrets.AES_KEY_0 }}" >> .env.prod
+          echo "AES_KEY_1=${{ secrets.AES_KEY_1 }}" >> .env.prod
+          echo "AES_KEY_2=${{ secrets.AES_KEY_2 }}" >> .env.prod
+          echo "AES_KEY_3=${{ secrets.AES_KEY_3 }}" >> .env.prod
+          echo "AES_KEY_4=${{ secrets.AES_KEY_4 }}" >> .env.prod
+          echo "AES_KEY_5=${{ secrets.AES_KEY_5 }}" >> .env.prod
+          echo "AES_KEY_6=${{ secrets.AES_KEY_6 }}" >> .env.prod
+          echo "AES_KEY_7=${{ secrets.AES_KEY_7 }}" >> .env.prod
+          echo "AES_KEY_8=${{ secrets.AES_KEY_8 }}" >> .env.prod
+          echo "AES_KEY_9=${{ secrets.AES_KEY_9 }}" >> .env.prod
           echo "REDIS_HOST=${{ secrets.REDIS_HOST }}" >> .env.prod
           echo "REDIS_PORT=${{ secrets.REDIS_PORT }}" >> .env.prod
           echo "REDIS_PASSWORD_B64=${{ secrets.REDIS_PASSWORD_B64 }}" >> .env.prod

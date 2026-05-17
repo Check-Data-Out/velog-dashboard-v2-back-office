@@ -185,7 +185,7 @@ poetry run pre-commit run --all-files
 
 `PostDailyStatistics` 의 6개월 이전 데이터를 TimescaleDB `drop_chunks` + ORM 폴백으로 강제 폐기. 매일 KST 04:00 cron 자동 실행 (`.github/workflows/run-daily-stats-cleanup.yaml`). 초기 1회는 누적 데이터로 오래 걸리나 이후는 1일치만 정리되어 빠름.
 
-운영 DB 는 Supabase 기반 PostgreSQL + TimescaleDB extension. **Session Mode (포트 5432) 또는 Direct Connection 사용 필수** — Supabase Transaction Mode(6543)에서는 `SET LOCAL` / `transaction.atomic` 동작이 보장되지 않는다.
+운영 DB 는 Supabase 기반 PostgreSQL 15 + TimescaleDB extension. **Session Mode (포트 5432) 또는 Direct Connection 사용 필수** — Transaction Mode(6543)에서는 `SET LOCAL` / `transaction.atomic` 이 보장되지 않는다. 운영 DB role 은 `run-daily-aggre-set*.yaml` 의 `POSTGRES_USER` 와 동일 (이미 매일 stats INSERT/UPDATE 권한 보유 → `drop_chunks` 도 동일 권한).
 
 ```bash
 # 로컬 dry-run
