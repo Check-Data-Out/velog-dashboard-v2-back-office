@@ -79,9 +79,8 @@ class Command(BaseCommand):
             orm_deleted = self._orm_fallback(cutoff_ts, chunk)
         except Exception as e:
             logger.exception("cleanup_old_stats failed")
-            notify_ops(
+            self._notify_ops_safely(
                 text=f"[velog-dashboard-v2] PostDailyStatistics 정리 실패: {e}",
-                cooldown_key=COOLDOWN_KEY,
                 redis_client=redis_client,
             )
             raise CommandError(str(e)) from e
@@ -93,7 +92,7 @@ class Command(BaseCommand):
             orm_deleted,
             elapsed,
         )
-        notify_ops(
+        self._notify_ops_safely(
             text=(
                 f"[velog-dashboard-v2] PostDailyStatistics 정리 완료\n"
                 f"- cutoff: {cutoff_ts.isoformat()}\n"
@@ -101,12 +100,23 @@ class Command(BaseCommand):
                 f"- orm_deleted: {orm_deleted}\n"
                 f"- elapsed: {elapsed:.2f}s"
             ),
-            cooldown_key=COOLDOWN_KEY,
             redis_client=redis_client,
         )
         self.stdout.write(
             f"dropped {dropped_chunks} chunks, {orm_deleted} orm rows"
         )
+
+    @staticmethod
+    def _notify_ops_safely(text: str, redis_client) -> None:
+        """notify_ops 가 raise 해도 배치 결과가 오염되지 않도록 best-effort 래핑."""
+        try:
+            notify_ops(
+                text=text,
+                cooldown_key=COOLDOWN_KEY,
+                redis_client=redis_client,
+            )
+        except Exception:
+            logger.warning("notify_ops failed", exc_info=True)
 
     @staticmethod
     def _safe_redis_client():

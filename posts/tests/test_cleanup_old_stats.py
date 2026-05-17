@@ -191,6 +191,23 @@ def test_orm_fallback_aborts_when_delete_returns_zero(caplog):
 
 
 @pytest.mark.django_db
+def test_notify_ops_failure_does_not_taint_batch_result(
+    quiet_external_calls, caplog
+):
+    """notify_ops 가 raise 해도 성공 정리가 실패로 끝나지 않아야 한다."""
+    cutoff = timezone.now() - timedelta(days=180)
+    quiet_external_calls.side_effect = ConnectionError("slack down")
+    with (
+        patch(DROP_CHUNKS_HELPER, return_value=(0, cutoff)),
+        caplog.at_level(
+            "WARNING", logger="posts.management.commands.cleanup_old_stats"
+        ),
+    ):
+        call_command("cleanup_old_stats")
+    assert any("notify_ops failed" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.django_db
 def test_redis_unavailable_does_not_fail_batch(monkeypatch, caplog):
     """get_redis_client 가 예외를 raise 해도 배치는 정상 종료."""
     monkeypatch.setattr(
