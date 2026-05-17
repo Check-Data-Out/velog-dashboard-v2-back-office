@@ -1,5 +1,3 @@
-"""posts 앱 공용 fixture."""
-
 import uuid
 from datetime import datetime
 

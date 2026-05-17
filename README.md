@@ -183,13 +183,15 @@ poetry run pre-commit run --all-files
 
 ### Stats 데이터 정리 (cleanup_old_stats)
 
-`PostDailyStatistics` 의 6개월 이전 데이터를 TimescaleDB `drop_chunks` + ORM 폴백으로 정리. 매월 1일 KST 04:00 cron 자동 실행 (`.github/workflows/run-monthly-stats-cleanup.yaml`).
+`PostDailyStatistics` 의 6개월 이전 데이터를 TimescaleDB `drop_chunks` + ORM 폴백으로 강제 폐기. 매일 KST 04:00 cron 자동 실행 (`.github/workflows/run-daily-stats-cleanup.yaml`). 초기 1회는 누적 데이터로 오래 걸리나 이후는 1일치만 정리되어 빠름.
+
+운영 DB 는 Supabase 기반 PostgreSQL + TimescaleDB extension. **Session Mode (포트 5432) 또는 Direct Connection 사용 필수** — Supabase Transaction Mode(6543)에서는 `SET LOCAL` / `transaction.atomic` 동작이 보장되지 않는다.
 
 ```bash
 # 로컬 dry-run
-poetry run python manage.py cleanup_old_stats --dry-run --force
+poetry run python manage.py cleanup_old_stats --dry-run
 # 운영 수동 실행 (workflow_dispatch)
-gh workflow run "Monthly Stats Cleanup" -f retention_months=6 -f dry_run=true -f force=true
+gh workflow run "Daily Stats Cleanup" -f retention_months=6 -f dry_run=true
 ```
 
 ---

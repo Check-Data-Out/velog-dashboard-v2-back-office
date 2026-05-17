@@ -1,6 +1,4 @@
-"""cleanup_old_stats management command 테스트."""
-
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from io import StringIO
 from unittest.mock import MagicMock, patch
 
@@ -59,56 +57,11 @@ def test_invalid_args_raise_command_error(args):
         call_command("cleanup_old_stats", *args)
 
 
-@pytest.mark.parametrize(
-    "utc_dt, should_skip",
-    [
-        # KST 16일 03:00 → skip
-        (datetime(2026, 5, 15, 19, 0, tzinfo=UTC), True),
-        # KST 1일 03:00 → 통과 (workflow_dispatch 시나리오)
-        (datetime(2026, 5, 31, 18, 0, tzinfo=UTC), False),
-        # KST 2일 04:00 (cron 발화) → 통과
-        (datetime(2026, 6, 1, 19, 0, tzinfo=UTC), False),
-        # KST 3일 03:00 → skip
-        (datetime(2026, 6, 2, 18, 0, tzinfo=UTC), True),
-    ],
-)
-def test_day_guard_only_passes_on_kst_day_1_or_2(utc_dt, should_skip):
-    cutoff = timezone.now() - timedelta(days=180)
-    with (
-        patch(
-            "posts.management.commands.cleanup_old_stats.timezone.now",
-            return_value=utc_dt,
-        ),
-        patch(DROP_CHUNKS_HELPER, return_value=(0, cutoff)),
-        patch(ORM_FALLBACK_HELPER, return_value=0),
-    ):
-        out = StringIO()
-        call_command("cleanup_old_stats", stdout=out)
-        skipped = "skipping" in out.getvalue().lower()
-        assert skipped is should_skip
-
-
-def test_force_bypasses_day_guard():
-    # KST 16일 — guard 라면 skip 이지만 --force 는 우회해야 함
-    cutoff = timezone.now() - timedelta(days=180)
-    with (
-        patch(
-            "posts.management.commands.cleanup_old_stats.timezone.now",
-            return_value=datetime(2026, 5, 15, 19, 0, tzinfo=UTC),
-        ),
-        patch(DROP_CHUNKS_HELPER, return_value=(0, cutoff)),
-        patch(ORM_FALLBACK_HELPER, return_value=0),
-    ):
-        out = StringIO()
-        call_command("cleanup_old_stats", "--force", stdout=out)
-        assert "skipping" not in out.getvalue().lower()
-
-
 @pytest.mark.django_db
 def test_dry_run_reports_summary_and_keeps_rows(post_stats_factory):
     old_stats = post_stats_factory(date=timezone.now() - timedelta(days=200))
     out = StringIO()
-    call_command("cleanup_old_stats", "--dry-run", "--force", stdout=out)
+    call_command("cleanup_old_stats", "--dry-run", stdout=out)
     output = out.getvalue()
     assert "cutoff=" in output
     assert "chunks=" in output
@@ -138,7 +91,7 @@ def test_orm_fallback_deletes_rows_below_cutoff(post_stats_factory):
     new_stats = post_stats_factory(date=timezone.now() - timedelta(days=30))
     cutoff = timezone.now() - timedelta(days=180)
     with patch(DROP_CHUNKS_HELPER, return_value=(0, cutoff)):
-        call_command("cleanup_old_stats", "--force")
+        call_command("cleanup_old_stats")
     assert not PostDailyStatistics.objects.filter(pk=old_stats.pk).exists()
     assert PostDailyStatistics.objects.filter(pk=new_stats.pk).exists()
 
@@ -147,7 +100,7 @@ def test_orm_fallback_deletes_rows_below_cutoff(post_stats_factory):
 def test_empty_table_runs_without_error():
     cutoff = timezone.now() - timedelta(days=180)
     with patch(DROP_CHUNKS_HELPER, return_value=(0, cutoff)):
-        call_command("cleanup_old_stats", "--force")
+        call_command("cleanup_old_stats")
 
 
 @pytest.mark.django_db
@@ -156,10 +109,10 @@ def test_second_run_is_noop_after_cleanup(post_stats_factory):
     old_stats = post_stats_factory(date=timezone.now() - timedelta(days=200))
     cutoff = timezone.now() - timedelta(days=180)
     with patch(DROP_CHUNKS_HELPER, return_value=(0, cutoff)):
-        call_command("cleanup_old_stats", "--force")
+        call_command("cleanup_old_stats")
         assert not PostDailyStatistics.objects.filter(pk=old_stats.pk).exists()
         # 2차 실행 — orm count = 0, exception 없이 종료
-        call_command("cleanup_old_stats", "--force")
+        call_command("cleanup_old_stats")
 
 
 def test_drop_chunks_error_raises_command_error_and_notifies_failure(
@@ -172,7 +125,7 @@ def test_drop_chunks_error_raises_command_error_and_notifies_failure(
         ),
     ):
         with pytest.raises(CommandError):
-            call_command("cleanup_old_stats", "--force")
+            call_command("cleanup_old_stats")
     assert quiet_external_calls.called
     assert "실패" in quiet_external_calls.call_args.kwargs["text"]
 
@@ -181,7 +134,7 @@ def test_drop_chunks_error_raises_command_error_and_notifies_failure(
 def test_notify_ops_called_on_success(quiet_external_calls):
     cutoff = timezone.now() - timedelta(days=180)
     with patch(DROP_CHUNKS_HELPER, return_value=(0, cutoff)):
-        call_command("cleanup_old_stats", "--force")
+        call_command("cleanup_old_stats")
     assert quiet_external_calls.called
     assert (
         quiet_external_calls.call_args.kwargs["cooldown_key"]
@@ -195,7 +148,7 @@ def test_notify_ops_not_called_in_dry_run(
     post_stats_factory, quiet_external_calls
 ):
     post_stats_factory(date=timezone.now() - timedelta(days=200))
-    call_command("cleanup_old_stats", "--dry-run", "--force")
+    call_command("cleanup_old_stats", "--dry-run")
     assert not quiet_external_calls.called
 
 
@@ -251,7 +204,7 @@ def test_redis_unavailable_does_not_fail_batch(monkeypatch, caplog):
             "WARNING", logger="posts.management.commands.cleanup_old_stats"
         ),
     ):
-        call_command("cleanup_old_stats", "--force")
+        call_command("cleanup_old_stats")
     assert any("redis" in r.getMessage().lower() for r in caplog.records)
 
 
@@ -264,7 +217,7 @@ def test_summary_log_contains_key_fields(caplog):
             "INFO", logger="posts.management.commands.cleanup_old_stats"
         ),
     ):
-        call_command("cleanup_old_stats", "--force")
+        call_command("cleanup_old_stats")
     log_text = " ".join(r.getMessage() for r in caplog.records)
     for token in ("cutoff=", "dropped_chunks=", "orm_deleted="):
         assert token in log_text, f"missing token: {token} in {log_text!r}"

@@ -1,4 +1,4 @@
-name: Monthly Stats Cleanup
+name: Daily Stats Cleanup
 
 on:
   workflow_dispatch:
@@ -11,16 +11,12 @@ on:
         description: 'dry-run 여부 (true/false)'
         required: false
         default: 'true'
-      force:
-        description: 'KST 1~2일 day-guard 우회 (true/false)'
-        required: false
-        default: 'true'
   schedule:
-    # UTC 1일 19:00 = KST 2일 04:00 — day-guard 가 KST day in (1, 2) 양일 허용.
-    - cron: "0 19 1 * *"
+    # 매일 UTC 19:00 = KST 04:00 — 한국 사용자가 가장 적게 쓰는 시간대.
+    - cron: "0 19 * * *"
 
 jobs:
-  monthly-stats-cleanup:
+  daily-stats-cleanup:
     runs-on: ubuntu-latest
 
     steps:
@@ -73,16 +69,12 @@ jobs:
         env:
           DJANGO_SETTINGS_MODULE: backoffice.settings.prod
         run: |
-          # schedule 트리거 시 github.event.inputs 가 모두 null → fallback 적용:
-          #   retention_months='6', dry_run='false' (실제 삭제), force='false'
-          # day-guard 는 KST day in (1, 2) 양일 허용이라 cron(KST 2일) 정상 진입.
+          # schedule 트리거 시 inputs null → fallback: retention_months='6', dry_run='false' (실제 삭제).
+          # 초기 1회는 누적 데이터 폐기로 오래 걸릴 수 있음. 이후 매일 1일치만 정리되어 빠름.
           set -e
           ARGS="--retention-months ${{ github.event.inputs.retention_months || '6' }}"
           if [ "${{ github.event.inputs.dry_run || 'false' }}" = "true" ]; then
             ARGS="$ARGS --dry-run"
-          fi
-          if [ "${{ github.event.inputs.force || 'false' }}" = "true" ]; then
-            ARGS="$ARGS --force"
           fi
           poetry run python manage.py cleanup_old_stats $ARGS
 
@@ -96,7 +88,7 @@ jobs:
         with:
           payload: |
             {
-              "text": "*Monthly Stats Cleanup*\n\n❌ *Status:* Failure\n📅 *Timestamp (KST):* ${{ env.KST_TIME }}\n🔗 *Workflow URL:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow>"
+              "text": "*Daily Stats Cleanup*\n\n❌ *Status:* Failure\n📅 *Timestamp (KST):* ${{ env.KST_TIME }}\n🔗 *Workflow URL:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow>"
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

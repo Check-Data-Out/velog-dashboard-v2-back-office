@@ -1,14 +1,10 @@
-"""PostDailyStatistics 의 6개월 이전 데이터를 drop_chunks 로 정리하는 배치."""
-
 import logging
 import math
 import time
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
-from django.utils import timezone
 
 from modules.noti.slack_client import notify_ops
 from modules.redis.client import get_redis_client
@@ -19,7 +15,6 @@ logger = logging.getLogger(__name__)
 RETENTION_MONTHS_DEFAULT = 6
 ORM_CHUNK_DEFAULT = 5000
 COOLDOWN_KEY = "cleanup-old-stats"
-KST = ZoneInfo("Asia/Seoul")
 HYPERTABLE_NAME = "posts_postdailystatistics"
 
 
@@ -44,11 +39,6 @@ class Command(BaseCommand):
             action="store_true",
             help="삭제 없이 대상만 출력",
         )
-        parser.add_argument(
-            "--force",
-            action="store_true",
-            help="KST 1~2일 day-guard 우회 (수동 실행 전용)",
-        )
 
     def handle(self, *args, **options) -> None:
         months = options["retention_months"]
@@ -59,13 +49,6 @@ class Command(BaseCommand):
             )
         if chunk <= 0:
             raise CommandError(f"--chunk must be positive (got {chunk})")
-
-        if not options["force"] and timezone.now().astimezone(KST).day not in (
-            1,
-            2,
-        ):
-            self.stdout.write("not the 1st/2nd of month KST, skipping")
-            return
 
         if options["dry_run"]:
             with connection.cursor() as cursor:
