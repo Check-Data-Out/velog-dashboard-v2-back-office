@@ -1,5 +1,6 @@
 import logging
 import math
+import os
 import time
 from datetime import datetime
 
@@ -113,7 +114,14 @@ class Command(BaseCommand):
 
     @staticmethod
     def _safe_redis_client():
-        """Redis 미가용 시 워닝만 남기고 None 반환 (배치는 계속)."""
+        """Slack cooldown 용 Redis 가 명시 설정된 경우에만 연결한다."""
+        if not os.environ.get("SLACK_OPS_WEBHOOK", "").strip():
+            logger.info("SLACK_OPS_WEBHOOK not set; skipping Redis cooldown")
+            return None
+        redis_host = os.environ.get("REDIS_HOST")
+        if redis_host is not None and not redis_host.strip():
+            logger.info("REDIS_HOST not set; skipping Redis cooldown")
+            return None
         try:
             return get_redis_client()
         except Exception as e:
@@ -148,7 +156,7 @@ class Command(BaseCommand):
         except DatabaseError as e:
             if not self._is_optional_timescale_error(e):
                 raise
-            logger.warning(
+            logger.info(
                 "show_chunks unavailable for %s; falling back to ORM count: %s",
                 HYPERTABLE_NAME,
                 e,
@@ -173,7 +181,7 @@ class Command(BaseCommand):
         except DatabaseError as e:
             if not self._is_optional_timescale_error(e):
                 raise
-            logger.warning(
+            logger.info(
                 "drop_chunks unavailable for %s; falling back to ORM delete: %s",
                 HYPERTABLE_NAME,
                 e,

@@ -1,3 +1,4 @@
+import logging
 from contextlib import nullcontext
 from datetime import timedelta
 from io import StringIO
@@ -120,7 +121,7 @@ def test_drop_chunks_falls_back_when_table_is_not_hypertable(caplog):
             return_value=fake_cm,
         ),
         caplog.at_level(
-            "WARNING", logger="posts.management.commands.cleanup_old_stats"
+            "INFO", logger="posts.management.commands.cleanup_old_stats"
         ),
     ):
         dropped_chunks, result_cutoff = Command()._drop_chunks_and_get_cutoff(
@@ -130,6 +131,7 @@ def test_drop_chunks_falls_back_when_table_is_not_hypertable(caplog):
     assert dropped_chunks == 0
     assert result_cutoff == cutoff
     assert any("not a hypertable" in r.getMessage() for r in caplog.records)
+    assert all(r.levelno < logging.WARNING for r in caplog.records)
 
 
 @pytest.mark.django_db
@@ -214,6 +216,33 @@ def test_notify_ops_not_called_in_dry_run(
     assert not quiet_external_calls.called
 
 
+def test_safe_redis_client_skips_when_ops_webhook_is_missing(monkeypatch):
+    """Slack webhook 이 없으면 cooldown 용 Redis 접속도 시도하지 않는다."""
+    get_redis_mock = MagicMock(side_effect=ConnectionError("redis down"))
+    monkeypatch.delenv("SLACK_OPS_WEBHOOK", raising=False)
+    monkeypatch.setattr(
+        "posts.management.commands.cleanup_old_stats.get_redis_client",
+        get_redis_mock,
+    )
+
+    assert Command()._safe_redis_client() is None
+    get_redis_mock.assert_not_called()
+
+
+def test_safe_redis_client_skips_when_redis_host_is_blank(monkeypatch):
+    """GitHub Actions 에서 REDIS_HOST='' 이면 ':6379' 접속 워닝을 만들지 않는다."""
+    get_redis_mock = MagicMock(side_effect=ConnectionError("redis down"))
+    monkeypatch.setenv("SLACK_OPS_WEBHOOK", "https://hooks.slack.example/test")
+    monkeypatch.setenv("REDIS_HOST", "")
+    monkeypatch.setattr(
+        "posts.management.commands.cleanup_old_stats.get_redis_client",
+        get_redis_mock,
+    )
+
+    assert Command()._safe_redis_client() is None
+    get_redis_mock.assert_not_called()
+
+
 def test_default_retention_months_is_6():
     """AC-2 — `--retention-months` 기본값 6."""
     cmd = Command()
@@ -271,7 +300,9 @@ def test_notify_ops_failure_does_not_taint_batch_result(
 
 @pytest.mark.django_db
 def test_redis_unavailable_does_not_fail_batch(monkeypatch, caplog):
-    """get_redis_client 가 예외를 raise 해도 배치는 정상 종료."""
+    """Slack cooldown Redis 가 설정됐지만 장애여도 배치는 정상 종료."""
+    monkeypatch.setenv("SLACK_OPS_WEBHOOK", "https://hooks.slack.example/test")
+    monkeypatch.setenv("REDIS_HOST", "redis.example")
     monkeypatch.setattr(
         "posts.management.commands.cleanup_old_stats.get_redis_client",
         MagicMock(side_effect=ConnectionError("redis down")),
