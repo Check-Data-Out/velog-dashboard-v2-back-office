@@ -82,6 +82,8 @@ class PostAdmin(admin.ModelAdmin):
 
 @admin.register(PostDailyStatistics)
 class PostDailyStatisticsAdmin(admin.ModelAdmin):
+    """6개월 이전 데이터는 매월 1일 KST 04:00 cleanup_old_stats 배치가 자동 정리."""
+
     list_display = [
         "id",
         "post_title",

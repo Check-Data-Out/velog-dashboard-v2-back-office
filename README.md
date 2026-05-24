@@ -181,6 +181,19 @@ poetry run pre-commit run --all-files
 
 외부 producer(velog-dashboard 웹) 가 보낸 메시지는 필요한 신규 필드(`requestId`, `enqueuedAt`, `reclaimedCount`, `requestedBy`, `processingStartedAt`) 가 누락되어 있어도 consumer 의 `ensure_envelope` 가 자동 보강한다. 외부 변경 불필요.
 
+### Stats 데이터 정리 (cleanup_old_stats)
+
+`PostDailyStatistics` 의 6개월 이전 데이터를 TimescaleDB `drop_chunks` + ORM 폴백으로 강제 폐기. 매일 KST 04:00 cron 자동 실행 (`.github/workflows/run-daily-stats-cleanup.yaml`). 초기 1회는 누적 데이터로 오래 걸리나 이후는 1일치만 정리되어 빠름.
+
+운영 DB 는 Supabase 기반 PostgreSQL 15 + TimescaleDB extension. **Session Mode (포트 5432) 또는 Direct Connection 사용 필수** — Transaction Mode(6543)에서는 `SET LOCAL` / `transaction.atomic` 이 보장되지 않는다. 운영 DB role 은 `run-daily-aggre-set*.yaml` 의 `POSTGRES_USER` 와 동일 (이미 매일 stats INSERT/UPDATE 권한 보유 → `drop_chunks` 도 동일 권한).
+
+```bash
+# 로컬 dry-run
+poetry run python manage.py cleanup_old_stats --dry-run
+# 운영 수동 실행 (workflow_dispatch)
+gh workflow run "Daily Stats Cleanup" -f retention_months=6 -f dry_run=true
+```
+
 ---
 
 ## Runserver
