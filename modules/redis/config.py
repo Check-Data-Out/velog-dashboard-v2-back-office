@@ -5,6 +5,13 @@ import environ
 env = environ.Env()
 
 
+def _env_int(name: str, default: int) -> int:
+    value = env(name, default=None)
+    if value in (None, ""):
+        return default
+    return int(value)
+
+
 def _resolve_password() -> str:
     # django-environ 은 .env 파싱 시 `#` 이후를 주석으로 잘라버리므로,
     # `#` 이 포함된 비밀번호는 REDIS_PASSWORD_B64 (base64) 로 제공한다.
@@ -21,9 +28,9 @@ class RedisConfig:
     """Redis configuration for queue client/consumer/monitor."""
 
     HOST = env("REDIS_HOST", default="localhost")
-    PORT = env.int("REDIS_PORT", default=6379)
+    PORT = _env_int("REDIS_PORT", default=6379)
     PASSWORD = _resolve_password()
-    DB = env.int("REDIS_DB", default=0)
+    DB = _env_int("REDIS_DB", default=0)
 
     # Queue names (단일 소비자 + pending/processing/DLQ 3종)
     QUEUE_STATS_REFRESH = "vd2:queue:stats-refresh"
@@ -36,13 +43,13 @@ class RedisConfig:
     RETRY_BACKOFF_BASE = 2  # exponential backoff base (seconds)
 
     # DLQ 크기 제한 (초과 시 오래된 것부터 삭제)
-    MAX_FAILED_QUEUE_SIZE = env.int(
+    MAX_FAILED_QUEUE_SIZE = _env_int(
         "REDIS_MAX_FAILED_QUEUE_SIZE", default=10000
     )
 
     # Reclaimer — processing 큐 stuck 메시지 복구 설정
-    RECLAIM_VISIBILITY_TIMEOUT_SEC = env.int(
+    RECLAIM_VISIBILITY_TIMEOUT_SEC = _env_int(
         "RECLAIM_VISIBILITY_TIMEOUT_SEC", default=600
     )
-    RECLAIM_INTERVAL_SEC = env.int("RECLAIM_INTERVAL_SEC", default=60)
-    RECLAIM_MAX_RECLAIMS = env.int("RECLAIM_MAX_RECLAIMS", default=3)
+    RECLAIM_INTERVAL_SEC = _env_int("RECLAIM_INTERVAL_SEC", default=60)
+    RECLAIM_MAX_RECLAIMS = _env_int("RECLAIM_MAX_RECLAIMS", default=3)
