@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from datetime import timedelta
 from io import StringIO
 from unittest.mock import MagicMock, patch
@@ -5,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.db.utils import ProgrammingError
+from django.db.utils import DatabaseError, ProgrammingError
 from django.utils import timezone
 
 from posts.management.commands.cleanup_old_stats import Command
@@ -68,6 +69,67 @@ def test_dry_run_reports_summary_and_keeps_rows(post_stats_factory):
     assert "rows~=" in output
     # dry-run 은 실제 행을 건드리지 않아야 함 (drop_chunks 미호출의 implicit 검증)
     assert PostDailyStatistics.objects.filter(pk=old_stats.pk).exists()
+
+
+def test_dry_run_falls_back_to_orm_count_when_table_is_not_hypertable():
+    """Supabase 일반 테이블에서는 show_chunks 실패를 rows 카운트로 대체한다."""
+    cutoff = timezone.now() - timedelta(days=180)
+    fake_cm, fake_cursor = _mock_cursor(fetchone_return=(cutoff,))
+    fake_cursor.execute.side_effect = [
+        None,
+        DatabaseError(
+            '"posts_postdailystatistics" is not a hypertable or a continuous aggregate'
+        ),
+    ]
+    with (
+        patch(
+            "posts.management.commands.cleanup_old_stats.connection.cursor",
+            return_value=fake_cm,
+        ),
+        patch(
+            "posts.management.commands.cleanup_old_stats.PostDailyStatistics.objects"
+        ) as mock_objects,
+    ):
+        mock_objects.filter.return_value.count.return_value = 12
+        out = StringIO()
+        call_command("cleanup_old_stats", "--dry-run", stdout=out)
+
+    output = out.getvalue()
+    assert "chunks=0" in output
+    assert "rows~=12" in output
+
+
+def test_drop_chunks_falls_back_when_table_is_not_hypertable(caplog):
+    """Supabase 일반 테이블에서는 drop_chunks 실패 후 ORM fallback 이 실행돼야 한다."""
+    cutoff = timezone.now() - timedelta(days=180)
+    fake_cm, fake_cursor = _mock_cursor(fetchone_return=(cutoff,))
+    fake_cursor.execute.side_effect = [
+        None,
+        None,
+        DatabaseError(
+            '"posts_postdailystatistics" is not a hypertable or a continuous aggregate'
+        ),
+    ]
+    with (
+        patch(
+            "posts.management.commands.cleanup_old_stats.transaction.atomic",
+            return_value=nullcontext(),
+        ),
+        patch(
+            "posts.management.commands.cleanup_old_stats.connection.cursor",
+            return_value=fake_cm,
+        ),
+        caplog.at_level(
+            "WARNING", logger="posts.management.commands.cleanup_old_stats"
+        ),
+    ):
+        dropped_chunks, result_cutoff = Command()._drop_chunks_and_get_cutoff(
+            6
+        )
+
+    assert dropped_chunks == 0
+    assert result_cutoff == cutoff
+    assert any("not a hypertable" in r.getMessage() for r in caplog.records)
 
 
 @pytest.mark.django_db

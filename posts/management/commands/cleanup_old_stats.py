@@ -5,6 +5,7 @@ from datetime import datetime
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
+from django.db.utils import DatabaseError
 
 from modules.noti.slack_client import notify_ops
 from modules.redis.client import get_redis_client
@@ -51,16 +52,8 @@ class Command(BaseCommand):
             raise CommandError(f"--chunk must be positive (got {chunk})")
 
         if options["dry_run"]:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT NOW() - make_interval(months => %s)", [months]
-                )
-                cutoff_ts = cursor.fetchone()[0]
-                cursor.execute(
-                    "SELECT count(*) FROM show_chunks(%s::regclass, older_than => %s)",
-                    [HYPERTABLE_NAME, cutoff_ts],
-                )
-                chunk_count = cursor.fetchone()[0]
+            cutoff_ts = self._get_cutoff(months)
+            chunk_count = self._count_chunks_safely(cutoff_ts)
             row_count = PostDailyStatistics.objects.filter(
                 date__lt=cutoff_ts
             ).count()
@@ -127,24 +120,65 @@ class Command(BaseCommand):
             logger.warning("redis unavailable: %s", e)
             return None
 
-    def _drop_chunks_and_get_cutoff(self, months: int) -> tuple[int, datetime]:
-        """drop_chunks 호출 + cutoff_ts 산출.
+    @staticmethod
+    def _is_optional_timescale_error(error: Exception) -> bool:
+        message = str(error).lower()
+        return (
+            "not a hypertable or a continuous aggregate" in message
+            or "function show_chunks" in message
+            or "function drop_chunks" in message
+        )
 
-        Django 기본 autocommit 환경에서 `SET LOCAL` 이 효과를 가지려면
-        명시적 트랜잭션이 필요하므로 transaction.atomic() 으로 감싼다.
-        cutoff_ts 를 먼저 산출해 drop_chunks 와 ORM 폴백이 동일 시점을 공유.
-        """
-        with transaction.atomic(), connection.cursor() as cursor:
-            cursor.execute("SET LOCAL statement_timeout = 0")
+    @staticmethod
+    def _get_cutoff(months: int) -> datetime:
+        with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT NOW() - make_interval(months => %s)", [months]
             )
-            cutoff_ts = cursor.fetchone()[0]
-            cursor.execute(
-                "SELECT drop_chunks(%s::regclass, older_than => %s)",
-                [HYPERTABLE_NAME, cutoff_ts],
+            return cursor.fetchone()[0]
+
+    def _count_chunks_safely(self, cutoff_ts: datetime) -> int:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT count(*) FROM show_chunks(%s::regclass, older_than => %s)",
+                    [HYPERTABLE_NAME, cutoff_ts],
+                )
+                return cursor.fetchone()[0]
+        except DatabaseError as e:
+            if not self._is_optional_timescale_error(e):
+                raise
+            logger.warning(
+                "show_chunks unavailable for %s; falling back to ORM count: %s",
+                HYPERTABLE_NAME,
+                e,
             )
-            dropped_rows = cursor.fetchall()
+            return 0
+
+    def _drop_chunks_and_get_cutoff(self, months: int) -> tuple[int, datetime]:
+        """drop_chunks 호출 + cutoff_ts 산출.
+
+        Supabase 운영 DB처럼 일반 테이블이면 TimescaleDB 전용 정리를
+        건너뛰고 같은 cutoff 로 ORM fallback 을 계속 실행한다.
+        """
+        cutoff_ts = self._get_cutoff(months)
+        try:
+            with transaction.atomic(), connection.cursor() as cursor:
+                cursor.execute("SET LOCAL statement_timeout = 0")
+                cursor.execute(
+                    "SELECT drop_chunks(%s::regclass, older_than => %s)",
+                    [HYPERTABLE_NAME, cutoff_ts],
+                )
+                dropped_rows = cursor.fetchall()
+        except DatabaseError as e:
+            if not self._is_optional_timescale_error(e):
+                raise
+            logger.warning(
+                "drop_chunks unavailable for %s; falling back to ORM delete: %s",
+                HYPERTABLE_NAME,
+                e,
+            )
+            return 0, cutoff_ts
         return len(dropped_rows), cutoff_ts
 
     def _orm_fallback(self, cutoff_ts: datetime, chunk: int) -> int:
