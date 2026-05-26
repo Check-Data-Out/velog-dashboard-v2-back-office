@@ -70,6 +70,7 @@ jobs:
         timeout-minutes: 48
         env:
           DJANGO_SETTINGS_MODULE: backoffice.settings.prod
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
         run: |
           set -e
           poetry run python ./insight/tasks/weekly_newsletter_batch.py

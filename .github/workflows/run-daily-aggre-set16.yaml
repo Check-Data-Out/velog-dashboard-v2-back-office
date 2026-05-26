@@ -72,6 +72,7 @@ jobs:
         timeout-minutes: 48
         env:
           DJANGO_SETTINGS_MODULE: backoffice.settings.prod
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
         run: |
           set -e
           poetry run python scraping/aggregate_batch.py --min-group ${{ github.event.inputs.min_group || '751' }} --max-group ${{ github.event.inputs.max_group || '800' }}

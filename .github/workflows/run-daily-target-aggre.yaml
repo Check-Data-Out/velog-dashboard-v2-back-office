@@ -61,6 +61,7 @@ jobs:
         timeout-minutes: 55
         env:
           DJANGO_SETTINGS_MODULE: backoffice.settings.prod
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
         run: |
           set -e
           poetry run python scraping/aggregate_target_batch.py

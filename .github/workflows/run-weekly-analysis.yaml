@@ -67,6 +67,7 @@ jobs:
         timeout-minutes: 10
         env:
           DJANGO_SETTINGS_MODULE: backoffice.settings.prod
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
         run: |
           set -e
           poetry run python ./insight/tasks/weekly_trend_analysis.py
@@ -76,6 +77,7 @@ jobs:
         timeout-minutes: 40
         env:
           DJANGO_SETTINGS_MODULE: backoffice.settings.prod
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
         run: |
           set -e
           poetry run python ./insight/tasks/weekly_user_trend_analysis.py

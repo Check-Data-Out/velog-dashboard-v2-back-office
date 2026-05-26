@@ -79,6 +79,7 @@ jobs:
         timeout-minutes: 30
         env:
           DJANGO_SETTINGS_MODULE: backoffice.settings.prod
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
         run: |
           # schedule 트리거 시 inputs null → fallback: retention_months='6', dry_run='false' (실제 삭제).
           # 초기 1회는 누적 데이터 폐기로 오래 걸릴 수 있음. 이후 매일 1일치만 정리되어 빠름.
