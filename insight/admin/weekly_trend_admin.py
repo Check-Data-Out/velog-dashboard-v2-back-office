@@ -5,7 +5,7 @@ from django.template.loader import render_to_string
 from django.utils.safestring import mark_safe
 
 from insight.admin.base_admin import BaseTrendAdminMixin
-from insight.models import WeeklyTrend, WeeklyTrendInsight
+from insight.models import REVIEW_APPROVED, WeeklyTrend, WeeklyTrendInsight
 from utils.utils import from_dict
 
 
@@ -15,11 +15,12 @@ class WeeklyTrendAdmin(admin.ModelAdmin, BaseTrendAdminMixin):
         "id",
         "week_range",
         "summarize_insight",
+        "review_status",
         "is_processed_colored",
         "processed_at_formatted",
         "created_at",
     )
-    list_filter = ("is_processed", "week_start_date")
+    list_filter = ("review_status", "is_processed", "week_start_date")
     search_fields = ("insight",)
     readonly_fields = (
         "processed_at",
@@ -50,12 +51,18 @@ class WeeklyTrendAdmin(admin.ModelAdmin, BaseTrendAdminMixin):
         (
             "처리 상태",
             {
-                "fields": ("is_processed", "processed_at"),
+                "fields": ("review_status", "is_processed", "processed_at"),
             },
         ),
     )
 
-    actions = ["mark_as_processed"]
+    actions = ["mark_as_processed", "mark_as_approved"]
+
+    @admin.action(description="검수 승인 (발송 허용)")
+    def mark_as_approved(self, request, queryset):
+        """검수 보류(needs_review) 주차를 승인해 발송 가능 상태로 전환한다."""
+        updated = queryset.update(review_status=REVIEW_APPROVED)
+        self.message_user(request, f"{updated}건 검수 승인 처리되었습니다.")
 
     @admin.display(description="인사이트 요약")
     def summarize_insight(self, obj: WeeklyTrend):
