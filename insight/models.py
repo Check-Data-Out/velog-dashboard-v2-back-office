@@ -151,3 +151,39 @@ class UserWeeklyTrend(TimeStampedModel):
 
     def __str__(self):
         return f"{self.user.email} 주간 인사이트 ({self.week_start_date} ~ {self.week_end_date})"
+
+
+LABEL_REJECTED = "rejected"
+LABEL_APPROVED = "approved"
+LABEL_ESCAPED = "escaped"
+LABEL_DECISION_CHOICES = [
+    (LABEL_REJECTED, "검수에서 제거"),
+    (LABEL_APPROVED, "검수 승인"),
+    (LABEL_ESCAPED, "통과 후 스팸 판명"),
+]
+
+
+class FilterLabel(TimeStampedModel):
+    """광고 필터 사람 게이트 결정/escaped 판명 라벨.
+
+    audit 추적과 플라이휠(렉시콘·참조셋 보강) 시드로 사용한다.
+    """
+
+    slug = models.CharField(max_length=500, verbose_name="글 slug")
+    decision = models.CharField(
+        max_length=20,
+        choices=LABEL_DECISION_CHOICES,
+        verbose_name="결정",
+    )
+    score = models.FloatField(default=0.0, verbose_name="필터 점수")
+    reason = models.TextField(blank=True, default="", verbose_name="사유")
+    decided_by = models.CharField(
+        max_length=100, blank=True, default="", verbose_name="결정자"
+    )
+
+    class Meta:
+        verbose_name = "광고 필터 라벨"
+        verbose_name_plural = "광고 필터 라벨 목록"
+
+    def __str__(self):
+        return f"[{self.decision}] {self.slug}"
