@@ -23,6 +23,24 @@ class TestWeeklyTrendFilter:
 
         assert survivors == [dev]
 
+    def test_borderline_post_sets_needs_review(self, analyzer):
+        """borderline 글이 있으면 검수 필요 플래그가 선다(발송 전 hold 유도)."""
+        borderline = _post("오늘 날씨가 좋아서 산책을 다녀왔습니다", "일상")
+
+        analyzer._filter_ad_posts([borderline])
+
+        assert analyzer.needs_review is True
+
+    def test_clean_dev_post_does_not_need_review(self, analyzer):
+        """명확한 개발 글만 있으면 검수 플래그가 서지 않는다."""
+        dev = _post(
+            "리액트 서버 배포 api 도커 구현 테스트 자동화", "개발", ["react"]
+        )
+
+        analyzer._filter_ad_posts([dev])
+
+        assert analyzer.needs_review is False
+
     @pytest.mark.asyncio
     async def test_all_dropped_yields_empty_insight(self, analyzer):
         """전량 광고로 판정되면 크래시 없이 빈 인사이트를 반환한다."""

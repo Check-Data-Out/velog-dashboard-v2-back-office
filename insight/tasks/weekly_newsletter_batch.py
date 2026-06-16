@@ -21,6 +21,7 @@ from django.db import transaction
 from django.template.loader import render_to_string
 
 from insight.models import (
+    SENDABLE_REVIEW_STATUSES,
     UserWeeklyTrend,
     WeeklyTrend,
     WeeklyTrendInsight,
@@ -111,17 +112,27 @@ class WeeklyNewsletterBatch:
             logger.error(f"Failed to get target user chunks: {e}")
             raise
 
+    def _select_weekly_trend(self) -> dict | None:
+        """발송할 WeeklyTrend 1건 선택.
+
+        검수 보류(needs_review)는 제외하고 최신 주차부터 고른다. 정렬 없이
+        is_processed=False 만 보면 묵은 보류 row 가 신주 발송을 잠식한다(데드락).
+        """
+        return (
+            WeeklyTrend.objects.filter(
+                week_end_date__gte=self.before_a_week,
+                is_processed=False,
+                review_status__in=SENDABLE_REVIEW_STATUSES,
+            )
+            .order_by("-week_end_date")
+            .values("id", "insight", "week_start_date", "week_end_date")
+            .first()
+        )
+
     def _get_weekly_trend_html(self) -> str:
         """공통 WeeklyTrend 조회 및 템플릿 렌더링 (1회만 수행)"""
         try:
-            weekly_trend = (
-                WeeklyTrend.objects.filter(
-                    week_end_date__gte=self.before_a_week,
-                    is_processed=False,
-                )
-                .values("id", "insight", "week_start_date", "week_end_date")
-                .first()
-            )
+            weekly_trend = self._select_weekly_trend()
 
             # 트렌딩 인사이트 데이터 (공통) 없을 시 배치 종료
             if not weekly_trend:

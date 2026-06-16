@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from insight.models import WeeklyTrend, WeeklyUserTrendInsight
+from insight.models import WeeklyUserTrendInsight
 from utils.utils import from_dict
 
 
@@ -34,8 +34,10 @@ class TestWeeklyNewsletterTemplate:
         self, mock_logger, newsletter_batch, weekly_trend
     ):
         """주간 트렌드 HTML 생성 성공 테스트"""
-        with patch.object(WeeklyTrend.objects, "filter") as mock_filter:
-            mock_filter.return_value.values.return_value.first.return_value = {
+        with patch.object(
+            newsletter_batch, "_select_weekly_trend"
+        ) as mock_select:
+            mock_select.return_value = {
                 "id": weekly_trend.id,
                 "insight": weekly_trend.insight,
                 "week_start_date": weekly_trend.week_start_date,
@@ -45,10 +47,7 @@ class TestWeeklyNewsletterTemplate:
             weekly_trend_html = newsletter_batch._get_weekly_trend_html()
 
             # 로직 검증
-            mock_filter.assert_called_once_with(
-                week_end_date__gte=newsletter_batch.before_a_week,
-                is_processed=False,
-            )
+            mock_select.assert_called_once_with()
             assert (
                 newsletter_batch.weekly_info["newsletter_id"]
                 == weekly_trend.id
@@ -71,11 +70,9 @@ class TestWeeklyNewsletterTemplate:
         self, mock_logger, newsletter_batch
     ):
         """주간 트렌드 데이터 없음 실패 테스트"""
-        with patch.object(WeeklyTrend.objects, "filter") as mock_filter:
-            mock_filter.return_value.values.return_value.first.return_value = (
-                None
-            )
-
+        with patch.object(
+            newsletter_batch, "_select_weekly_trend", return_value=None
+        ):
             with pytest.raises(
                 Exception, match="No WeeklyTrend data, batch stopped"
             ):
@@ -87,8 +84,10 @@ class TestWeeklyNewsletterTemplate:
         self, mock_logger, newsletter_batch, weekly_trend
     ):
         """템플릿 렌더링 실패 시 예외 처리 테스트"""
-        with patch.object(WeeklyTrend.objects, "filter") as mock_filter:
-            mock_filter.return_value.values.return_value.first.return_value = {
+        with patch.object(
+            newsletter_batch, "_select_weekly_trend"
+        ) as mock_select:
+            mock_select.return_value = {
                 "id": weekly_trend.id,
                 "insight": weekly_trend.insight,
                 "week_start_date": weekly_trend.week_start_date,

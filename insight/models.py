@@ -55,6 +55,18 @@ class WeeklyUserTrendInsight(WeeklyTrendInsight):
     user_weekly_reminder: WeeklyUserReminder | None = None
 
 
+REVIEW_READY = "ready"
+REVIEW_NEEDS = "needs_review"
+REVIEW_APPROVED = "approved"
+REVIEW_STATUS_CHOICES = [
+    (REVIEW_READY, "검수 불필요"),
+    (REVIEW_NEEDS, "검수 대기(발송 보류)"),
+    (REVIEW_APPROVED, "검수 승인"),
+]
+# 발송 가능한 검수 상태 (보류=needs_review 는 제외)
+SENDABLE_REVIEW_STATUSES = (REVIEW_READY, REVIEW_APPROVED)
+
+
 class WeeklyTrend(TimeStampedModel):
     """
     전체 velog 주간 트렌드 인사이트
@@ -76,6 +88,13 @@ class WeeklyTrend(TimeStampedModel):
     )
     processed_at = models.DateTimeField(
         null=True, blank=True, verbose_name="처리 완료 시간"
+    )
+    # 광고 필터 검수 상태 (is_processed 와 분리 — 보류가 신주 발송을 잠식하지 않도록)
+    review_status = models.CharField(
+        max_length=20,
+        choices=REVIEW_STATUS_CHOICES,
+        default=REVIEW_READY,
+        verbose_name="검수 상태",
     )
 
     class Meta:

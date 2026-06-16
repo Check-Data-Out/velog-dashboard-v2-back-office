@@ -17,8 +17,10 @@ from asgiref.sync import sync_to_async
 from django.conf import settings
 
 from insight.filtering.pipeline import classify_post
-from insight.filtering.schemas import VERDICT_DROP
+from insight.filtering.schemas import VERDICT_BORDERLINE, VERDICT_DROP
 from insight.models import (
+    REVIEW_NEEDS,
+    REVIEW_READY,
     TrendAnalysis,
     TrendingItem,
     WeeklyTrend,
@@ -62,6 +64,8 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
     def __init__(self, trending_limit: int = 10):
         super().__init__()
         self.trending_limit = trending_limit
+        # borderline 글 존재 시 발송 전 사람 검수가 필요함을 표시
+        self.needs_review = False
 
     async def _fetch_data(
         self, context: AnalysisContext
@@ -128,6 +132,13 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
                     verdict.triggered_signals,
                 )
                 continue
+            if verdict.verdict == VERDICT_BORDERLINE:
+                self.needs_review = True
+                self.logger.info(
+                    "Borderline post needs review: '%s' (%s)",
+                    post_data.post.title,
+                    verdict.triggered_signals,
+                )
             survivors.append(post_data)
         return survivors
 
@@ -225,6 +236,9 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
                 insight=insight_data,
                 is_processed=False,
                 processed_at=context.week_end,
+                review_status=(
+                    REVIEW_NEEDS if self.needs_review else REVIEW_READY
+                ),
             )
 
             self.logger.info("WeeklyTrend saved successfully")
