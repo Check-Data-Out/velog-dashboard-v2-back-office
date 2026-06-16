@@ -1,5 +1,9 @@
-from insight.models import FilterLabel
+from insight.models import LABEL_DECISION_CHOICES, FilterLabel
 from modules.noti.slack_client import notify_ops
+
+ALLOWED_LABEL_DECISIONS = frozenset(
+    value for value, _ in LABEL_DECISION_CHOICES
+)
 
 
 def record_label(
@@ -9,7 +13,15 @@ def record_label(
     reason: str = "",
     decided_by: str = "",
 ) -> FilterLabel:
-    """사람 게이트 결정/판명을 라벨로 저장한다(audit + 플라이휠 시드)."""
+    """사람 게이트 결정/판명을 라벨로 저장한다(audit + 플라이휠 시드).
+
+    audit·플라이휠 시드로 쓰이므로 저장 시점에 오염 값을 차단한다.
+    """
+    if not slug.strip():
+        raise ValueError("slug 는 비어 있을 수 없습니다.")
+    if decision not in ALLOWED_LABEL_DECISIONS:
+        raise ValueError(f"지원하지 않는 decision 값입니다: {decision}")
+
     return FilterLabel.objects.create(
         slug=slug,
         decision=decision,

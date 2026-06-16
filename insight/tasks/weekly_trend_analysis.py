@@ -119,6 +119,9 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
 
         휴리스틱 단독 경로(무클라이언트). drop 만 제외하고 borderline 은 보존한다.
         """
+        # 인스턴스 재사용 시 이전 실행 상태가 섞이지 않도록 실행 시작에 리셋
+        self.has_borderline = False
+        self.filter_preview = []
         survivors = []
         for post_data in raw_data:
             verdict = classify_post(

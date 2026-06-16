@@ -11,7 +11,6 @@ from modules.content_filter.distance import (
     cosine_similarity,
     max_cosine_similarity,
 )
-from modules.llm.exceptions import GenerationError
 
 logger = logging.getLogger("newsletter")
 
@@ -44,7 +43,10 @@ def embed_texts(client, texts: list[str]) -> list[list[float]] | None:
         if result and isinstance(result[0], float):
             return [result]  # 단일 입력 방어
         return result
-    except GenerationError as e:
+    except Exception as e:
+        # generate_embedding 은 GenerationError 외에 AuthenticationError,
+        # ConnectionError, ClientNotInitializedError, ValueError 도 던진다.
+        # "실패 시 None 폴백" 계약을 지키려 모든 실패를 휴리스틱 단독으로 흡수한다.
         logger.warning(
             "Embedding failed, falling back to heuristic-only: %s", e
         )

@@ -1,4 +1,5 @@
 import re
+from urllib.parse import urlparse
 
 from insight.filtering.constants import (
     CATEGORY_LEXICONS,
@@ -70,12 +71,23 @@ def tag_signal(tags: list[str]) -> dict[str, object]:
     }
 
 
+def _is_dev_domain(url: str) -> bool:
+    """URL 의 호스트가 dev allowlist 도메인이거나 그 서브도메인인지 검사한다.
+
+    단순 substring 매칭은 'evil.com/?x=github.com' 같은 우회를 허용하므로
+    호스트를 파싱해 정확히 비교한다.
+    """
+    host = (urlparse(url).hostname or "").lower()
+    return any(
+        host == domain or host.endswith(f".{domain}")
+        for domain in DEV_DOMAIN_ALLOWLIST
+    )
+
+
 def link_signal(body: str) -> dict[str, int]:
     """외부 링크 수와 개발 도메인/비개발 도메인 분류."""
     urls = URL_RE.findall(body)
-    dev_links = sum(
-        1 for u in urls if any(domain in u for domain in DEV_DOMAIN_ALLOWLIST)
-    )
+    dev_links = sum(1 for u in urls if _is_dev_domain(u))
     return {
         "link_count": len(urls),
         "dev_link_count": dev_links,

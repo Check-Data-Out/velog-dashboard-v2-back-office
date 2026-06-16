@@ -68,9 +68,13 @@ def judge_borderline(
     client, body: str, title: str, samples: int = JUDGE_SAMPLES
 ) -> FilterVerdict:
     """borderline 글을 LLM self-consistency(다수결)로 확정. 실패 시 borderline 유지."""
+    samples = max(
+        1, samples
+    )  # 투표 수 0 이하면 빈 투표가 PASS 로 새는 것을 막는다
     try:
         votes = [judge_once(client, body, title) for _ in range(samples)]
-    except GenerationError as e:
+    except (GenerationError, json.JSONDecodeError, TypeError) as e:
+        # 호출 실패뿐 아니라 malformed 응답 파싱 실패도 흡수해 분류 흐름을 끊지 않는다
         logger.warning("LLM judge failed, keeping borderline: %s", e)
         return FilterVerdict(
             verdict=VERDICT_BORDERLINE, triggered_signals=["llm_error"]

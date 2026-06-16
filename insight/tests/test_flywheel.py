@@ -25,6 +25,8 @@ def test_alert_escaped_spam_notifies_when_positive():
     ) as mock_notify:
         assert flywheel.alert_escaped_spam(2) is True
         mock_notify.assert_called_once()
+        _, kwargs = mock_notify.call_args
+        assert kwargs["cooldown_key"] == "escaped_spam"
 
 
 def test_alert_escaped_spam_skips_when_zero():

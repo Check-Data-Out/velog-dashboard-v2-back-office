@@ -83,6 +83,14 @@ def test_link_signal_classifies_domains():
     assert sig["nondev_link_count"] == 1
 
 
+def test_link_signal_rejects_domain_in_path():
+    """경로/쿼리에 allowlist 도메인 문자열만 끼운 우회는 dev 로 집계되지 않는다."""
+    body = "https://evil.example/r?u=github.com"
+    sig = signals.link_signal(body)
+    assert sig["dev_link_count"] == 0
+    assert sig["nondev_link_count"] == 1
+
+
 def test_image_text_ratio_high_for_image_dump():
     """이미지 덤프(이미지 다수 + 본문 빈약)는 일반 글보다 비율이 높다."""
     dump = "![](a.png)![](b.png)![](c.png) 짧음"

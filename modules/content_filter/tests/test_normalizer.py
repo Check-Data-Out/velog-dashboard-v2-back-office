@@ -64,5 +64,5 @@ def test_normalize_preserves_normal_korean():
 
 def test_normalize_folds_homoglyphs():
     """키릴 동형문자가 라틴으로 폴딩되어 회피를 무력화한다."""
-    cyrillic_api = "а" + "pi"  # 첫 글자가 키릴 U+0430
+    cyrillic_api = "\u0430pi"  # 첫 글자가 키릴 U+0430
     assert normalize(cyrillic_api).despaced == "api"
