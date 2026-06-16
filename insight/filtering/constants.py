@@ -4,19 +4,18 @@
 다수를 차지하므로 최우선 가중한다.
 """
 
-# 오프토픽 광고 렉시콘 (개발 무관). despaced 뷰에 매칭한다.
+# 오프토픽 광고 렉시콘 (개발 무관). despaced 뷰(분리자 제거)에 매칭하므로
+# 일반어 오탐(도우미=helper, 출장=출장보고)을 피해 광고 collocation 으로 좁힌다.
 ADULT_LEXICON = frozenset(
     {
-        "노래방",
-        "도우미",
+        "노래방도우미",
         "가라오케",
         "텐프로",
-        "출장",
-        "마사지",
-        "안마",
         "애인대행",
-        "모텔",
-        "룸",
+        "조건만남",
+        "출장마사지",
+        "출장안마",
+        "유흥알바",
     }
 )
 GAMBLING_LEXICON = frozenset(
@@ -64,6 +63,8 @@ RECRUIT_LEXICON = frozenset(
 WEAK_CATEGORIES = frozenset({"loan", "recruit"})
 # 단독 1건으로도 drop 하는 high-harm 카테고리
 HIGH_HARM_CATEGORIES = frozenset({"adult", "gambling", "drug"})
+# 개발 무관 광고 카테고리 전체
+OFFTOPIC_CATEGORIES = HIGH_HARM_CATEGORIES | WEAK_CATEGORIES
 
 CATEGORY_LEXICONS = {
     "adult": ADULT_LEXICON,
