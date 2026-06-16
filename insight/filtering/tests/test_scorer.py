@@ -20,14 +20,36 @@ def test_hard_rule_adult_gambling_drug_drops():
 @pytest.mark.parametrize(
     "body, tags",
     [
-        ("부담없이 문의주세요 01012345678 상담", []),  # 연락처
-        ("대출 한도 무담보로 가능합니다", []),  # 약신호 렉시콘
-        ("자세한 내용은 본문을 참고하세요", ["대출"]),  # 오프토픽 태그
+        ("부담없이 문의주세요 01012345678 상담", []),  # 오프토픽 + 연락처
+        (
+            "자세한 내용은 본문을 참고하세요",
+            ["온라인카지노"],
+        ),  # 오프토픽 + 태그
     ],
 )
 def test_hard_rule_offtopic_branches_drop(body, tags):
-    """오프토픽 + (연락처 | 약신호 렉시콘 | 오프토픽 태그) → drop."""
+    """오프토픽 + (연락처 | 오프토픽 태그) → drop."""
     assert score_post(body=body, title="", tags=tags).verdict == VERDICT_DROP
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "이웃집 토토로를 다시 봤어요. 정말 명작입니다.",  # 토토 오탐 방지
+        "드디어 학자금 대출 다 갚았습니다 후련하네요",  # 약신호 단독 오탐 방지
+        "Vue 슬롯 컴포넌트 구현 방법을 정리했습니다",  # 슬롯 오탐 + dev
+    ],
+)
+def test_normal_post_not_dropped(body):
+    """일반어/정상 개인글이 substring·약신호로 잘못 drop 되지 않는다(FP 회귀)."""
+    assert score_post(body=body, title="", tags=[]).verdict != VERDICT_DROP
+
+
+def test_disguised_loan_recruit_spam_drops():
+    """dev 태그로 위장해도 다중 약신호+오프토픽이면 soft score 로 drop 된다."""
+    body = "무담보대출 작업대출 당일지급 고수익부업 지금 신청"
+    verdict = score_post(body=body, title="", tags=["python", "react"])
+    assert verdict.verdict == VERDICT_DROP
 
 
 def test_dev_related_self_promo_passes():

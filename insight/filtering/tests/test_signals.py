@@ -1,6 +1,7 @@
 import pytest
 
 from insight.filtering import signals
+from modules.content_filter.normalizer import normalize
 
 
 def test_detect_phone_number():
@@ -14,11 +15,16 @@ def test_detect_messenger_handles():
     assert "telegram" in signals.detect_contacts("텔레그램으로문의")
 
 
+def test_detect_contacts_no_substring_false_positive():
+    """짧은 영문 substring 오탐이 없다(tmeeting → telegram 아님)."""
+    assert "telegram" not in signals.detect_contacts("tmeeting 회의록 정리")
+
+
 @pytest.mark.parametrize(
     "category, despaced",
     [
         ("adult", "노래방도우미급구"),
-        ("gambling", "토토사이트추천"),
+        ("gambling", "사설토토배너광고"),
         ("drug", "비아그라판매"),
     ],
 )
@@ -29,9 +35,22 @@ def test_lexicon_category_match(category, despaced):
 
 def test_loan_and_recruit_are_distinct_categories():
     """대출/모집은 별도 약신호 카테고리로 잡힌다."""
-    hits = signals.match_lexicons("고수익대출가능")
+    hits = signals.match_lexicons("무담보대출과고수익부업")
     assert "recruit" in hits
     assert "loan" in hits
+
+
+@pytest.mark.parametrize(
+    "normal_text",
+    [
+        "이웃집 토토로를 다시 봤어요",  # 토토 substring 오탐 방지
+        "카지노 로얄 영화 리뷰",  # 카지노 substring 오탐 방지
+        "Vue 슬롯 컴포넌트 구현 후기",  # 슬롯 substring 오탐 방지
+    ],
+)
+def test_lexicon_no_substring_false_positive(normal_text):
+    """일반어에 포함된 짧은 토큰이 광고로 오탐되지 않는다."""
+    assert signals.match_lexicons(normalize(normal_text).despaced) == {}
 
 
 def test_dev_token_hits_high_for_dev_zero_for_offtopic():
@@ -51,8 +70,8 @@ def test_tag_signal_dev_vs_offtopic():
     dev = signals.tag_signal(["python", "react"])
     assert dev["dev_tag_ratio"] == 1.0
 
-    off = signals.tag_signal(["토토", "react"])
-    assert off["offtopic"] == ["토토"]
+    off = signals.tag_signal(["온라인카지노", "react"])
+    assert off["offtopic"] == ["온라인카지노"]
 
 
 def test_link_signal_classifies_domains():

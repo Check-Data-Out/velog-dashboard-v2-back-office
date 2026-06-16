@@ -9,7 +9,7 @@ from insight.filtering.constants import (
 
 PHONE_RE = re.compile(r"01[016789]\d{7,8}")
 KAKAO_TOKENS = ("카톡", "카카오톡", "오픈채팅", "오픈톡", "openkakao")
-TELEGRAM_TOKENS = ("텔레그램", "telegram", "tme")
+TELEGRAM_TOKENS = ("텔레그램", "telegram")
 CODE_FENCE_RE = re.compile(r"```|~~~")
 INLINE_CODE_RE = re.compile(r"`[^`]+`")
 URL_RE = re.compile(r"https?://[^\s)]+")
