@@ -16,6 +16,8 @@ import setup_django  # noqa
 from asgiref.sync import sync_to_async
 from django.conf import settings
 
+from insight.filtering.pipeline import classify_post
+from insight.filtering.schemas import VERDICT_DROP
 from insight.models import (
     TrendAnalysis,
     TrendingItem,
@@ -105,11 +107,43 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
             self.logger.error("Failed to fetch trending posts: %s", e)
             raise
 
+    def _filter_ad_posts(
+        self, raw_data: list[TrendingPostData]
+    ) -> list[TrendingPostData]:
+        """광고/스팸(개발 무관 오프토픽)으로 판정된 글을 요약 전에 제거한다.
+
+        휴리스틱 단독 경로(무클라이언트). drop 만 제외하고 borderline 은 보존한다.
+        """
+        survivors = []
+        for post_data in raw_data:
+            verdict = classify_post(
+                body=post_data.body,
+                title=post_data.post.title,
+                tags=post_data.tags,
+            )
+            if verdict.verdict == VERDICT_DROP:
+                self.logger.info(
+                    "Filtered ad/spam post '%s' (%s)",
+                    post_data.post.title,
+                    verdict.triggered_signals,
+                )
+                continue
+            survivors.append(post_data)
+        return survivors
+
     async def _analyze_data(
         self, raw_data: list[TrendingPostData], context: AnalysisContext
     ) -> list[WeeklyTrendInsight]:
         """LLM을 사용한 트렌드 분석"""
         try:
+            # 광고/스팸 글 제거 (drop 글은 물리적으로 빼서 인덱스 매핑 정합 유지)
+            raw_data = self._filter_ad_posts(raw_data)
+            if not raw_data:
+                self.logger.warning(
+                    "All posts filtered as ad/spam, empty insight"
+                )
+                return [WeeklyTrendInsight()]
+
             # LLM 입력 데이터 준비
             llm_input = [post_data.to_llm_format() for post_data in raw_data]
 
@@ -178,7 +212,11 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
                 "trending_summary": [
                     item.to_dict() for item in result.trending_summary
                 ],
-                "trend_analysis": result.trend_analysis.to_dict(),
+                "trend_analysis": (
+                    result.trend_analysis.to_dict()
+                    if result.trend_analysis
+                    else {}
+                ),
             }
 
             await sync_to_async(WeeklyTrend.objects.create)(
