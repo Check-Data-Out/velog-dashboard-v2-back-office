@@ -43,3 +43,26 @@ def test_normalize_idempotent():
     twice = normalize(once.spaced)
     assert once.spaced == twice.spaced
     assert once.despaced == twice.despaced
+
+
+@pytest.mark.parametrize("empty", ["", None])
+def test_normalize_empty_input(empty):
+    """빈/None 입력은 빈 결과로 안전하게 처리된다."""
+    result = normalize(empty)
+    assert result.spaced == ""
+    assert result.despaced == ""
+    assert result.has_isolated_jamo is False
+
+
+def test_normalize_preserves_normal_korean():
+    """정상 개발 문장은 훼손되지 않는다 (false positive 방지)."""
+    text = "리액트 18의 서버 컴포넌트와 비동기 렌더링을 배포 환경에서 테스트했습니다."
+    result = normalize(text)
+    assert result.spaced == text
+    assert "서버컴포넌트" in result.despaced
+
+
+def test_normalize_folds_homoglyphs():
+    """키릴 동형문자가 라틴으로 폴딩되어 회피를 무력화한다."""
+    cyrillic_api = "а" + "pi"  # 첫 글자가 키릴 U+0430
+    assert normalize(cyrillic_api).despaced == "api"

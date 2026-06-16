@@ -25,3 +25,14 @@ class TestWeeklyTrendFetchTags:
             result = await analyzer._fetch_data(mock_context)
 
         assert result[0].tags == []
+
+    async def test_fetch_data_tags_empty_when_detail_tags_none(
+        self, analyzer, mock_context
+    ):
+        """detail.tags 가 None 이면 빈 리스트로 대체된다."""
+        mock_context.velog_client.get_post.return_value.tags = None
+
+        with patch.object(analyzer, "logger"):
+            result = await analyzer._fetch_data(mock_context)
+
+        assert result[0].tags == []
