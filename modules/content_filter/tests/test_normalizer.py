@@ -14,7 +14,7 @@ HANGUL_FILLER = chr(0x3164)
         ("노^^래방", "노래방"),  # 특수문자 삽입
         (f"노{ZERO_WIDTH}래{ZERO_WIDTH}방", "노래방"),  # zero-width
         (f"노{HANGUL_FILLER}래방", "노래방"),  # 한글 필러
-        ("ＮＦＫＣ", "NFKC"),  # 전각 → 반각 (NFKC)
+        ("\uff2e\uff26\uff2b\uff23", "NFKC"),  # 전각 NFKC → 반각
         ("도박!!!!!", "도박!!"),  # 반복 문자 축약
     ],
 )

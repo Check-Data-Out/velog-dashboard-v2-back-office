@@ -315,11 +315,11 @@ class TestWeeklyTrendAdmin:
         assert weekly_trend_admin.readonly_fields == expected_readonly_fields
 
         # actions 확인
-        expected_actions = [
+        expected_actions = (
             "mark_as_processed",
             "mark_as_hold",
             "mark_as_approved",
-        ]
+        )
         assert weekly_trend_admin.actions == expected_actions
 
         # fieldsets 확인

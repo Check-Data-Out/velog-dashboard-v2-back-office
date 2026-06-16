@@ -61,7 +61,7 @@ class WeeklyTrendAdmin(admin.ModelAdmin, BaseTrendAdminMixin):
         ),
     )
 
-    actions = ["mark_as_processed", "mark_as_hold", "mark_as_approved"]
+    actions = ("mark_as_processed", "mark_as_hold", "mark_as_approved")
 
     @admin.action(description="발송 보류 (이번 주차 hold)")
     def mark_as_hold(self, request, queryset):
