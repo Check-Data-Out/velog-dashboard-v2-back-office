@@ -1,11 +1,29 @@
 import pytest
 
+from insight.filtering.constants import (
+    SPAM_SCORE_DROP_THRESHOLD,
+    SPAM_SCORE_PASS_THRESHOLD,
+)
 from insight.filtering.schemas import (
     VERDICT_BORDERLINE,
     VERDICT_DROP,
     VERDICT_PASS,
 )
-from insight.filtering.scorer import score_post
+from insight.filtering.scorer import score_post, verdict_from_score
+
+
+@pytest.mark.parametrize(
+    "score, expected",
+    [
+        (SPAM_SCORE_DROP_THRESHOLD, VERDICT_DROP),  # 경계 포함(>=)
+        (SPAM_SCORE_DROP_THRESHOLD - 0.01, VERDICT_BORDERLINE),
+        (SPAM_SCORE_PASS_THRESHOLD, VERDICT_PASS),  # 경계 포함(<=)
+        (SPAM_SCORE_PASS_THRESHOLD + 0.01, VERDICT_BORDERLINE),
+    ],
+)
+def test_verdict_from_score_boundaries(score, expected):
+    """drop(>=)·pass(<=) 경계 등호 동작을 고정한다."""
+    assert verdict_from_score(score) == expected
 
 
 def test_hard_rule_adult_gambling_drug_drops():

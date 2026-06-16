@@ -1,5 +1,6 @@
 from insight.filtering.constants import (
     HIGH_HARM_CATEGORIES,
+    IMAGE_DUMP_RATIO,
     SPAM_SCORE_DROP_THRESHOLD,
     SPAM_SCORE_PASS_THRESHOLD,
     WEAK_CATEGORIES,
@@ -21,7 +22,14 @@ from insight.filtering.signals import (
 )
 from modules.content_filter.normalizer import normalize
 
-IMAGE_DUMP_RATIO = 5.0
+
+def verdict_from_score(score: float) -> str:
+    """누적 spam_score 를 임계로 drop/pass/borderline 판정한다(단일 진실 원천)."""
+    if score >= SPAM_SCORE_DROP_THRESHOLD:
+        return VERDICT_DROP
+    if score <= SPAM_SCORE_PASS_THRESHOLD:
+        return VERDICT_PASS
+    return VERDICT_BORDERLINE
 
 
 def score_post(body: str, title: str, tags: list[str]) -> FilterVerdict:
@@ -82,15 +90,8 @@ def score_post(body: str, title: str, tags: list[str]) -> FilterVerdict:
     score -= min(0.4, 0.15 * dev_hits)
     score = max(0.0, min(1.0, score))
 
-    if score >= SPAM_SCORE_DROP_THRESHOLD:
-        verdict = VERDICT_DROP
-    elif score <= SPAM_SCORE_PASS_THRESHOLD:
-        verdict = VERDICT_PASS
-    else:
-        verdict = VERDICT_BORDERLINE
-
     return FilterVerdict(
-        verdict=verdict,
+        verdict=verdict_from_score(score),
         score=round(score, 3),
         category="",
         triggered_signals=triggered,

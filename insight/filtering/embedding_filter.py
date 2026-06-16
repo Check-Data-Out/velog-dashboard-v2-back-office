@@ -4,15 +4,9 @@ from insight.filtering.constants import (
     EMBEDDING_OFFTOPIC_WEIGHT,
     NEAR_DUP_THRESHOLD,
     ONTOPIC_DISTANCE_THRESHOLD,
-    SPAM_SCORE_DROP_THRESHOLD,
-    SPAM_SCORE_PASS_THRESHOLD,
 )
-from insight.filtering.schemas import (
-    VERDICT_BORDERLINE,
-    VERDICT_DROP,
-    VERDICT_PASS,
-    FilterVerdict,
-)
+from insight.filtering.schemas import FilterVerdict
+from insight.filtering.scorer import verdict_from_score
 from modules.content_filter.distance import (
     cosine_similarity,
     max_cosine_similarity,
@@ -67,15 +61,8 @@ def fuse_embedding_signal(
         return verdict
 
     score = min(1.0, verdict.score + EMBEDDING_OFFTOPIC_WEIGHT)
-    if score >= SPAM_SCORE_DROP_THRESHOLD:
-        new_verdict = VERDICT_DROP
-    elif score <= SPAM_SCORE_PASS_THRESHOLD:
-        new_verdict = VERDICT_PASS
-    else:
-        new_verdict = VERDICT_BORDERLINE
-
     return FilterVerdict(
-        verdict=new_verdict,
+        verdict=verdict_from_score(score),
         score=round(score, 3),
         category=verdict.category,
         triggered_signals=verdict.triggered_signals

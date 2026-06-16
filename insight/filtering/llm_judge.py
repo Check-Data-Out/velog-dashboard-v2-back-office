@@ -43,9 +43,12 @@ JUDGE_TEMPERATURE = 0.2
 
 
 def build_judge_prompt(body: str, title: str) -> str:
-    """본문을 명시적 구분자로 감싸 프롬프트 인젝션 표면을 줄인다(데이터 ≠ 지시)."""
+    """본문을 명시적 구분자로 감싸 프롬프트 인젝션 표면을 줄인다(데이터 ≠ 지시).
+    본문 내 `</article>` 위장 종료 태그를 무력화한다."""
+    safe_title = title.replace('"', "'").replace("<", " ")
+    safe_body = body.replace("</article", "< /article")
     return (
-        f'<article title="{title}">\n{body}\n</article>\n'
+        f'<article title="{safe_title}">\n{safe_body}\n</article>\n'
         "위 글이 개발자 뉴스레터에 적합한지 판정해 JSON 으로 답하세요."
     )
 
