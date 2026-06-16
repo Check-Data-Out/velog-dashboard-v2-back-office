@@ -17,6 +17,7 @@ from asgiref.sync import sync_to_async
 from django.conf import settings
 
 from insight.filtering.pipeline import classify_post
+from insight.filtering.preview import build_filter_preview
 from insight.filtering.schemas import VERDICT_BORDERLINE, VERDICT_DROP
 from insight.models import (
     REVIEW_NEEDS,
@@ -66,6 +67,8 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
         self.trending_limit = trending_limit
         # borderline 글 존재 시 발송 전 사람 검수가 필요함을 표시
         self.needs_review = False
+        # Slack 검수 프리뷰용 후보별 판정 누적 (drop/borderline/pass 모두)
+        self.filter_preview: list[dict] = []
 
     async def _fetch_data(
         self, context: AnalysisContext
@@ -124,6 +127,18 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
                 body=post_data.body,
                 title=post_data.post.title,
                 tags=post_data.tags,
+            )
+            self.filter_preview.append(
+                {
+                    "title": post_data.post.title,
+                    "username": (
+                        post_data.post.user.username
+                        if post_data.post.user
+                        else ""
+                    ),
+                    "slug": post_data.post.url_slug or "",
+                    "verdict": verdict,
+                }
             )
             if verdict.verdict == VERDICT_DROP:
                 self.logger.info(
@@ -255,8 +270,14 @@ async def main():
 
     if result.success:
         try:
+            review_note = " (검수 필요)" if analyzer.needs_review else ""
+            preview = build_filter_preview(analyzer.filter_preview)
             with open("weekly_analysis_result.txt", "w") as f:
-                f.write(f"✅ 주간 트렌드 분석 완료: {result.metadata}\\n")
+                f.write(
+                    f"✅ 주간 트렌드 분석 완료{review_note}: {result.metadata}\\n"
+                )
+                if preview:
+                    f.write(f"\\n[광고 필터 후보]\\n{preview}\\n")
         except Exception as e:
             print(f"결과 파일 저장 실패: {e}")
     else:

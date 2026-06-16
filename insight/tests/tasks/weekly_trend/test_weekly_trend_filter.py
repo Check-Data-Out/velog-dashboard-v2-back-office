@@ -31,6 +31,17 @@ class TestWeeklyTrendFilter:
 
         assert analyzer.needs_review is True
 
+    def test_filter_preview_records_all_verdicts(self, analyzer):
+        """프리뷰에 drop/pass 후보가 판정과 함께 누적된다(Slack 검수용)."""
+        spam = _post("노래방 도우미 급구 010-1234-5678", "광고")
+        dev = _post("리액트 서버 배포 api 도커 구현 테스트", "개발", ["react"])
+
+        analyzer._filter_ad_posts([spam, dev])
+
+        assert len(analyzer.filter_preview) == 2
+        verdicts = {row["verdict"].verdict for row in analyzer.filter_preview}
+        assert "drop" in verdicts
+
     def test_clean_dev_post_does_not_need_review(self, analyzer):
         """명확한 개발 글만 있으면 검수 플래그가 서지 않는다."""
         dev = _post(
