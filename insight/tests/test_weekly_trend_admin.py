@@ -219,6 +219,20 @@ class TestWeeklyTrendAdmin:
         assert weekly_trend.review_status == REVIEW_APPROVED
         request_factory._messages.add.assert_called_once()
 
+    def test_mark_as_hold(
+        self,
+        weekly_trend_admin,
+        weekly_trend: WeeklyTrend,
+        request_factory,
+    ):
+        """mark_as_hold 액션이 발송을 명시적으로 보류(opt-in stop)한다."""
+        queryset = WeeklyTrend.objects.filter(pk=weekly_trend.pk)
+        weekly_trend_admin.mark_as_hold(request_factory, queryset)
+
+        weekly_trend.refresh_from_db()
+        assert weekly_trend.review_status == REVIEW_NEEDS
+        request_factory._messages.add.assert_called_once()
+
     def test_mark_as_processed_multiple_objects(
         self,
         weekly_trend_admin,
@@ -301,7 +315,11 @@ class TestWeeklyTrendAdmin:
         assert weekly_trend_admin.readonly_fields == expected_readonly_fields
 
         # actions 확인
-        expected_actions = ["mark_as_processed", "mark_as_approved"]
+        expected_actions = [
+            "mark_as_processed",
+            "mark_as_hold",
+            "mark_as_approved",
+        ]
         assert weekly_trend_admin.actions == expected_actions
 
         # fieldsets 확인

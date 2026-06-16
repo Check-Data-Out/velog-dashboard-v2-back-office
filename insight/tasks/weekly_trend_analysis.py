@@ -20,8 +20,6 @@ from insight.filtering.pipeline import classify_post
 from insight.filtering.preview import build_filter_preview
 from insight.filtering.schemas import VERDICT_BORDERLINE, VERDICT_DROP
 from insight.models import (
-    REVIEW_NEEDS,
-    REVIEW_READY,
     TrendAnalysis,
     TrendingItem,
     WeeklyTrend,
@@ -65,8 +63,8 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
     def __init__(self, trending_limit: int = 10):
         super().__init__()
         self.trending_limit = trending_limit
-        # borderline 글 존재 시 발송 전 사람 검수가 필요함을 표시
-        self.needs_review = False
+        # borderline 글이 있으면 프리뷰에 검수 권장 표시(발송은 막지 않음)
+        self.has_borderline = False
         # Slack 검수 프리뷰용 후보별 판정 누적 (drop/borderline/pass 모두)
         self.filter_preview: list[dict] = []
 
@@ -148,9 +146,10 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
                 )
                 continue
             if verdict.verdict == VERDICT_BORDERLINE:
-                self.needs_review = True
+                # 발송은 막지 않고 프리뷰에 검수 권장 표시만 한다(opt-in stop)
+                self.has_borderline = True
                 self.logger.info(
-                    "Borderline post needs review: '%s' (%s)",
+                    "Borderline post flagged for preview: '%s' (%s)",
                     post_data.post.title,
                     verdict.triggered_signals,
                 )
@@ -245,15 +244,15 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
                 ),
             }
 
+            # 기본 흐름은 자동 발송(review_status 모델 default=ready).
+            # borderline 이 있어도 막지 않고 Slack 프리뷰에 플래그만 표시한다.
+            # 발송 보류(hold)는 운영자가 admin 에서 명시적으로만 건다(opt-in stop).
             await sync_to_async(WeeklyTrend.objects.create)(
                 week_start_date=context.week_start.date(),
                 week_end_date=(context.week_end - timedelta(days=1)).date(),
                 insight=insight_data,
                 is_processed=False,
                 processed_at=context.week_end,
-                review_status=(
-                    REVIEW_NEEDS if self.needs_review else REVIEW_READY
-                ),
             )
 
             self.logger.info("WeeklyTrend saved successfully")
@@ -270,7 +269,7 @@ async def main():
 
     if result.success:
         try:
-            review_note = " (검수 필요)" if analyzer.needs_review else ""
+            review_note = " (검수 권장)" if analyzer.has_borderline else ""
             preview = build_filter_preview(analyzer.filter_preview)
             with open("weekly_analysis_result.txt", "w") as f:
                 f.write(

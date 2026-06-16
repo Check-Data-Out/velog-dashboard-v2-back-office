@@ -25,6 +25,20 @@ class TestNewsletterHoldGate:
         )
         assert trend.review_status == REVIEW_READY
 
+    def test_default_trend_is_sent_without_approval(
+        self, db, newsletter_batch
+    ):
+        """기본(ready) 주차는 승인 없이 그대로 발송 대상으로 선택된다."""
+        end = newsletter_batch.before_a_week + timedelta(days=1)
+        WeeklyTrend.objects.create(
+            week_start_date=end - timedelta(days=7),
+            week_end_date=end,
+            insight={"x": "auto"},
+        )
+        selected = newsletter_batch._select_weekly_trend()
+        assert selected is not None
+        assert selected["insight"] == {"x": "auto"}
+
     def test_held_trend_is_not_selected(self, db, newsletter_batch):
         """검수 보류(needs_review) 주차는 발송 대상에서 제외된다."""
         end = newsletter_batch.before_a_week + timedelta(days=1)

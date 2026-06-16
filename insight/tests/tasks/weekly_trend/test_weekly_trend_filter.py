@@ -23,13 +23,16 @@ class TestWeeklyTrendFilter:
 
         assert survivors == [dev]
 
-    def test_borderline_post_sets_needs_review(self, analyzer):
-        """borderline 글이 있으면 검수 필요 플래그가 선다(발송 전 hold 유도)."""
+    def test_borderline_post_flagged_but_not_dropped(self, analyzer):
+        """borderline 글은 발송에서 빠지지 않고(survivor 유지) 프리뷰 플래그만 선다."""
         borderline = _post("오늘 날씨가 좋아서 산책을 다녀왔습니다", "일상")
 
-        analyzer._filter_ad_posts([borderline])
+        survivors = analyzer._filter_ad_posts([borderline])
 
-        assert analyzer.needs_review is True
+        assert survivors == [borderline]  # 기본 흐름대로 발송 대상에 남는다
+        assert (
+            analyzer.has_borderline is True
+        )  # 검수 권장 표시(발송은 막지 않음)
 
     def test_filter_preview_records_all_verdicts(self, analyzer):
         """프리뷰에 drop/pass 후보가 판정과 함께 누적된다(Slack 검수용)."""
@@ -42,15 +45,15 @@ class TestWeeklyTrendFilter:
         verdicts = {row["verdict"].verdict for row in analyzer.filter_preview}
         assert "drop" in verdicts
 
-    def test_clean_dev_post_does_not_need_review(self, analyzer):
-        """명확한 개발 글만 있으면 검수 플래그가 서지 않는다."""
+    def test_clean_dev_post_no_borderline_flag(self, analyzer):
+        """명확한 개발 글만 있으면 검수 권장 플래그가 서지 않는다."""
         dev = _post(
             "리액트 서버 배포 api 도커 구현 테스트 자동화", "개발", ["react"]
         )
 
         analyzer._filter_ad_posts([dev])
 
-        assert analyzer.needs_review is False
+        assert analyzer.has_borderline is False
 
     @pytest.mark.asyncio
     async def test_all_dropped_yields_empty_insight(self, analyzer):

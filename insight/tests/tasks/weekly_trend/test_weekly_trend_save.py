@@ -34,7 +34,6 @@ class TestWeeklyTrendSave:
             },
             is_processed=False,
             processed_at=datetime(2025, 7, 28),
-            review_status="ready",
         )
         mock_logger.info.assert_called()
 
