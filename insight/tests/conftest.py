@@ -262,7 +262,7 @@ def mock_post():
 @pytest.fixture
 def mock_post_detail():
     """테스트용 게시글 본문 응답 (get_post 용)"""
-    return MagicMock(body="test content")
+    return MagicMock(body="test content", tags=["python", "django"])
 
 
 @pytest.fixture
@@ -284,4 +284,8 @@ def mock_context(mock_post, mock_post_detail):
 def trending_post_data(mock_post, mock_post_detail):
     from insight.tasks.weekly_trend_analysis import TrendingPostData
 
-    return TrendingPostData(post=mock_post, body=mock_post_detail.body)
+    return TrendingPostData(
+        post=mock_post,
+        body=mock_post_detail.body,
+        tags=list(mock_post_detail.tags),
+    )

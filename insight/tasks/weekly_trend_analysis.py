@@ -8,7 +8,7 @@
 """
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any
 
@@ -33,6 +33,7 @@ class TrendingPostData:
 
     post: Post
     body: str
+    tags: list[str] = field(default_factory=list)
 
     def to_llm_format(self) -> dict[str, Any]:
         """LLM 분석용 포맷으로 변환"""
@@ -79,12 +80,13 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
                 try:
                     detail = await context.velog_client.get_post(post.id)
                     body = detail.body if detail and detail.body else ""
+                    tags = list(detail.tags) if detail and detail.tags else []
 
                     if not body:
                         self.logger.warning("Post %s has empty body", post.id)
 
                     post_data_list.append(
-                        TrendingPostData(post=post, body=body)
+                        TrendingPostData(post=post, body=body, tags=tags)
                     )
 
                 except Exception as e:
@@ -92,7 +94,9 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
                         "Failed to fetch post detail (id=%s): %s", post.id, e
                     )
                     # 본문 없이도 데이터 추가
-                    post_data_list.append(TrendingPostData(post=post, body=""))
+                    post_data_list.append(
+                        TrendingPostData(post=post, body="", tags=[])
+                    )
 
             self.logger.info("Fetched %d trending posts", len(post_data_list))
             return post_data_list
