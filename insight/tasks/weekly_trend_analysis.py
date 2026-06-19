@@ -8,7 +8,7 @@
 """
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any
 
@@ -16,6 +16,9 @@ import setup_django  # noqa
 from asgiref.sync import sync_to_async
 from django.conf import settings
 
+from insight.filtering.pipeline import classify_post
+from insight.filtering.preview import build_filter_preview
+from insight.filtering.schemas import VERDICT_BORDERLINE, VERDICT_DROP
 from insight.models import (
     TrendAnalysis,
     TrendingItem,
@@ -33,6 +36,7 @@ class TrendingPostData:
 
     post: Post
     body: str
+    tags: list[str] = field(default_factory=list)
 
     def to_llm_format(self) -> dict[str, Any]:
         """LLM 분석용 포맷으로 변환"""
@@ -59,6 +63,10 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
     def __init__(self, trending_limit: int = 10):
         super().__init__()
         self.trending_limit = trending_limit
+        # borderline 글이 있으면 프리뷰에 검수 권장 표시(발송은 막지 않음)
+        self.has_borderline = False
+        # Slack 검수 프리뷰용 후보별 판정 누적 (drop/borderline/pass 모두)
+        self.filter_preview: list[dict] = []
 
     async def _fetch_data(
         self, context: AnalysisContext
@@ -79,12 +87,13 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
                 try:
                     detail = await context.velog_client.get_post(post.id)
                     body = detail.body if detail and detail.body else ""
+                    tags = list(detail.tags) if detail and detail.tags else []
 
                     if not body:
                         self.logger.warning("Post %s has empty body", post.id)
 
                     post_data_list.append(
-                        TrendingPostData(post=post, body=body)
+                        TrendingPostData(post=post, body=body, tags=tags)
                     )
 
                 except Exception as e:
@@ -92,7 +101,9 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
                         "Failed to fetch post detail (id=%s): %s", post.id, e
                     )
                     # 본문 없이도 데이터 추가
-                    post_data_list.append(TrendingPostData(post=post, body=""))
+                    post_data_list.append(
+                        TrendingPostData(post=post, body="", tags=[])
+                    )
 
             self.logger.info("Fetched %d trending posts", len(post_data_list))
             return post_data_list
@@ -101,11 +112,66 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
             self.logger.error("Failed to fetch trending posts: %s", e)
             raise
 
+    def _filter_ad_posts(
+        self, raw_data: list[TrendingPostData]
+    ) -> list[TrendingPostData]:
+        """광고/스팸(개발 무관 오프토픽)으로 판정된 글을 요약 전에 제거한다.
+
+        휴리스틱 단독 경로(무클라이언트). drop 만 제외하고 borderline 은 보존한다.
+        """
+        # 인스턴스 재사용 시 이전 실행 상태가 섞이지 않도록 실행 시작에 리셋
+        self.has_borderline = False
+        self.filter_preview = []
+        survivors = []
+        for post_data in raw_data:
+            verdict = classify_post(
+                body=post_data.body,
+                title=post_data.post.title,
+                tags=post_data.tags,
+            )
+            self.filter_preview.append(
+                {
+                    "title": post_data.post.title,
+                    "username": (
+                        post_data.post.user.username
+                        if post_data.post.user
+                        else ""
+                    ),
+                    "slug": post_data.post.url_slug or "",
+                    "verdict": verdict,
+                }
+            )
+            if verdict.verdict == VERDICT_DROP:
+                self.logger.info(
+                    "Filtered ad/spam post '%s' (%s)",
+                    post_data.post.title,
+                    verdict.triggered_signals,
+                )
+                continue
+            if verdict.verdict == VERDICT_BORDERLINE:
+                # 발송은 막지 않고 프리뷰에 검수 권장 표시만 한다(opt-in stop)
+                self.has_borderline = True
+                self.logger.info(
+                    "Borderline post flagged for preview: '%s' (%s)",
+                    post_data.post.title,
+                    verdict.triggered_signals,
+                )
+            survivors.append(post_data)
+        return survivors
+
     async def _analyze_data(
         self, raw_data: list[TrendingPostData], context: AnalysisContext
     ) -> list[WeeklyTrendInsight]:
         """LLM을 사용한 트렌드 분석"""
         try:
+            # 광고/스팸 글 제거 (drop 글은 물리적으로 빼서 인덱스 매핑 정합 유지)
+            raw_data = self._filter_ad_posts(raw_data)
+            if not raw_data:
+                self.logger.warning(
+                    "All posts filtered as ad/spam, empty insight"
+                )
+                return [WeeklyTrendInsight()]
+
             # LLM 입력 데이터 준비
             llm_input = [post_data.to_llm_format() for post_data in raw_data]
 
@@ -174,9 +240,16 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
                 "trending_summary": [
                     item.to_dict() for item in result.trending_summary
                 ],
-                "trend_analysis": result.trend_analysis.to_dict(),
+                "trend_analysis": (
+                    result.trend_analysis.to_dict()
+                    if result.trend_analysis
+                    else {}
+                ),
             }
 
+            # 기본 흐름은 자동 발송(review_status 모델 default=ready).
+            # borderline 이 있어도 막지 않고 Slack 프리뷰에 플래그만 표시한다.
+            # 발송 보류(hold)는 운영자가 admin 에서 명시적으로만 건다(opt-in stop).
             await sync_to_async(WeeklyTrend.objects.create)(
                 week_start_date=context.week_start.date(),
                 week_end_date=(context.week_end - timedelta(days=1)).date(),
@@ -199,8 +272,14 @@ async def main():
 
     if result.success:
         try:
+            review_note = " (검수 권장)" if analyzer.has_borderline else ""
+            preview = build_filter_preview(analyzer.filter_preview)
             with open("weekly_analysis_result.txt", "w") as f:
-                f.write(f"✅ 주간 트렌드 분석 완료: {result.metadata}\\n")
+                f.write(
+                    f"✅ 주간 트렌드 분석 완료{review_note}: {result.metadata}\\n"
+                )
+                if preview:
+                    f.write(f"\\n[광고 필터 후보]\\n{preview}\\n")
         except Exception as e:
             print(f"결과 파일 저장 실패: {e}")
     else:

@@ -5,7 +5,12 @@ from django.template.loader import render_to_string
 from django.utils.safestring import mark_safe
 
 from insight.admin.base_admin import BaseTrendAdminMixin
-from insight.models import WeeklyTrend, WeeklyTrendInsight
+from insight.models import (
+    REVIEW_APPROVED,
+    REVIEW_NEEDS,
+    WeeklyTrend,
+    WeeklyTrendInsight,
+)
 from utils.utils import from_dict
 
 
@@ -15,11 +20,12 @@ class WeeklyTrendAdmin(admin.ModelAdmin, BaseTrendAdminMixin):
         "id",
         "week_range",
         "summarize_insight",
+        "review_status",
         "is_processed_colored",
         "processed_at_formatted",
         "created_at",
     )
-    list_filter = ("is_processed", "week_start_date")
+    list_filter = ("review_status", "is_processed", "week_start_date")
     search_fields = ("insight",)
     readonly_fields = (
         "processed_at",
@@ -50,12 +56,25 @@ class WeeklyTrendAdmin(admin.ModelAdmin, BaseTrendAdminMixin):
         (
             "처리 상태",
             {
-                "fields": ("is_processed", "processed_at"),
+                "fields": ("review_status", "is_processed", "processed_at"),
             },
         ),
     )
 
-    actions = ["mark_as_processed"]
+    actions = ("mark_as_processed", "mark_as_hold", "mark_as_approved")
+
+    @admin.action(description="발송 보류 (이번 주차 hold)")
+    def mark_as_hold(self, request, queryset):
+        """운영자가 명시적으로 발송을 막는다(opt-in stop). 기본은 자동 발송이므로,
+        Slack 프리뷰를 보고 빼야 할 주차에만 수동으로 건다."""
+        updated = queryset.update(review_status=REVIEW_NEEDS)
+        self.message_user(request, f"{updated}건 발송 보류 처리되었습니다.")
+
+    @admin.action(description="보류 해제 (발송 재허용)")
+    def mark_as_approved(self, request, queryset):
+        """보류된 주차의 발송을 다시 허용한다."""
+        updated = queryset.update(review_status=REVIEW_APPROVED)
+        self.message_user(request, f"{updated}건 발송 재허용 처리되었습니다.")
 
     @admin.display(description="인사이트 요약")
     def summarize_insight(self, obj: WeeklyTrend):

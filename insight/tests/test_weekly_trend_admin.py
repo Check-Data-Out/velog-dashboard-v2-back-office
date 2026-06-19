@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 from django.utils.safestring import SafeString
 
-from insight.models import WeeklyTrend
+from insight.models import REVIEW_APPROVED, REVIEW_NEEDS, WeeklyTrend
 from utils.utils import get_local_now
 
 
@@ -202,6 +202,37 @@ class TestWeeklyTrendAdmin:
         # message_user가 호출되었는지 확인 (실제로는 _messages.add가 호출됨)
         request_factory._messages.add.assert_called_once()
 
+    def test_mark_as_approved(
+        self,
+        weekly_trend_admin,
+        weekly_trend: WeeklyTrend,
+        request_factory,
+    ):
+        """mark_as_approved 액션이 검수 보류를 승인(발송 허용)으로 전환한다."""
+        weekly_trend.review_status = REVIEW_NEEDS
+        weekly_trend.save()
+
+        queryset = WeeklyTrend.objects.filter(pk=weekly_trend.pk)
+        weekly_trend_admin.mark_as_approved(request_factory, queryset)
+
+        weekly_trend.refresh_from_db()
+        assert weekly_trend.review_status == REVIEW_APPROVED
+        request_factory._messages.add.assert_called_once()
+
+    def test_mark_as_hold(
+        self,
+        weekly_trend_admin,
+        weekly_trend: WeeklyTrend,
+        request_factory,
+    ):
+        """mark_as_hold 액션이 발송을 명시적으로 보류(opt-in stop)한다."""
+        queryset = WeeklyTrend.objects.filter(pk=weekly_trend.pk)
+        weekly_trend_admin.mark_as_hold(request_factory, queryset)
+
+        weekly_trend.refresh_from_db()
+        assert weekly_trend.review_status == REVIEW_NEEDS
+        request_factory._messages.add.assert_called_once()
+
     def test_mark_as_processed_multiple_objects(
         self,
         weekly_trend_admin,
@@ -256,6 +287,7 @@ class TestWeeklyTrendAdmin:
             "id",
             "week_range",
             "summarize_insight",
+            "review_status",
             "is_processed_colored",
             "processed_at_formatted",
             "created_at",
@@ -263,7 +295,11 @@ class TestWeeklyTrendAdmin:
         assert weekly_trend_admin.list_display == expected_list_display
 
         # list_filter 확인
-        expected_list_filter = ("is_processed", "week_start_date")
+        expected_list_filter = (
+            "review_status",
+            "is_processed",
+            "week_start_date",
+        )
         assert weekly_trend_admin.list_filter == expected_list_filter
 
         # search_fields 확인
@@ -279,7 +315,11 @@ class TestWeeklyTrendAdmin:
         assert weekly_trend_admin.readonly_fields == expected_readonly_fields
 
         # actions 확인
-        expected_actions = ["mark_as_processed"]
+        expected_actions = (
+            "mark_as_processed",
+            "mark_as_hold",
+            "mark_as_approved",
+        )
         assert weekly_trend_admin.actions == expected_actions
 
         # fieldsets 확인
