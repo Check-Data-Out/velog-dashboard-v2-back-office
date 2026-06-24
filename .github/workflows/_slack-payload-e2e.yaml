@@ -4,6 +4,11 @@ name: _Slack Payload E2E (temp)
 # 운영 부작용 없음 — OpenAI/DB/메일 발송을 일절 호출하지 않고 Slack 전송 경로만 태운다.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fix/slack-payload-escape
+    paths:
+      - .github/workflows/_slack-payload-e2e.yaml
 
 jobs:
   slack-payload-e2e:
