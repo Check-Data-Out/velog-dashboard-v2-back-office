@@ -92,14 +92,16 @@ jobs:
         run: |
           RESULT=$(cat newsletter_batch_result.txt 2>/dev/null || echo "No output file found")
           if [ "$JOB_STATUS" = "success" ]; then ICON="✅"; else ICON="❌"; fi
+          # delimiter 가 RESULT 값에 한 줄로 등장해 출력이 잘리는 일을 막기 위해 매 실행 유니크 delimiter 사용
+          DELIM="SLACK_EOF_$(openssl rand -hex 16)"
           {
-            echo "TEXT<<__SLACK_EOF__"
+            echo "TEXT<<$DELIM"
             printf '*Weekly Newsletter Batch*\n\n'
             printf '%s *Status:* %s\n' "$ICON" "$JOB_STATUS"
             printf '📅 *Timestamp (KST):* %s\n' "$KST_TIME"
             printf '📝 *Result:*\n```\n%s\n```\n' "$RESULT"
             printf '🔗 *Workflow URL:* <%s|View Workflow>\n' "$RUN_URL"
-            echo "__SLACK_EOF__"
+            echo "$DELIM"
           } >> "$GITHUB_OUTPUT"
 
       # toJSON 으로 escape — payload JSON 이 절대 깨지지 않는다 (성공/실패 공통)
