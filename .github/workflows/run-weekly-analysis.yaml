@@ -87,38 +87,36 @@ jobs:
         if: always()
         run: echo "KST_TIME=$(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
 
-      # 결과 파일 읽기
-      - name: Read Result Output
+      # 결과 파일을 읽어 Slack 메시지를 셸에서 안전하게 조립한다.
+      # (글 제목·URL 등 임의 문자가 payload JSON 을 깨뜨리지 않도록 toJSON 으로 escape)
+      - name: Compose Slack Message
         if: always()
-        id: read-result
-        run: |
-          if [ -f weekly_analysis_result.txt ]; then
-            RESULT=$(cat weekly_analysis_result.txt)
-            echo "RESULT<<EOF" >> $GITHUB_OUTPUT
-            echo "$RESULT" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-          else
-            echo "RESULT=No output file found" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Send Slack Notification on Success
-        if: success()
-        uses: slackapi/slack-github-action@v1.24.0
-        with:
-          payload: |
-            {
-              "text": "*Weekly Analysis Batch*\n\n✅ *Status:* Success\n📅 *Timestamp (KST):* ${{ env.KST_TIME }}\n📝 *Result:* \n```${{ steps.read-result.outputs.RESULT }}```\n🔗 *Workflow URL:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow>"
-            }
+        id: compose
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          JOB_STATUS: ${{ job.status }}
+          KST_TIME: ${{ env.KST_TIME }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          RESULT=$(cat weekly_analysis_result.txt 2>/dev/null || echo "No output file found")
+          if [ "$JOB_STATUS" = "success" ]; then ICON="✅"; else ICON="❌"; fi
+          {
+            echo "TEXT<<__SLACK_EOF__"
+            printf '*Weekly Analysis Batch*\n\n'
+            printf '%s *Status:* %s\n' "$ICON" "$JOB_STATUS"
+            printf '📅 *Timestamp (KST):* %s\n' "$KST_TIME"
+            printf '📝 *Result:*\n```\n%s\n```\n' "$RESULT"
+            printf '🔗 *Workflow URL:* <%s|View Workflow>\n' "$RUN_URL"
+            echo "__SLACK_EOF__"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Send Slack Notification on Failure
-        if: failure()
+      # toJSON 으로 escape — payload JSON 이 절대 깨지지 않는다 (성공/실패 공통)
+      - name: Send Slack Notification
+        if: always()
         uses: slackapi/slack-github-action@v1.24.0
         with:
           payload: |
             {
-              "text": "*Weekly Analysis Batch*\n\n❌ *Status:* Failure\n📅 *Timestamp (KST):* ${{ env.KST_TIME }}\n📝 *Result:* \n```${{ steps.read-result.outputs.RESULT }}```\n🔗 *Workflow URL:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow>"
+              "text": ${{ toJSON(steps.compose.outputs.TEXT) }}
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

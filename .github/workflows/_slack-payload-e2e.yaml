@@ -1,0 +1,57 @@
+name: _Slack Payload E2E (temp)
+
+# 임시 검증용 워크플로우. Slack payload escape 수정의 E2E 확인 후 삭제한다.
+# 운영 부작용 없음 — OpenAI/DB/메일 발송을 일절 호출하지 않고 Slack 전송 경로만 태운다.
+on:
+  workflow_dispatch:
+
+jobs:
+  slack-payload-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      # payload JSON 을 깨뜨릴 수 있는 악성 문자(쌍따옴표/백틱/백슬래시/이모지/줄바꿈)를
+      # 일부러 결과 파일에 심는다. 옛 방식이면 여기서 Slack step 이 깨졌다.
+      - name: Write hostile result file
+        run: |
+          {
+            printf '%s\n' '✅ 주간 트렌드 분석 완료 (검수 권장)'
+            printf '%s\n' ''
+            printf '%s\n' '[광고 필터 후보]'
+            printf '%s\n' '🚫 [drop 8.5] "무료" 강의 받고 月 500만원 \대박/ (https://velog.io/@spammer/get-rich) — promo_phrase, money_pattern'
+            printf '%s\n' '⚠️ [borderline 5.0] React 19 `useActionState` 완벽정리 (https://velog.io/@dev/react19) — short_body'
+          } > weekly_analysis_result.txt
+
+      - name: Get Current KST Time
+        if: always()
+        run: echo "KST_TIME=$(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
+
+      - name: Compose Slack Message
+        if: always()
+        id: compose
+        env:
+          JOB_STATUS: ${{ job.status }}
+          KST_TIME: ${{ env.KST_TIME }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          RESULT=$(cat weekly_analysis_result.txt 2>/dev/null || echo "No output file found")
+          if [ "$JOB_STATUS" = "success" ]; then ICON="✅"; else ICON="❌"; fi
+          {
+            echo "TEXT<<__SLACK_EOF__"
+            printf '*[E2E TEST] Slack Payload Escape 검증*\n\n'
+            printf '%s *Status:* %s\n' "$ICON" "$JOB_STATUS"
+            printf '📅 *Timestamp (KST):* %s\n' "$KST_TIME"
+            printf '📝 *Result:*\n```\n%s\n```\n' "$RESULT"
+            printf '🔗 *Workflow URL:* <%s|View Workflow>\n' "$RUN_URL"
+            echo "__SLACK_EOF__"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Send Slack Notification
+        if: always()
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": ${{ toJSON(steps.compose.outputs.TEXT) }}
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
