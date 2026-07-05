@@ -123,6 +123,22 @@ WSGI_APPLICATION = "backoffice.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
+POSTGRES_ENGINES = (
+    "django.db.backends.postgresql",
+    "timescale.db.backends.postgresql",
+)
+
+
+def connection_options_for_engine(engine: str | None) -> dict[str, int]:
+    """postgresql 계열 엔진에 적용할 psycopg 연결 옵션을 반환한다.
+
+    sqlite3 등 그 외 엔진에서는 빈 옵션을 반환한다.
+    """
+    if engine in POSTGRES_ENGINES:
+        return {"connect_timeout": 10, "keepalives": 1}
+    return {}
+
+
 DATABASES = {
     "default": {
         "ENGINE": env("DATABASE_ENGINE", default="django.db.backends.sqlite3"),
@@ -133,15 +149,11 @@ DATABASES = {
         "PORT": env("POSTGRES_PORT", default=""),
         "CONN_MAX_AGE": 600,  # 10분 동안 연결 유지
         "CONN_HEALTH_CHECKS": True,
-        "OPTIONS": {},
+        "OPTIONS": connection_options_for_engine(
+            env("DATABASE_ENGINE", default=None)
+        ),
     }
 }
-
-# sqlite3 에서는 해당 옵션 사용안하게
-if env("DATABASE_ENGINE", default=None) == "django.db.backends.postgresql":
-    DATABASES["default"]["OPTIONS"]["connect_timeout"] = 10
-    DATABASES["default"]["OPTIONS"]["keepalives"] = 1
-    DATABASES["default"]["OPTIONS"]["options"] = "-c statement_timeout=60000"
 
 
 # Password validation

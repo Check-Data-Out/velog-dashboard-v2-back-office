@@ -2,6 +2,8 @@ import pytest
 import sentry_sdk
 from django.conf import settings
 
+from backoffice.settings.base import connection_options_for_engine
+
 
 class TestSentryGuard:
     def test_sentry_not_active_in_local_environment(self):
@@ -27,6 +29,17 @@ class TestSentryGuard:
         except Exception as e:
             result = sentry_sdk.capture_exception(e)
         assert result is None
+
+
+class TestConnectionOptions:
+    def test_connection_options_applied_for_timescale_engine(self):
+        """timescale 엔진에 connect_timeout·keepalives가 적용되어야 한다."""
+        options = connection_options_for_engine(
+            "timescale.db.backends.postgresql"
+        )
+        assert options["connect_timeout"] == 10
+        assert options["keepalives"] == 1
+        assert "options" not in options
 
 
 class TestLoggingConfig:
