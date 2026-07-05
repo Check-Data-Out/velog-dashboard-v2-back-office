@@ -65,6 +65,25 @@ class TestStatsRefreshMessageHandler:
 
         handler.process_message.assert_called_once_with(sample_message)
 
+    @patch("consumer.message_handler.close_old_connections")
+    def test_handle_message_sync_closes_old_connections_before_processing(
+        self, mock_close_old_connections, sample_message
+    ) -> None:
+        """메시지 처리 전 메인 스레드의 stale DB 연결 정리 테스트."""
+        call_order: list[str] = []
+        mock_close_old_connections.side_effect = lambda: call_order.append(
+            "close_old_connections"
+        )
+
+        handler = StatsRefreshMessageHandler()
+        handler.process_message = AsyncMock(
+            side_effect=lambda message: call_order.append("process_message")
+        )
+
+        handler.handle_message_sync(sample_message)
+
+        assert call_order == ["close_old_connections", "process_message"]
+
 
 class TestMessageProcessor:
     """Tests for MessageProcessor class."""

@@ -132,6 +132,7 @@ DATABASES = {
         "HOST": env("POSTGRES_HOST", default=""),
         "PORT": env("POSTGRES_PORT", default=""),
         "CONN_MAX_AGE": 600,  # 10분 동안 연결 유지
+        "CONN_HEALTH_CHECKS": True,
     }
 }
 

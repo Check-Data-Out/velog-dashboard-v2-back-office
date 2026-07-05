@@ -4,6 +4,7 @@ import time
 from typing import Any
 
 import sentry_sdk
+from django.db import close_old_connections
 
 from modules.redis.config import RedisConfig
 from scraping.main import ScraperTargetUser
@@ -76,6 +77,7 @@ class StatsRefreshMessageHandler:
         Args:
             message: Message to process
         """
+        close_old_connections()
         asyncio.run(self.process_message(message))
 
 
