@@ -1,3 +1,4 @@
+import threading
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -83,6 +84,31 @@ class TestStatsRefreshMessageHandler:
         handler.handle_message_sync(sample_message)
 
         assert call_order == ["close_old_connections", "process_message"]
+
+    @pytest.mark.asyncio
+    @patch("consumer.message_handler.ScraperTargetUser")
+    @patch("consumer.message_handler.close_old_connections")
+    async def test_process_message_closes_old_connections_in_orm_worker_thread(
+        self, mock_close_old_connections, mock_scraper_class, sample_message
+    ) -> None:
+        """ORM 실행 스레드에서 stale DB 연결 정리 테스트.
+
+        Django 연결은 thread-local이라 메인 스레드 정리만으로는
+        sync_to_async executor 스레드의 죽은 연결에 닿지 않는다.
+        """
+        calling_threads: list[threading.Thread] = []
+        mock_close_old_connections.side_effect = (
+            lambda: calling_threads.append(threading.current_thread())
+        )
+        mock_scraper = Mock()
+        mock_scraper.run = AsyncMock()
+        mock_scraper_class.return_value = mock_scraper
+
+        handler = StatsRefreshMessageHandler()
+        await handler.process_message(sample_message)
+
+        assert len(calling_threads) == 1
+        assert calling_threads[0] is not threading.main_thread()
 
 
 class TestMessageProcessor:

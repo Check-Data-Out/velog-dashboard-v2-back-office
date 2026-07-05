@@ -4,6 +4,7 @@ import time
 from typing import Any
 
 import sentry_sdk
+from asgiref.sync import sync_to_async
 from django.db import close_old_connections
 
 from modules.redis.config import RedisConfig
@@ -34,6 +35,8 @@ class StatsRefreshMessageHandler:
             ValueError: If message format is invalid
             Exception: If processing fails
         """
+        await sync_to_async(close_old_connections)()
+
         # Validate message format
         if "userId" not in message:
             raise ValueError("Message missing required field: userId")
