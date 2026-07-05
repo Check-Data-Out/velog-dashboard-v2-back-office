@@ -14,8 +14,9 @@ class TestStatsRefreshMessageHandler:
 
     @pytest.mark.asyncio
     @patch("consumer.message_handler.ScraperTargetUser")
+    @patch("consumer.message_handler.close_old_connections")
     async def test_process_message_success(
-        self, mock_scraper_class, sample_message
+        self, mock_close_old_connections, mock_scraper_class, sample_message
     ) -> None:
         """메시지 처리 성공 테스트."""
         mock_scraper = Mock()
@@ -31,8 +32,9 @@ class TestStatsRefreshMessageHandler:
         mock_scraper.run.assert_called_once()
 
     @pytest.mark.asyncio
+    @patch("consumer.message_handler.close_old_connections")
     async def test_process_message_missing_user_id(
-        self, invalid_message
+        self, mock_close_old_connections, invalid_message
     ) -> None:
         """userId가 없는 메시지 처리 실패 테스트."""
         handler = StatsRefreshMessageHandler()
@@ -44,8 +46,9 @@ class TestStatsRefreshMessageHandler:
 
     @pytest.mark.asyncio
     @patch("consumer.message_handler.ScraperTargetUser")
+    @patch("consumer.message_handler.close_old_connections")
     async def test_process_message_scraper_failure(
-        self, mock_scraper_class, sample_message
+        self, mock_close_old_connections, mock_scraper_class, sample_message
     ) -> None:
         """Scraper 실행 실패 테스트."""
         mock_scraper = Mock()
@@ -57,7 +60,10 @@ class TestStatsRefreshMessageHandler:
         with pytest.raises(Exception, match="Scraper error"):
             await handler.process_message(sample_message)
 
-    def test_handle_message_sync(self, sample_message) -> None:
+    @patch("consumer.message_handler.close_old_connections")
+    def test_handle_message_sync(
+        self, mock_close_old_connections, sample_message
+    ) -> None:
         """동기 wrapper 함수 테스트."""
         handler = StatsRefreshMessageHandler()
         handler.process_message = AsyncMock()
