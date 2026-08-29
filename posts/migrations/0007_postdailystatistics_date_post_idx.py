@@ -1,14 +1,29 @@
 from django.db import migrations
 
+TABLE_NAME = "posts_postdailystatistics"
 INDEX_NAME = "posts_pds_date_post_idx"
 
 # date 를 선행 컬럼으로 갖는 인덱스가 없어 date 단독 조건 조회가 전부 전체 스캔이 된다.
 # 기존 posts_pds_post_date_idx 는 (post_id, date DESC) 라 date 조건에는 쓸 수 없다.
-CREATE_INDEX_SQL = (
-    f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {INDEX_NAME} "
-    "ON posts_postdailystatistics (date, post_id);"
+INDEX_COLUMNS = "(date, post_id)"
+
+IS_HYPERTABLE_SQL = (
+    "SELECT EXISTS ("
+    "  SELECT 1 FROM timescaledb_information.hypertables"
+    "  WHERE hypertable_name = %s"
+    ");"
 )
-DROP_INDEX_SQL = f"DROP INDEX CONCURRENTLY IF EXISTS {INDEX_NAME};"
+
+
+def _is_hypertable(schema_editor) -> bool:
+    """timescaledb 확장이 없거나 hypertables 뷰 조회가 실패하면 일반 테이블로 간주한다."""
+    try:
+        with schema_editor.connection.cursor() as cursor:
+            cursor.execute(IS_HYPERTABLE_SQL, [TABLE_NAME])
+            row = cursor.fetchone()
+            return bool(row and row[0])
+    except Exception:
+        return False
 
 
 def create_index(apps, schema_editor):
@@ -16,13 +31,23 @@ def create_index(apps, schema_editor):
     # (settings 기본 엔진이 sqlite3 라 가드가 없으면 로컬 migrate 가 깨진다)
     if schema_editor.connection.vendor != "postgresql":
         return
-    schema_editor.execute(CREATE_INDEX_SQL)
+
+    # 운영 DB 의 이 테이블은 일반 테이블이라 CONCURRENTLY 로 쓰기 락을 피해야 하지만,
+    # CI 는 timescale 백엔드로 하이퍼테이블을 만들고 하이퍼테이블은 CONCURRENTLY 를 거부한다.
+    # 런타임에 판정해 양쪽 모두에서 동작하게 한다.
+    concurrently = "" if _is_hypertable(schema_editor) else "CONCURRENTLY "
+    schema_editor.execute(
+        f"CREATE INDEX {concurrently}IF NOT EXISTS {INDEX_NAME} "
+        f"ON {TABLE_NAME} {INDEX_COLUMNS};"
+    )
 
 
 def drop_index(apps, schema_editor):
     if schema_editor.connection.vendor != "postgresql":
         return
-    schema_editor.execute(DROP_INDEX_SQL)
+
+    concurrently = "" if _is_hypertable(schema_editor) else "CONCURRENTLY "
+    schema_editor.execute(f"DROP INDEX {concurrently}IF EXISTS {INDEX_NAME};")
 
 
 class Migration(migrations.Migration):
