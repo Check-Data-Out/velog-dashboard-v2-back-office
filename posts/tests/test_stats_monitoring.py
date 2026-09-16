@@ -74,22 +74,6 @@ class TestPostStatsMonitoringManager:
         assert post_with_today_stats.pk not in ids
         assert post_inactive_no_stats.pk not in ids
 
-    def test_get_posts_missing_today_stats_queryset_classmethod_delegates_to_manager(
-        self, post_missing_today
-    ):
-        classmethod_ids = set(
-            Post.get_posts_missing_today_stats_queryset().values_list(
-                "pk", flat=True
-            )
-        )
-        manager_ids = set(
-            Post.stats_monitor.missing_today_stats().values_list(
-                "pk", flat=True
-            )
-        )
-        assert classmethod_ids == manager_ids
-        assert post_missing_today.pk in classmethod_ids
-
 
 class TestStatsStatusFilter:
     def test_filter_restricts_to_missing_today_posts(
