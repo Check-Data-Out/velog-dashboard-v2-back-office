@@ -69,8 +69,12 @@ def split_range(start: int, end: int, parts: int) -> list[range]:
 
     for i in range(parts):
         part_start = start + (i * part_width)
-        part_end = start + ((i + 1) * part_width) if i < parts - 1 else end
-        ranges.append(range(part_start, part_end + 1))
+        if i < parts - 1:
+            # 다음 파트의 시작값은 제외한다. 포함하면 같은 그룹을 두
+            # 프로세스가 처리해 (post, date) 중복 행이 생긴다.
+            ranges.append(range(part_start, start + ((i + 1) * part_width)))
+        else:
+            ranges.append(range(part_start, end + 1))
 
     return ranges
 
