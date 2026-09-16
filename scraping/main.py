@@ -417,6 +417,13 @@ class Scraper:
         else:
             logger.info(f"Succeeded to update stats. {stats_summary}")
 
+    async def process_users(
+        self, users: list[User], session: aiohttp.ClientSession
+    ) -> None:
+        """유저 목록을 순회하며 처리한다."""
+        for user in users:
+            await self.process_user(user, session)
+
     async def run(self) -> None:
         """스크래핑 작업 실행"""
         logger.info(
@@ -439,8 +446,7 @@ class Scraper:
             connector=connector,
             cookie_jar=cookie_jar,
         ) as session:
-            for user in users:
-                await self.process_user(user, session)
+            await self.process_users(users, session)
 
         logger.info(
             f"Finished scraping for group range ({min(self.group_range)} ~ {max(self.group_range)})."
@@ -471,7 +477,6 @@ class ScraperTargetUser(Scraper):
         async with aiohttp.ClientSession(
             connector=aiohttp.TCPConnector(limit=30)
         ) as session:
-            for user in users:
-                await self.process_user(user, session)
+            await self.process_users(users, session)
 
         logger.info(f"Finished target user scraping ({self.user_pk_list}).")
