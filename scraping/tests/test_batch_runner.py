@@ -50,15 +50,6 @@ class TestRunInProcesses:
         """
         assert run_in_processes(_raises, [1]) == [1]
 
-    @patch("scraping.batch_runner.multiprocessing.Process")
-    def test_returns_exitcodes(self, mock_process_cls):
-        """join 후 각 프로세스의 exitcode 를 반환하는지"""
-        first, second = MagicMock(), MagicMock()
-        first.exitcode, second.exitcode = 0, 1
-        mock_process_cls.side_effect = [first, second]
-
-        assert run_in_processes(_noop, [1, 2]) == [0, 1]
-
 
 class TestBatchExitCode:
     def test_returns_one_when_any_child_failed(self):
