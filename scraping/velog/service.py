@@ -5,9 +5,7 @@ from scraping.velog.constants import (
     CURRENT_USER_QUERY,
     GET_POST_QUERY,
     POSTS_QUERY,
-    POSTS_STATS_QUERY,
     TRENDING_POSTS_QUERY,
-    V2_CDN_URL,
     V2_URL,
     V3_URL,
 )
@@ -16,7 +14,7 @@ from scraping.velog.exceptions import (
     VelogError,
     VelogResponseError,
 )
-from scraping.velog.schemas import Post, PostStats, User
+from scraping.velog.schemas import Post, User
 
 
 class VelogService:
@@ -38,7 +36,6 @@ class VelogService:
         # API URLs
         self.v3_url = V3_URL
         self.v2_url = V2_URL
-        self.v2_cdn_url = V2_CDN_URL
 
     def _get_headers(self) -> dict[str, str]:
         """
@@ -241,35 +238,6 @@ class VelogService:
 
         return all_posts
 
-    async def get_post_stats(self, post_id: str) -> PostStats | None:
-        """
-        특정 게시물의 통계 정보를 조회합니다.
-
-        Args:
-            post_id: 게시물 ID (UUID 형식)
-
-        Returns:
-            PostStats | None: 게시물 통계 객체, 조회 실패 시 None
-
-        Raises:
-            VelogError: API 요청 중 오류가 발생한 경우
-        """
-        variables = {"post_id": post_id}
-
-        response = await self._execute_query(
-            self.v2_cdn_url, POSTS_STATS_QUERY, variables, "GetStats"
-        )
-
-        if not response or "getStats" not in response:
-            return None
-
-        stats_data = response["getStats"]
-        return PostStats(
-            id=stats_data.get("id", ""),
-            likes=stats_data.get("likes", 0),
-            views=stats_data.get("views", 0),
-        )
-
     async def get_post(self, post_uuid: str) -> Post | None:
         """
         특정 게시물의 상세 정보를 조회합니다.
@@ -367,64 +335,3 @@ class VelogService:
             )
             for post in response["trendingPosts"]
         ]
-
-    async def get_user_posts_with_stats(
-        self, username: str
-    ) -> list[dict[str, Any]]:
-        """
-        사용자의 모든 게시물과 각 게시물의 통계 정보를 함께 조회합니다.
-
-        Args:
-            username: 사용자 아이디
-
-        Returns:
-            list[dict[str, Any]]: 게시물 정보와 통계가 포함된 딕셔너리 리스트
-                각 딕셔너리는 다음 구조를 가집니다:
-                {
-                    "id": str,
-                    "title": str,
-                    "short_description": str,
-                    "url_slug": str,
-                    "released_at": str,
-                    "updated_at": str,
-                    "stats": {
-                        "likes": int,
-                        "views": int
-                    }
-                }
-
-        Raises:
-            VelogError: API 요청 중 오류가 발생한 경우
-        """
-        posts = await self.get_all_posts(username)
-        result = []
-
-        for post in posts:
-            try:
-                stats = await self.get_post_stats(post.id)
-                post_data = {
-                    "id": post.id,
-                    "title": post.title,
-                    "short_description": post.short_description,
-                    "url_slug": post.url_slug,
-                    "released_at": post.released_at,
-                    "updated_at": post.updated_at,
-                    "stats": {
-                        "likes": stats.likes if stats else 0,
-                        "views": stats.views if stats else 0,
-                    },
-                }
-                result.append(post_data)
-            except VelogError:
-                post_data = {
-                    "id": post.id,
-                    "title": post.title,
-                    "short_description": post.short_description,
-                    "url_slug": post.url_slug,
-                    "released_at": post.released_at,
-                    "updated_at": post.updated_at,
-                    "stats": {"likes": 0, "views": 0},
-                }
-                result.append(post_data)
-
-        return result

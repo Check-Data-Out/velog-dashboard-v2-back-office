@@ -28,10 +28,3 @@ class Post:
     comments_count: int = 0
     tags: list[str] | None = None
     user: User | None = None
-
-
-@dataclass
-class PostStats:
-    id: str
-    likes: int
-    views: int

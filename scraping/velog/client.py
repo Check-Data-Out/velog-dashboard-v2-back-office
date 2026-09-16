@@ -1,7 +1,7 @@
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from scraping.protocols import HttpSession
-from scraping.velog.schemas import Post, PostStats, User
+from scraping.velog.schemas import Post, User
 
 
 class VelogClient:
@@ -190,21 +190,6 @@ class VelogClient:
         """
         return await self.service.get_all_posts(username)
 
-    async def get_post_stats(self, post_id: str) -> PostStats | None:
-        """
-        특정 게시물의 통계 정보를 조회합니다.
-
-        Args:
-            post_id: 게시물 ID (UUID 형식)
-
-        Returns:
-            PostStats | None: 게시물 통계 객체, 조회 실패 시 None
-
-        Raises:
-            VelogError: API 요청 중 오류가 발생한 경우
-        """
-        return await self.service.get_post_stats(post_id)
-
     async def get_post(self, post_uuid: str) -> Post | None:
         """
         특정 게시물의 상세 정보를 조회합니다.
@@ -240,37 +225,6 @@ class VelogClient:
         """
         return await self.service.get_trending_posts(limit, offset, timeframe)
 
-    async def get_user_posts_with_stats(
-        self, username: str
-    ) -> list[dict[str, Any]]:
-        """
-        사용자의 모든 게시물과 각 게시물의 통계 정보를 함께 조회합니다.
-
-        Args:
-            username: 사용자 아이디
-
-        Returns:
-            list[dict[str, Any]]: 게시물 정보와 통계가 포함된 딕셔너리 리스트
-                각 딕셔너리는 다음 구조를 가집니다:
-                {
-                    "id": str,
-                    "title": str,
-                    "short_description": str,
-                    "url_slug": str,
-                    "released_at": str,
-                    "updated_at": str,
-                    "stats": {
-                        "likes": int,
-                        "views": int
-                    }
-                }
-
-        Raises:
-            VelogError: API 요청 중 오류가 발생한 경우
-        """
-        return await self.service.get_user_posts_with_stats(username)
-
-    @classmethod
     def reset_client(cls) -> None:
         """
         클라이언트 인스턴스를 재설정합니다.

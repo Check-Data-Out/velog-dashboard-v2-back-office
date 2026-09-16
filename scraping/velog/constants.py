@@ -7,9 +7,6 @@ V3_URL: Final[str] = "https://v3.velog.io/graphql"
 V2_URL: Final[str] = "https://v2.velog.io/graphql"
 """Velog API v2 엔드포인트 URL"""
 
-V2_CDN_URL: Final[str] = "https://v2cdn.velog.io/graphql"
-"""Velog API v2 CDN 엔드포인트 URL (통계 정보 등에 사용)"""
-
 
 CURRENT_USER_QUERY: Final[str] = """
 query currentUser {
@@ -66,28 +63,6 @@ query velogPosts($input: GetPostsInput!) {
 - released_at: 발행일
 - updated_at: 최종 수정일
 - user: 작성자 정보 (id, username)
-"""
-
-
-POSTS_STATS_QUERY: Final[str] = """
-query GetStats($post_id: ID!) {
-    getStats(post_id: $post_id) {
-        id
-        likes
-        views
-    }
-}
-""".strip()
-"""
-게시물의 통계 정보를 조회하는 쿼리
-
-파라미터:
-- post_id: 게시물 ID
-
-반환 필드:
-- id: 게시물 ID
-- likes: 좋아요 수
-- views: 조회수
 """
 
 
