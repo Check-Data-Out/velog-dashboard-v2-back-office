@@ -169,7 +169,6 @@ poetry run pre-commit run --all-files
 | `CONSUMER_HEALTHZ_PORT` | 8081 | /healthz 포트 (내부 bind) |
 | `CONSUMER_HEALTHZ_STALE_THRESHOLD_SEC` | 60 | idle false-stale 방지 |
 | `SLACK_OPS_WEBHOOK` | (미설정) | 운영 알림 웹훅 — 미설정 시 no-op |
-| `MISSING_POSTS_THRESHOLD` | 100 | 배치 완료 후 누락 임계 (초과 시 Slack) |
 
 ### 장애 복구
 
