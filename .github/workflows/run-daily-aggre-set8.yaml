@@ -14,6 +14,12 @@ on:
   schedule:
     - cron: "*/50 * * * *"
 
+# 같은 세트가 겹쳐 돌면 동일 (post, date) 행이 중복 생성된다.
+# 수동 dispatch 와 cron 이 겹치는 상황을 막는다.
+concurrency:
+  group: daily-aggre-set8
+  cancel-in-progress: false
+
 jobs:
   velog-posts-daily-stats-batch:
     runs-on: ubuntu-latest
