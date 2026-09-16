@@ -8,12 +8,12 @@
 """
 
 import asyncio
-import multiprocessing
 import warnings
 
 import setup_django  # noqa
 from django.db.models import Avg, Count
 
+from scraping.batch_runner import run_in_processes
 from scraping.main import ScraperTargetUser
 from users.models import User
 from utils.utils import split_list
@@ -51,14 +51,7 @@ def main() -> None:
     # 3. 필터링한 사용자들의 pk를 리스트로 추출
     user_pk_list = list(users_above_avg.values_list("pk", flat=True))
 
-    processes = []
-    for user_pk_list in split_list(user_pk_list, 2):
-        p = multiprocessing.Process(target=run_scraper, args=(user_pk_list,))
-        p.start()
-        processes.append(p)
-
-    for p in processes:
-        p.join()
+    run_in_processes(run_scraper, split_list(user_pk_list, 2))
 
 
 # 실행

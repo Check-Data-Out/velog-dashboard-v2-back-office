@@ -12,12 +12,12 @@
 
 import argparse
 import asyncio
-import multiprocessing
 import warnings
 
 import setup_django  # noqa
 
 from scraping.batch_notify import notify_after_batch
+from scraping.batch_runner import run_in_processes
 from scraping.main import Scraper
 from utils.utils import split_range
 
@@ -45,14 +45,7 @@ def main() -> None:
     args = parser.parse_args()
 
     group_ranges = split_range(args.min_group, args.max_group, 2)
-    processes = []
-    for group_range in group_ranges:
-        p = multiprocessing.Process(target=run_scraper, args=(group_range,))
-        p.start()
-        processes.append(p)
-
-    for p in processes:
-        p.join()
+    run_in_processes(run_scraper, group_ranges)
 
     notify_after_batch()
 
