@@ -72,6 +72,11 @@ jobs:
           echo "AES_KEY_7=${{ secrets.AES_KEY_7 }}" >> .env.prod
           echo "AES_KEY_8=${{ secrets.AES_KEY_8 }}" >> .env.prod
           echo "AES_KEY_9=${{ secrets.AES_KEY_9 }}" >> .env.prod
+          echo "REDIS_HOST=${{ secrets.REDIS_HOST }}" >> .env.prod
+          echo "REDIS_PORT=${{ secrets.REDIS_PORT }}" >> .env.prod
+          echo "REDIS_PASSWORD_B64=${{ secrets.REDIS_PASSWORD_B64 }}" >> .env.prod
+          echo "REDIS_DB=${{ secrets.REDIS_DB }}" >> .env.prod
+          echo "SLACK_OPS_WEBHOOK=${{ secrets.SLACK_OPS_WEBHOOK }}" >> .env.prod
 
       - name: Run Velog Daily Stats Script
         id: velog-daily-stats-main
