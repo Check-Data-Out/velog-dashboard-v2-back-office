@@ -18,7 +18,7 @@ import warnings
 import setup_django  # noqa
 
 from scraping.batch_notify import notify_after_batch
-from scraping.batch_runner import finalize_batch, run_in_processes
+from scraping.batch_runner import batch_exit_code, run_in_processes
 from scraping.main import Scraper
 from utils.utils import split_range
 
@@ -48,7 +48,9 @@ def main() -> None:
     group_ranges = split_range(args.min_group, args.max_group, 2)
     exitcodes = run_in_processes(run_scraper, group_ranges)
 
-    sys.exit(finalize_batch(exitcodes, notify_after_batch))
+    # 알림을 먼저 보내야 종료 코드 전파로 알림 기회를 잃지 않는다.
+    notify_after_batch()
+    sys.exit(batch_exit_code(exitcodes))
 
 
 # Django에서 발생하는 RuntimeWarning 무시

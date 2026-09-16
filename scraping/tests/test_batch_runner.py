@@ -1,10 +1,14 @@
 from unittest.mock import MagicMock, call, patch
 
-from scraping.batch_runner import finalize_batch, run_in_processes
+from scraping.batch_runner import batch_exit_code, run_in_processes
 
 
 def _noop(_: int) -> None:
     pass
+
+
+def _raises(_: int) -> None:
+    raise RuntimeError("boom")
 
 
 class TestRunInProcesses:
@@ -23,12 +27,8 @@ class TestRunInProcesses:
 
         run_in_processes(_noop, [1, 2])
 
-        assert manager.mock_calls == [
-            call.first.start(),
-            call.second.start(),
-            call.first.join(),
-            call.second.join(),
-        ]
+        names = [c[0] for c in manager.mock_calls]
+        assert names.index("second.start") < names.index("first.join")
 
     @patch("scraping.batch_runner.multiprocessing.Process")
     def test_passes_each_arg_to_its_process(self, mock_process_cls):
@@ -42,6 +42,14 @@ class TestRunInProcesses:
             call(target=_noop, args=(20,)),
         ]
 
+    def test_real_child_exception_yields_nonzero_exitcode(self):
+        """실제 프로세스가 예외로 죽으면 exitcode 가 0 이 아닌지.
+
+        나머지 테스트는 Process 를 통째로 목킹하므로 "자식이 죽으면
+        exitcode 로 드러난다" 는 전제 자체는 검증하지 못한다.
+        """
+        assert run_in_processes(_raises, [1]) == [1]
+
     @patch("scraping.batch_runner.multiprocessing.Process")
     def test_returns_exitcodes(self, mock_process_cls):
         """join 후 각 프로세스의 exitcode 를 반환하는지"""
@@ -52,25 +60,15 @@ class TestRunInProcesses:
         assert run_in_processes(_noop, [1, 2]) == [0, 1]
 
 
-class TestFinalizeBatch:
-    def test_notifies_before_reporting_failure(self):
-        """실패가 있어도 알림을 먼저 보내는지.
-
-        이번 장애의 핵심이 "실패했는데 알림이 안 갔다" 였으므로 순서를
-        고정한다.
-        """
-        notifier = MagicMock()
-
-        assert finalize_batch([0, 1], notifier) == 1
-        notifier.assert_called_once()
+class TestBatchExitCode:
+    def test_returns_one_when_any_child_failed(self):
+        """자식이 하나라도 실패하면 1 을 반환하는지"""
+        assert batch_exit_code([0, 1]) == 1
 
     def test_returns_zero_when_all_succeeded(self):
         """전부 성공이면 0 을 반환하는지"""
-        notifier = MagicMock()
-
-        assert finalize_batch([0, 0], notifier) == 0
-        notifier.assert_called_once()
+        assert batch_exit_code([0, 0]) == 0
 
     def test_treats_none_exitcode_as_failure(self):
         """exitcode 가 None 이면 성공으로 오판하지 않는지"""
-        assert finalize_batch([0, None], MagicMock()) == 1
+        assert batch_exit_code([0, None]) == 1

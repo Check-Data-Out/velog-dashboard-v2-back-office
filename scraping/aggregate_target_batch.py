@@ -14,7 +14,7 @@ import warnings
 import setup_django  # noqa
 from django.db.models import Avg, Count
 
-from scraping.batch_runner import finalize_batch, run_in_processes
+from scraping.batch_runner import batch_exit_code, run_in_processes
 from scraping.main import ScraperTargetUser
 from users.models import User
 from utils.utils import split_list
@@ -54,7 +54,7 @@ def main() -> None:
 
     exitcodes = run_in_processes(run_scraper, split_list(user_pk_list, 2))
 
-    sys.exit(finalize_batch(exitcodes, lambda: None))
+    sys.exit(batch_exit_code(exitcodes))
 
 
 # 실행

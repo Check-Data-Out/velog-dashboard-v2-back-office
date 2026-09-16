@@ -30,13 +30,9 @@ def run_in_processes[T](
     return [process.exitcode for process in processes]
 
 
-def finalize_batch(
-    exitcodes: list[int | None], notifier: Callable[[], None]
-) -> int:
-    """알림을 먼저 보내고, 실패가 있으면 1 을 반환한다.
+def batch_exit_code(exitcodes: list[int | None]) -> int:
+    """실패가 하나라도 있으면 1 을 반환한다.
 
-    알림을 먼저 호출해야 종료 코드 전파 때문에 알림 기회를 잃지 않는다.
     exitcode 가 None 이면(미기동/비정상 종료) 실패로 본다.
     """
-    notifier()
     return 0 if all(code == 0 for code in exitcodes) else 1
