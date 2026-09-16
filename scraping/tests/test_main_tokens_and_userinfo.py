@@ -8,6 +8,50 @@ from scraping.main import ScraperTargetUser
 from users.models import User
 
 
+async def run_process_user(scraper, user, mock_user_data, posts):
+    """process_user 를 실행하고 update_daily_statistics mock 을 반환."""
+    with (
+        patch("scraping.main.AESEncryption") as mock_aes,
+        patch("scraping.main.fetch_velog_user_chk") as mock_chk,
+        patch("scraping.main.fetch_all_velog_posts") as mock_posts,
+        patch("asyncio.sleep", new_callable=AsyncMock),
+        patch.object(
+            scraper,
+            "update_old_tokens",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch.object(
+            scraper,
+            "update_old_user_info",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch.object(scraper, "bulk_upsert_posts", new_callable=AsyncMock),
+        patch.object(
+            scraper, "sync_post_active_status", new_callable=AsyncMock
+        ),
+        patch.object(
+            scraper, "update_daily_statistics", new_callable=AsyncMock
+        ) as mock_update_stats,
+    ):
+        encryption = mock_aes.return_value
+        encryption.decrypt.side_effect = lambda token: f"decrypted-{token}"
+        encryption.encrypt.side_effect = lambda token: f"encrypted-{token}"
+        mock_chk.return_value = (
+            {
+                "access_token": "new-token",
+                "refresh_token": "new-refresh-token",
+            },
+            mock_user_data,
+        )
+        mock_posts.return_value = posts
+
+        await scraper.process_user(user, AsyncMock())
+
+    return mock_update_stats
+
+
 class TestScraperTokenAndUserInfoAndProcessing:
     @patch("scraping.main.AESEncryption")
     @pytest.mark.asyncio
@@ -159,6 +203,62 @@ class TestScraperTokenAndUserInfoAndProcessing:
         assert result is None
         assert mock_fetch.call_count == 3  # 최대 3번 재시도
 
+    @pytest.mark.asyncio
+    async def test_process_user_writes_stats_from_post_views(
+        self, scraper, user, mock_user_data, mock_posts_data
+    ):
+        """posts 응답의 views 값이 그대로 통계로 저장되는지"""
+        mock_update_stats = await run_process_user(
+            scraper, user, mock_user_data, mock_posts_data
+        )
+
+        written = [call.args[1] for call in mock_update_stats.call_args_list]
+        assert written == [150, 320]
+
+    @pytest.mark.asyncio
+    async def test_process_user_skips_post_with_null_views(
+        self, scraper, user, mock_user_data, mock_posts_data
+    ):
+        """views 가 None 이면 0 으로 덮어쓰지 않고 건너뛰는지"""
+        posts = [
+            dict(mock_posts_data[0]),
+            {**mock_posts_data[1], "views": None},
+        ]
+
+        mock_update_stats = await run_process_user(
+            scraper, user, mock_user_data, posts
+        )
+
+        written = [call.args[1] for call in mock_update_stats.call_args_list]
+        assert written == [150]
+
+    @pytest.mark.asyncio
+    async def test_process_user_writes_zero_views(
+        self, scraper, user, mock_user_data, mock_posts_data
+    ):
+        """views 가 0 인 신규 글도 건너뛰지 않고 저장하는지"""
+        posts = [{**mock_posts_data[0], "views": 0}]
+
+        mock_update_stats = await run_process_user(
+            scraper, user, mock_user_data, posts
+        )
+
+        written = [call.args[1] for call in mock_update_stats.call_args_list]
+        assert written == [0]
+
+    @pytest.mark.asyncio
+    async def test_process_user_skips_post_without_views_key(
+        self, scraper, user, mock_user_data, mock_posts_data
+    ):
+        """views 키 자체가 없어도 KeyError 로 죽지 않는지"""
+        posts = [{k: v for k, v in mock_posts_data[0].items() if k != "views"}]
+
+        mock_update_stats = await run_process_user(
+            scraper, user, mock_user_data, posts
+        )
+
+        mock_update_stats.assert_not_called()
+
     @patch("scraping.main.fetch_velog_user_chk")
     @patch("scraping.main.fetch_all_velog_posts")
     @patch("scraping.main.AESEncryption")
@@ -172,7 +272,6 @@ class TestScraperTokenAndUserInfoAndProcessing:
         user,
         mock_user_data,
         mock_posts_data,
-        mock_stats_data,
     ):
         """유저 데이터 전체 처리 성공 테스트"""
         # AES 암호화 모킹
@@ -215,15 +314,9 @@ class TestScraperTokenAndUserInfoAndProcessing:
                 scraper, "sync_post_active_status", new_callable=AsyncMock
             ) as mock_sync_status,
             patch.object(
-                scraper, "fetch_post_stats_limited", new_callable=AsyncMock
-            ) as mock_fetch_stats,
-            patch.object(
                 scraper, "update_daily_statistics", new_callable=AsyncMock
-            ) as mock_update_stats,
+            ),
         ):
-            # 통계 데이터 모킹
-            mock_fetch_stats.return_value = mock_stats_data
-
             # 테스트 실행
             await scraper.process_user(user, AsyncMock())
 
@@ -237,9 +330,6 @@ class TestScraperTokenAndUserInfoAndProcessing:
 
         mock_bulk_upsert.assert_called_once()
         mock_sync_status.assert_called_once()
-        # 게시물 개수만큼 호출되어야 함
-        assert mock_fetch_stats.call_count == len(mock_posts_data)
-        assert mock_update_stats.call_count == len(mock_posts_data)
 
     @patch("scraping.main.fetch_velog_user_chk")
     @patch("scraping.main.AESEncryption")

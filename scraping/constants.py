@@ -10,6 +10,7 @@ VELOG_POSTS_QUERY: Final[str] = """
             title
             url_slug
             likes
+            views
             released_at
         }
     }

@@ -429,30 +429,20 @@ class Scraper:
         )
 
         # ========================================================== #
-        # STEP3: 게시물 전체 목록을 기반으로 세부 통계 가져와서 upsert
+        # STEP3: STEP2 응답의 views 를 그대로 일별 통계로 upsert
         # ========================================================== #
         # 게시물을 적절한 크기의 청크로 나누어 처리
         chunk_size = 20
         for i in range(0, len(fetched_posts), chunk_size):
             chunk_posts = fetched_posts[i : i + chunk_size]
-            tasks = [
-                self.fetch_post_stats_limited(
-                    post["id"], origin_access_token, origin_refresh_token
-                )
-                for post in chunk_posts
-            ]
-            statistics_results = await asyncio.gather(*tasks)
 
-            # 통계 정보 업데이트 처리
-            update_tasks = []
-            for post, stats in zip(chunk_posts, statistics_results):
-                if stats:
-                    update_tasks.append(
-                        self.update_daily_statistics(
-                            post,
-                            stats["data"]["getStats"].get("total", 0),
-                        )
-                    )
+            # views 가 없으면 건너뛴다. 0 으로 덮어쓰면 누적 스냅샷이
+            # 급락하므로 truthiness 가 아니라 is not None 으로 판별한다.
+            update_tasks = [
+                self.update_daily_statistics(post, views)
+                for post in chunk_posts
+                if (views := post.get("views")) is not None
+            ]
 
             if update_tasks:
                 await asyncio.gather(*update_tasks)

@@ -61,6 +61,7 @@ def mock_posts_data():
             "url_slug": "test-post-1",
             "released_at": "2024-01-01T00:00:00Z",
             "likes": 15,
+            "views": 150,
         },
         {
             "id": str(uuid.uuid4()),
@@ -68,6 +69,7 @@ def mock_posts_data():
             "url_slug": "test-post-2",
             "released_at": "2024-01-02T00:00:00Z",
             "likes": 25,
+            "views": 320,
         },
     ]
 

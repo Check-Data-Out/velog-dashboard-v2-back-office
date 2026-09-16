@@ -55,7 +55,7 @@ async def fetch_velog_posts(
     access_token: str,
     refresh_token: str,
     cursor: str = "",
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     """한 유저의 포스트를 50개씩(최대 개수) 가져오는 함수"""
     query = VELOG_POSTS_QUERY
     variables = {
@@ -76,7 +76,7 @@ async def fetch_velog_posts(
             headers=headers,
         ) as response:
             data = await response.json()
-            posts: list[dict[str, str]] = data["data"]["posts"]
+            posts: list[dict[str, Any]] = data["data"]["posts"]
             return posts
     except Exception as e:
         logger.error(f"Failed to fetch posts: {e} (username: {username})")
@@ -88,7 +88,7 @@ async def fetch_all_velog_posts(
     username: str,
     access_token: str,
     refresh_token: str,
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     """한 유저의 모든 포스트를 가져오는 함수"""
     cursor = ""
     total_posts = list()
