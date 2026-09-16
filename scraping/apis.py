@@ -2,12 +2,9 @@ import logging
 from typing import Any
 
 from aiohttp.client import ClientSession
-from aiohttp_retry import ExponentialRetry, RetryClient
 
 from scraping.constants import (
     CURRENT_USER_QUERY,
-    POSTS_STATS_QUERY,
-    V2_CDN_URL,
     V3_URL,
     VELOG_POSTS_QUERY,
 )
@@ -105,53 +102,3 @@ async def fetch_all_velog_posts(
         total_posts.extend(posts)
         cursor = posts[-1]["id"]
     return total_posts
-
-
-async def fetch_post_stats(
-    post_id: str,
-    access_token: str,
-    refresh_token: str,
-) -> dict[str, Any]:
-    """post_id에 대한 통계 정보 가져오는 graphQL 호출"""
-
-    query = POSTS_STATS_QUERY
-    variables = {"post_id": post_id}
-    payload = {
-        "query": query,
-        "variables": variables,
-        "operationName": "GetStats",
-    }
-    headers = get_header(access_token, refresh_token)
-
-    retry_options = ExponentialRetry(attempts=3, start_timeout=1)
-    async with RetryClient(retry_options=retry_options) as retry_client:
-        try:
-            async with retry_client.post(
-                V2_CDN_URL, json=payload, headers=headers
-            ) as response:
-                if response.status != 200:
-                    text = await response.text()
-                    logger.error(
-                        f"HTTP error {response.status}: {text} (post_id: {post_id})"
-                    )
-                    return {}
-                content_type = response.headers.get("Content-Type", "")
-                if "application/json" not in content_type:
-                    text = await response.text()
-                    logger.error(
-                        f"Unexpected response format: {text} (post_id: {post_id})"
-                    )
-                    return {}
-                try:
-                    res: dict[str, Any] = await response.json()
-                    return res
-                except Exception as e:
-                    logger.error(
-                        f"JSON decoding failed: {e} (post_id: {post_id})"
-                    )
-                    return {}
-        except Exception as e:
-            logger.error(
-                f"Failed to fetch post stats: {e} (post_id: {post_id})"
-            )
-            return {}

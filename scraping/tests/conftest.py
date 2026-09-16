@@ -72,9 +72,3 @@ def mock_posts_data():
             "views": 320,
         },
     ]
-
-
-@pytest.fixture
-def mock_stats_data():
-    """테스트용 통계 데이터"""
-    return {"data": {"getStats": {"total": 150}}}

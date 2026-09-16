@@ -155,56 +155,6 @@ class TestScraperTokenAndUserInfoAndProcessing:
         assert result is False
         mock_asave.assert_not_called()
 
-    @patch("scraping.main.fetch_post_stats")
-    @pytest.mark.asyncio
-    async def test_fetch_post_stats_limited_success(
-        self, mock_fetch, scraper, mock_stats_data
-    ):
-        """fetch_post_stats 성공 테스트"""
-        mock_fetch.return_value = mock_stats_data
-
-        result = await scraper.fetch_post_stats_limited(
-            "post-123", "token-1", "token-2"
-        )
-
-        assert result is not None
-        assert result["data"]["getStats"]["total"] == 150
-        mock_fetch.assert_called_once_with("post-123", "token-1", "token-2")
-
-    @patch("scraping.main.fetch_post_stats")
-    @pytest.mark.asyncio
-    async def test_fetch_post_stats_limited_retry_success(
-        self, mock_fetch, scraper, mock_stats_data
-    ):
-        """fetch_post_stats 재시도 성공 테스트"""
-        mock_fetch.side_effect = [
-            None,  # 첫 번째 시도 실패
-            mock_stats_data,  # 두 번째 시도 성공
-        ]
-
-        result = await scraper.fetch_post_stats_limited(
-            "post-123", "token-1", "token-2"
-        )
-
-        assert result is not None
-        assert result["data"]["getStats"]["total"] == 150
-        assert mock_fetch.call_count == 2
-
-    @patch("scraping.main.fetch_post_stats")
-    @pytest.mark.asyncio
-    async def test_fetch_post_stats_limited_max_retries(
-        self, mock_fetch, scraper
-    ):
-        """최대 재시도 횟수 초과 테스트"""
-        mock_fetch.return_value = None
-
-        result = await scraper.fetch_post_stats_limited(
-            "post-123", "token-1", "token-2"
-        )
-
-        assert result is None
-        assert mock_fetch.call_count == 3  # 최대 3번 재시도
-
     @pytest.mark.parametrize(
         "views, expected",
         [

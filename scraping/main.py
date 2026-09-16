@@ -3,7 +3,6 @@ import logging
 from typing import Any
 
 import aiohttp
-import async_timeout
 import environ
 import sentry_sdk
 from asgiref.sync import sync_to_async
@@ -11,11 +10,7 @@ from django.db import transaction
 
 from modules.token_encryption.aes_encryption import AESEncryption
 from posts.models import Post, PostDailyStatistics
-from scraping.apis import (
-    fetch_all_velog_posts,
-    fetch_post_stats,
-    fetch_velog_user_chk,
-)
+from scraping.apis import fetch_all_velog_posts, fetch_velog_user_chk
 from users.models import User
 from utils.utils import get_local_now
 
@@ -315,48 +310,6 @@ class Scraper:
             )
             sentry_sdk.capture_exception(e)
             return
-
-    async def fetch_post_stats_limited(
-        self, post_id: str, access_token: str, refresh_token: str
-    ) -> dict[str, Any] | None:
-        """세마포어를 적용한 fetch_post_stats + 엄격한 재시도 로직 추가"""
-        async with self.semaphore:
-            for attempt in range(3):  # 최대 3번 재시도
-                try:
-                    async with async_timeout.timeout(5):  # 5초 타임아웃 설정
-                        stats_results = await fetch_post_stats(
-                            post_id, access_token, refresh_token
-                        )
-                        if not stats_results:
-                            raise Exception("the stats_results is empty")
-
-                        stats_data = stats_results.get("data", {})
-                        if not stats_data or not isinstance(
-                            stats_data.get("getStats"),
-                            dict,
-                        ):
-                            raise Exception("the stats_results is empty")
-                        return stats_results
-                except aiohttp.ClientError as e:
-                    logger.warning(
-                        f"Network error fetching post stats (attempt {attempt+1}/3): {e}, "
-                        f"post_id >> {post_id}"
-                    )
-                    sentry_sdk.capture_exception(e)
-                except asyncio.TimeoutError as e:
-                    logger.warning(
-                        f"Timeout fetching post stats (attempt {attempt+1}/3), "
-                        f"post_id >> {post_id}"
-                    )
-                    sentry_sdk.capture_exception(e)
-                except Exception as e:
-                    logger.warning(
-                        f"Unexpected error fetching post stats (attempt {attempt+1}/3): {e}, {e.__class__}, "
-                        f"post_id >> {post_id}"
-                    )
-                    sentry_sdk.capture_exception(e)
-                await asyncio.sleep(2)  # 재시도 전에 대기
-            return None  # 최종적으로 실패한 경우
 
     async def process_user(
         self, user: User, session: aiohttp.ClientSession
