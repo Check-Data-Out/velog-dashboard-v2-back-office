@@ -43,10 +43,6 @@ class Post(TimeStampedModel):
     objects = models.Manager()
     stats_monitor = PostStatsMonitoringManager()
 
-    @classmethod
-    def get_posts_missing_today_stats_queryset(cls) -> models.QuerySet:
-        return cls.stats_monitor.missing_today_stats()
-
     def __str__(self) -> str:
         return f"{self.post_uuid}"
 

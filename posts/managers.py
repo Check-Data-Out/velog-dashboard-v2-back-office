@@ -16,8 +16,6 @@ class PostStatsMonitoringManager(models.Manager):  # type: ignore[misc]
 
     사용처:
         - Post Admin 의 "오늘 통계 누락" 필터
-        - 배치(`aggregate_batch`) 완료 후 알림 임계 판단
-        - `Post.get_posts_missing_today_stats_queryset()` classmethod wrapper
     """
 
     def missing_today_stats(self) -> models.QuerySet:
