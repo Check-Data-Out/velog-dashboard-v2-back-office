@@ -189,6 +189,30 @@ class TestScraperTokenAndUserInfoAndProcessing:
 
     @patch("scraping.main.logger")
     @pytest.mark.asyncio
+    async def test_process_users_isolates_failing_user(
+        self, mock_logger, scraper, user
+    ):
+        """한 유저가 터져도 나머지 유저는 계속 처리하는지.
+
+        격리가 없으면 예외가 프로세스를 죽여 그 그룹의 남은 유저가
+        통째로 누락된다.
+        """
+        other = MagicMock(spec=User)
+        other.velog_uuid = "other-uuid"
+
+        with patch.object(
+            scraper,
+            "process_user",
+            new_callable=AsyncMock,
+            side_effect=[ValueError("boom"), None],
+        ) as mock_process:
+            await scraper.process_users([user, other], AsyncMock())
+
+        assert mock_process.call_count == 2
+        assert mock_logger.error.called
+
+    @patch("scraping.main.logger")
+    @pytest.mark.asyncio
     async def test_process_user_reports_total_failure(
         self, mock_logger, scraper, user, mock_user_data, mock_posts_data
     ):

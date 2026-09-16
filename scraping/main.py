@@ -420,9 +420,20 @@ class Scraper:
     async def process_users(
         self, users: list[User], session: aiohttp.ClientSession
     ) -> None:
-        """유저 목록을 순회하며 처리한다."""
+        """유저 목록을 순회하며 처리한다.
+
+        한 유저의 예외가 프로세스를 죽이면 그 그룹의 남은 유저가 통째로
+        누락되므로 유저 단위로 격리한다.
+        """
         for user in users:
-            await self.process_user(user, session)
+            try:
+                await self.process_user(user, session)
+            except Exception as e:
+                logger.error(
+                    f"Failed to process user: {e} "
+                    f"(user velog uuid: {user.velog_uuid})"
+                )
+                sentry_sdk.capture_exception(e)
 
     async def run(self) -> None:
         """스크래핑 작업 실행"""
