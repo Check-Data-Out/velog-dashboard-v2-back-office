@@ -257,8 +257,12 @@ class Scraper:
 
     async def update_daily_statistics(
         self, post: dict[str, Any], view_count: int
-    ) -> None:
-        """PostDailyStatistics를 업데이트 또는 생성 (upsert)"""
+    ) -> bool:
+        """PostDailyStatistics를 업데이트 또는 생성 (upsert).
+
+        실제로 기록했으면 True. 예외를 삼키므로 호출부가 성공 건수를
+        셀 수 있도록 결과를 돌려준다.
+        """
         try:
             today = get_local_now().replace(
                 hour=0, minute=0, second=0, microsecond=0
@@ -300,16 +304,19 @@ class Scraper:
                     except Post.DoesNotExist as e:
                         logger.warning(f"Post not found: {post_id}")
                         sentry_sdk.capture_exception(e)
-                        return
+                        raise
 
             await update_stats_in_transaction()
+            return True
 
+        except Post.DoesNotExist:
+            return False
         except Exception as e:
             logger.error(
                 f"Failed to update daily statistics for post {post['id']}: {str(e)}"
             )
             sentry_sdk.capture_exception(e)
-            return
+            return False
 
     async def process_user(
         self, user: User, session: aiohttp.ClientSession
@@ -399,8 +406,8 @@ class Scraper:
             ]
 
             if update_tasks:
-                await asyncio.gather(*update_tasks)
-                succeeded += len(update_tasks)
+                results = await asyncio.gather(*update_tasks)
+                succeeded += sum(results)
 
             # 처리 사이에 짧은 대기 시간 추가
             await asyncio.sleep(0.5)

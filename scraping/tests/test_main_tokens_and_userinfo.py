@@ -10,8 +10,11 @@ from users.models import User
 MISSING_VIEWS = object()
 
 
-async def run_process_user(scraper, user, mock_user_data, posts):
-    """process_user 를 실행하고 update_daily_statistics mock 을 반환."""
+async def run_process_user(scraper, user, mock_user_data, posts, written=True):
+    """process_user 를 실행하고 update_daily_statistics mock 을 반환.
+
+    written 으로 DB 쓰기 성공 여부를 흉내낼 수 있다.
+    """
     with (
         patch("scraping.main.AESEncryption") as mock_aes,
         patch("scraping.main.fetch_velog_user_chk") as mock_chk,
@@ -34,7 +37,10 @@ async def run_process_user(scraper, user, mock_user_data, posts):
             scraper, "sync_post_active_status", new_callable=AsyncMock
         ),
         patch.object(
-            scraper, "update_daily_statistics", new_callable=AsyncMock
+            scraper,
+            "update_daily_statistics",
+            new_callable=AsyncMock,
+            return_value=written,
         ) as mock_update_stats,
     ):
         encryption = mock_aes.return_value
@@ -186,6 +192,25 @@ class TestScraperTokenAndUserInfoAndProcessing:
 
         written = [call.args[1] for call in mock_update_stats.call_args_list]
         assert written == expected
+
+    @patch("scraping.main.logger")
+    @pytest.mark.asyncio
+    async def test_process_user_counts_write_failures(
+        self, mock_logger, scraper, user, mock_user_data, mock_posts_data
+    ):
+        """views 는 있었지만 DB 쓰기가 실패한 건을 성공으로 세지 않는지.
+
+        update_daily_statistics 가 예외를 삼키므로 시도 건수를 세면
+        통계가 0건인데 성공 로그가 남는다.
+        """
+        await run_process_user(
+            scraper, user, mock_user_data, mock_posts_data, written=False
+        )
+
+        assert any(
+            "Failed to update stats" in str(c)
+            for c in mock_logger.error.call_args_list
+        )
 
     @patch("scraping.main.logger")
     @pytest.mark.asyncio
