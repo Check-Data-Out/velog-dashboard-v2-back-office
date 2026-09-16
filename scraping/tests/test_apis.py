@@ -36,11 +36,14 @@ class TestFetchVelogPosts:
         assert "views" in sent_query
 
     @pytest.mark.asyncio
-    async def test_returns_posts_from_response(self):
-        """응답의 posts 배열을 그대로 반환하는지."""
-        posts = [{"id": "p1", "views": 10}]
-        session = _mock_session({"data": {"posts": posts}})
+    async def test_returns_empty_list_on_malformed_response(self):
+        """응답에 data 키가 없으면 예외 없이 빈 목록을 반환하는지.
+
+        통계가 이 함수 하나에 전적으로 의존하게 되었으므로 실패
+        경로가 조용히 터지지 않는지 고정한다.
+        """
+        session = _mock_session({"errors": [{"message": "boom"}]})
 
         result = await fetch_velog_posts(session, "tester", "at", "rt")
 
-        assert result == posts
+        assert result == []

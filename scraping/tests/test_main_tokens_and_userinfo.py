@@ -7,6 +7,8 @@ from asgiref.sync import sync_to_async
 from scraping.main import ScraperTargetUser
 from users.models import User
 
+MISSING_VIEWS = object()
+
 
 async def run_process_user(scraper, user, mock_user_data, posts):
     """process_user 를 실행하고 update_daily_statistics mock 을 반환."""
@@ -203,61 +205,49 @@ class TestScraperTokenAndUserInfoAndProcessing:
         assert result is None
         assert mock_fetch.call_count == 3  # 최대 3번 재시도
 
+    @pytest.mark.parametrize(
+        "views, expected",
+        [
+            (150, [150]),
+            (None, []),
+            (0, [0]),
+            (MISSING_VIEWS, []),
+        ],
+        ids=["정상값", "None은건너뜀", "0도저장", "키부재도건너뜀"],
+    )
     @pytest.mark.asyncio
-    async def test_process_user_writes_stats_from_post_views(
+    async def test_process_user_writes_views_as_stats(
+        self, views, expected, scraper, user, mock_user_data, mock_posts_data
+    ):
+        """posts 응답의 views 가 그대로 통계가 되는지.
+
+        views 는 누적 스냅샷이라 값이 없을 때 0 을 쓰면 급락으로 오염된다.
+        반대로 0 은 신규 글의 정상값이므로 건너뛰면 안 된다.
+        """
+        post = dict(mock_posts_data[0])
+        if views is MISSING_VIEWS:
+            post.pop("views")
+        else:
+            post["views"] = views
+
+        mock_update_stats = await run_process_user(
+            scraper, user, mock_user_data, [post]
+        )
+
+        written = [call.args[1] for call in mock_update_stats.call_args_list]
+        assert written == expected
+
+    @pytest.mark.asyncio
+    async def test_process_user_writes_stats_for_every_post(
         self, scraper, user, mock_user_data, mock_posts_data
     ):
-        """posts 응답의 views 값이 그대로 통계로 저장되는지"""
+        """여러 포스트가 각자의 views 로 순서대로 저장되는지"""
         mock_update_stats = await run_process_user(
             scraper, user, mock_user_data, mock_posts_data
         )
 
         written = [call.args[1] for call in mock_update_stats.call_args_list]
         assert written == [150, 320]
-
-    @pytest.mark.asyncio
-    async def test_process_user_skips_post_with_null_views(
-        self, scraper, user, mock_user_data, mock_posts_data
-    ):
-        """views 가 None 이면 0 으로 덮어쓰지 않고 건너뛰는지"""
-        posts = [
-            dict(mock_posts_data[0]),
-            {**mock_posts_data[1], "views": None},
-        ]
-
-        mock_update_stats = await run_process_user(
-            scraper, user, mock_user_data, posts
-        )
-
-        written = [call.args[1] for call in mock_update_stats.call_args_list]
-        assert written == [150]
-
-    @pytest.mark.asyncio
-    async def test_process_user_writes_zero_views(
-        self, scraper, user, mock_user_data, mock_posts_data
-    ):
-        """views 가 0 인 신규 글도 건너뛰지 않고 저장하는지"""
-        posts = [{**mock_posts_data[0], "views": 0}]
-
-        mock_update_stats = await run_process_user(
-            scraper, user, mock_user_data, posts
-        )
-
-        written = [call.args[1] for call in mock_update_stats.call_args_list]
-        assert written == [0]
-
-    @pytest.mark.asyncio
-    async def test_process_user_skips_post_without_views_key(
-        self, scraper, user, mock_user_data, mock_posts_data
-    ):
-        """views 키 자체가 없어도 KeyError 로 죽지 않는지"""
-        posts = [{k: v for k, v in mock_posts_data[0].items() if k != "views"}]
-
-        mock_update_stats = await run_process_user(
-            scraper, user, mock_user_data, posts
-        )
-
-        mock_update_stats.assert_not_called()
 
     @patch("scraping.main.fetch_velog_user_chk")
     @patch("scraping.main.fetch_all_velog_posts")
