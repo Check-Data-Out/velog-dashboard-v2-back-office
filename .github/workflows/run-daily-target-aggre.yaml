@@ -68,6 +68,7 @@ jobs:
 
       # KST 시간을 GitHub Actions 환경 변수에 세팅
       - name: Get Current KST Time
+        if: always()
         run: echo "KST_TIME=$(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
 
       - name: Send Slack Notification on Success
