@@ -212,6 +212,24 @@ class TestScraperTokenAndUserInfoAndProcessing:
             for c in mock_logger.error.call_args_list
         )
 
+    @pytest.mark.asyncio
+    async def test_target_scraper_propagates_failure(self, user):
+        """타겟 스크래퍼는 예외를 삼키지 않는지.
+
+        컨슈머는 유저 1명만 넘기고 예외 전파로 재시도/DLQ 를 판정하므로,
+        여기서 삼키면 아무것도 못 했는데 성공으로 보고된다.
+        """
+        scraper = ScraperTargetUser(user_pk_list=[user.pk])
+
+        with patch.object(
+            scraper,
+            "process_user",
+            new_callable=AsyncMock,
+            side_effect=ValueError("boom"),
+        ):
+            with pytest.raises(ValueError):
+                await scraper.process_users([user], AsyncMock())
+
     @patch("scraping.main.logger")
     @pytest.mark.asyncio
     async def test_process_users_isolates_failing_user(

@@ -428,7 +428,9 @@ class Scraper:
         """유저 목록을 순회하며 처리한다.
 
         한 유저의 예외가 프로세스를 죽이면 그 그룹의 남은 유저가 통째로
-        누락되므로 유저 단위로 격리한다.
+        누락되므로 유저 단위로 격리한다. 유저가 한 명뿐인 온디맨드
+        경로는 격리 이득이 없고 실패 신호만 잃으므로
+        ScraperTargetUser 가 이 동작을 재정의한다.
         """
         for user in users:
             try:
@@ -473,6 +475,17 @@ class ScraperTargetUser(Scraper):
     def __init__(self, user_pk_list: list[int]) -> None:
         self.env = environ.Env()
         self.user_pk_list = user_pk_list
+
+    async def process_users(
+        self, users: list[User], session: aiohttp.ClientSession
+    ) -> None:
+        """예외를 그대로 전파한다.
+
+        컨슈머(consumer/message_handler.py)가 예외 발생 여부로 재시도와
+        DLQ 이동을 판정하므로, 삼키면 실패가 성공으로 보고된다.
+        """
+        for user in users:
+            await self.process_user(user, session)
 
     async def run(self) -> None:
         """타겟 유저 스크래핑 작업 실행"""
