@@ -492,9 +492,7 @@ class TestScraperTokenAndUserInfoAndProcessing:
         )
 
         # ScraperTargetUser 인스턴스 생성
-        target_scraper = ScraperTargetUser(
-            user_pk_list=[test_user.id], max_connections=10
-        )
+        target_scraper = ScraperTargetUser(user_pk_list=[test_user.id])
 
         # process_user 메서드 모킹
         with patch.object(

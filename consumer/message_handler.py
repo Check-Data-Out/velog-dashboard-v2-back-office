@@ -54,9 +54,7 @@ class StatsRefreshMessageHandler:
 
         try:
             # Execute scraping using ScraperTargetUser
-            scraper = ScraperTargetUser(
-                user_pk_list=[user_id], max_connections=40
-            )
+            scraper = ScraperTargetUser(user_pk_list=[user_id])
             await scraper.run()
 
             elapsed_time = time.time() - start_time

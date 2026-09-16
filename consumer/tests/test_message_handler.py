@@ -26,9 +26,7 @@ class TestStatsRefreshMessageHandler:
         handler = StatsRefreshMessageHandler()
         await handler.process_message(sample_message)
 
-        mock_scraper_class.assert_called_once_with(
-            user_pk_list=[123], max_connections=40
-        )
+        mock_scraper_class.assert_called_once_with(user_pk_list=[123])
         mock_scraper.run.assert_called_once()
 
     @pytest.mark.asyncio

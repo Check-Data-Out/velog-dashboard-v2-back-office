@@ -9,7 +9,7 @@ from users.models import User
 @pytest.fixture
 def scraper():
     """Scraper 인스턴스 생성"""
-    return Scraper(group_range=range(1, 10), max_connections=10)
+    return Scraper(group_range=range(1, 10))
 
 
 @pytest.fixture

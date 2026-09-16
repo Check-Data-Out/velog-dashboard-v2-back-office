@@ -18,11 +18,9 @@ logger = logging.getLogger("scraping")
 
 
 class Scraper:
-    def __init__(self, group_range: range, max_connections: int = 40):
+    def __init__(self, group_range: range):
         self.env = environ.Env()
         self.group_range = group_range
-        # 최대 동시 연결 수 제한
-        self.semaphore = asyncio.Semaphore(max_connections)
 
     async def update_old_tokens(
         self,
@@ -472,13 +470,9 @@ class Scraper:
 
 
 class ScraperTargetUser(Scraper):
-    def __init__(
-        self, user_pk_list: list[int], max_connections: int = 40
-    ) -> None:
+    def __init__(self, user_pk_list: list[int]) -> None:
         self.env = environ.Env()
         self.user_pk_list = user_pk_list
-        # 최대 동시 연결 수 제한
-        self.semaphore = asyncio.Semaphore(max_connections)
 
     async def run(self) -> None:
         """타겟 유저 스크래핑 작업 실행"""
