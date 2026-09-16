@@ -1,5 +1,4 @@
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from asgiref.sync import sync_to_async
@@ -10,23 +9,6 @@ from utils.utils import get_local_now
 
 
 class TestScraperStatistics:
-    @pytest.mark.asyncio
-    async def test_update_daily_statistics_success(self, scraper):
-        """데일리 통계 업데이트 또는 생성 성공 테스트"""
-        post_data = {"id": "post-123", "likes": 10}
-        stats_data = {"data": {"getStats": {"total": 100}}}
-
-        with patch(
-            "scraping.main.sync_to_async", new_callable=MagicMock
-        ) as mock_sync_to_async:
-            mock_async_func = AsyncMock()
-            mock_sync_to_async.return_value = mock_async_func
-
-            await scraper.update_daily_statistics(post_data, stats_data)
-
-            mock_sync_to_async.assert_called()
-            mock_async_func.assert_called_once()
-
     @pytest.mark.asyncio
     @pytest.mark.django_db
     async def test_update_daily_statistics_integration(self, scraper):
@@ -53,10 +35,9 @@ class TestScraperStatistics:
 
         # 통계 데이터 준비
         post_data = {"id": post_uuid, "likes": 25}
-        stats_data = {"data": {"getStats": {"total": 150}}}
 
         # update_daily_statistics 호출
-        await scraper.update_daily_statistics(post_data, stats_data)
+        await scraper.update_daily_statistics(post_data, 150)
 
         # 결과 확인
         today = get_local_now().replace(

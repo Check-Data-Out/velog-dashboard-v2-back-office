@@ -111,7 +111,7 @@ async def fetch_post_stats(
     post_id: str,
     access_token: str,
     refresh_token: str,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """post_id에 대한 통계 정보 가져오는 graphQL 호출"""
 
     query = POSTS_STATS_QUERY
@@ -143,7 +143,7 @@ async def fetch_post_stats(
                     )
                     return {}
                 try:
-                    res: dict[str, str] = await response.json()
+                    res: dict[str, Any] = await response.json()
                     return res
                 except Exception as e:
                     logger.error(

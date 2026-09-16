@@ -261,32 +261,15 @@ class Scraper:
         await _execute_sync()
 
     async def update_daily_statistics(
-        self, post: dict[str, Any], stats: dict[str, Any]
+        self, post: dict[str, Any], view_count: int
     ) -> None:
         """PostDailyStatistics를 업데이트 또는 생성 (upsert)"""
-        if not stats or not isinstance(stats, dict):
-            logger.warning(
-                f"Skip updating statistics due to invalid stats data for post {post['id']}"
-            )
-            return
-
         try:
             today = get_local_now().replace(
                 hour=0, minute=0, second=0, microsecond=0
             )
             post_id = post["id"]
 
-            stats_data = stats.get("data", {})
-            if not stats_data or not isinstance(
-                stats_data.get("getStats"),
-                dict,
-            ):
-                logger.warning(
-                    f"Skip updating statistics due to missing getStats data for post {post_id}"
-                )
-                return
-
-            view_count = stats_data["getStats"].get("total", 0)
             like_count = post.get("likes", 0)
 
             # 트랜잭션 내에서 실행
@@ -335,7 +318,7 @@ class Scraper:
 
     async def fetch_post_stats_limited(
         self, post_id: str, access_token: str, refresh_token: str
-    ) -> dict[str, str] | None:
+    ) -> dict[str, Any] | None:
         """세마포어를 적용한 fetch_post_stats + 엄격한 재시도 로직 추가"""
         async with self.semaphore:
             for attempt in range(3):  # 최대 3번 재시도
@@ -347,9 +330,9 @@ class Scraper:
                         if not stats_results:
                             raise Exception("the stats_results is empty")
 
-                        stats_data = stats_results.get("data", {})  # type: ignore
+                        stats_data = stats_results.get("data", {})
                         if not stats_data or not isinstance(
-                            stats_data.get("getStats"),  # type: ignore
+                            stats_data.get("getStats"),
                             dict,
                         ):
                             raise Exception("the stats_results is empty")
@@ -465,7 +448,10 @@ class Scraper:
             for post, stats in zip(chunk_posts, statistics_results):
                 if stats:
                     update_tasks.append(
-                        self.update_daily_statistics(post, stats)
+                        self.update_daily_statistics(
+                            post,
+                            stats["data"]["getStats"].get("total", 0),
+                        )
                     )
 
             if update_tasks:
