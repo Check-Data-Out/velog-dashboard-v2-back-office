@@ -187,6 +187,59 @@ class TestScraperTokenAndUserInfoAndProcessing:
         written = [call.args[1] for call in mock_update_stats.call_args_list]
         assert written == expected
 
+    @patch("scraping.main.logger")
+    @pytest.mark.asyncio
+    async def test_process_user_reports_total_failure(
+        self, mock_logger, scraper, user, mock_user_data, mock_posts_data
+    ):
+        """전량 실패를 성공으로 보고하지 않는지.
+
+        이번 장애에서 통계가 0건인데 성공 로그만 남아 2일간 무감지였다.
+        """
+        posts = [{**p, "views": None} for p in mock_posts_data]
+
+        await run_process_user(scraper, user, mock_user_data, posts)
+
+        assert not any(
+            "Succeeded to update stats" in str(c)
+            for c in mock_logger.info.call_args_list
+        )
+        assert mock_logger.error.called
+
+    @patch("scraping.main.logger")
+    @pytest.mark.asyncio
+    async def test_process_user_reports_partial_failure(
+        self, mock_logger, scraper, user, mock_user_data, mock_posts_data
+    ):
+        """일부만 실패하면 건수와 함께 경고하는지"""
+        posts = [
+            dict(mock_posts_data[0]),
+            {**mock_posts_data[1], "views": None},
+        ]
+
+        await run_process_user(scraper, user, mock_user_data, posts)
+
+        assert any(
+            "succeeded=1" in str(c) and "failed=1" in str(c)
+            for c in mock_logger.warning.call_args_list
+        )
+
+    @patch("scraping.main.logger")
+    @pytest.mark.asyncio
+    async def test_process_user_reports_success(
+        self, mock_logger, scraper, user, mock_user_data, mock_posts_data
+    ):
+        """전량 성공이면 기존 성공 로그가 그대로 남는지.
+
+        실패 방향만 검증하면 성공 시에도 경고만 찍는 반대 회귀를 놓친다.
+        """
+        await run_process_user(scraper, user, mock_user_data, mock_posts_data)
+
+        assert any(
+            "Succeeded to update stats" in str(c)
+            for c in mock_logger.info.call_args_list
+        )
+
     @pytest.mark.asyncio
     async def test_process_user_writes_stats_for_every_post(
         self, scraper, user, mock_user_data, mock_posts_data

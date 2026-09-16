@@ -386,6 +386,7 @@ class Scraper:
         # ========================================================== #
         # 게시물을 적절한 크기의 청크로 나누어 처리
         chunk_size = 20
+        succeeded = 0
         for i in range(0, len(fetched_posts), chunk_size):
             chunk_posts = fetched_posts[i : i + chunk_size]
 
@@ -399,13 +400,22 @@ class Scraper:
 
             if update_tasks:
                 await asyncio.gather(*update_tasks)
+                succeeded += len(update_tasks)
 
             # 처리 사이에 짧은 대기 시간 추가
             await asyncio.sleep(0.5)
 
-        logger.info(
-            f"Succeeded to update stats. (user velog uuid: {user.velog_uuid}, email: {user.email})"
+        failed = len(fetched_posts) - succeeded
+        stats_summary = (
+            f"succeeded={succeeded} failed={failed} "
+            f"(user velog uuid: {user.velog_uuid}, email: {user.email})"
         )
+        if failed and not succeeded:
+            logger.error(f"Failed to update stats. {stats_summary}")
+        elif failed:
+            logger.warning(f"Partially updated stats. {stats_summary}")
+        else:
+            logger.info(f"Succeeded to update stats. {stats_summary}")
 
     async def run(self) -> None:
         """스크래핑 작업 실행"""
