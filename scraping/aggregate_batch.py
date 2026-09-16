@@ -12,12 +12,13 @@
 
 import argparse
 import asyncio
+import sys
 import warnings
 
 import setup_django  # noqa
 
 from scraping.batch_notify import notify_after_batch
-from scraping.batch_runner import run_in_processes
+from scraping.batch_runner import finalize_batch, run_in_processes
 from scraping.main import Scraper
 from utils.utils import split_range
 
@@ -45,9 +46,9 @@ def main() -> None:
     args = parser.parse_args()
 
     group_ranges = split_range(args.min_group, args.max_group, 2)
-    run_in_processes(run_scraper, group_ranges)
+    exitcodes = run_in_processes(run_scraper, group_ranges)
 
-    notify_after_batch()
+    sys.exit(finalize_batch(exitcodes, notify_after_batch))
 
 
 # Django에서 발생하는 RuntimeWarning 무시

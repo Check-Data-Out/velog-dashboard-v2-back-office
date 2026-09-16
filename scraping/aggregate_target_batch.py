@@ -8,12 +8,13 @@
 """
 
 import asyncio
+import sys
 import warnings
 
 import setup_django  # noqa
 from django.db.models import Avg, Count
 
-from scraping.batch_runner import run_in_processes
+from scraping.batch_runner import finalize_batch, run_in_processes
 from scraping.main import ScraperTargetUser
 from users.models import User
 from utils.utils import split_list
@@ -51,7 +52,9 @@ def main() -> None:
     # 3. 필터링한 사용자들의 pk를 리스트로 추출
     user_pk_list = list(users_above_avg.values_list("pk", flat=True))
 
-    run_in_processes(run_scraper, split_list(user_pk_list, 2))
+    exitcodes = run_in_processes(run_scraper, split_list(user_pk_list, 2))
+
+    sys.exit(finalize_batch(exitcodes, lambda: None))
 
 
 # 실행

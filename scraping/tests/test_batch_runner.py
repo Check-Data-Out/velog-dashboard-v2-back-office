@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, call, patch
 
-from scraping.batch_runner import run_in_processes
+from scraping.batch_runner import finalize_batch, run_in_processes
 
 
 def _noop(_: int) -> None:
@@ -50,3 +50,27 @@ class TestRunInProcesses:
         mock_process_cls.side_effect = [first, second]
 
         assert run_in_processes(_noop, [1, 2]) == [0, 1]
+
+
+class TestFinalizeBatch:
+    def test_notifies_before_reporting_failure(self):
+        """실패가 있어도 알림을 먼저 보내는지.
+
+        이번 장애의 핵심이 "실패했는데 알림이 안 갔다" 였으므로 순서를
+        고정한다.
+        """
+        notifier = MagicMock()
+
+        assert finalize_batch([0, 1], notifier) == 1
+        notifier.assert_called_once()
+
+    def test_returns_zero_when_all_succeeded(self):
+        """전부 성공이면 0 을 반환하는지"""
+        notifier = MagicMock()
+
+        assert finalize_batch([0, 0], notifier) == 0
+        notifier.assert_called_once()
+
+    def test_treats_none_exitcode_as_failure(self):
+        """exitcode 가 None 이면 성공으로 오판하지 않는지"""
+        assert finalize_batch([0, None], MagicMock()) == 1
