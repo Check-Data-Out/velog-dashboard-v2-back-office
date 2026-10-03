@@ -84,6 +84,10 @@ def test_dry_run_falls_back_to_orm_count_when_table_is_not_hypertable():
     ]
     with (
         patch(
+            "posts.management.commands.cleanup_old_stats.transaction.atomic",
+            return_value=nullcontext(),
+        ),
+        patch(
             "posts.management.commands.cleanup_old_stats.connection.cursor",
             return_value=fake_cm,
         ),
