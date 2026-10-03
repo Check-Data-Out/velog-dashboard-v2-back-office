@@ -47,7 +47,8 @@ DJANGO_SETTINGS_MODULE = "backoffice.settings.local"
 python_files = ["test_*.py"]
 filterwarnings = [
     "ignore::pytest.PytestDeprecationWarning",
-    "ignore:Error when trying to teardown test databases:pytest.PytestWarning",
+    # 테스트 DB 를 못 지우면(연결 누수) 실패시킨다. 숨기면 test_* DB 가 남는다
+    "error:Error when trying to teardown test databases:pytest.PytestWarning",
 ]
 asyncio_mode = "strict"
 

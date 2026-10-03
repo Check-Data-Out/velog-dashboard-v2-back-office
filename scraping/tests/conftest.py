@@ -1,9 +1,22 @@
 import uuid
 
 import pytest
+import pytest_asyncio
+from asgiref.sync import sync_to_async
+from django.db import connections
 
 from scraping.main import Scraper
 from users.models import User
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _close_sync_to_async_db_connections():
+    """sync_to_async 워커 스레드의 DB 연결을 닫는다.
+
+    남아 있으면 세션 종료 시 test DB DROP 이 "being accessed by other users" 로 실패한다.
+    """
+    yield
+    await sync_to_async(connections.close_all)()
 
 
 @pytest.fixture
