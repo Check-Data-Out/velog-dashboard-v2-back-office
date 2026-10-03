@@ -12,10 +12,10 @@ jobs:
   test-ci:
     runs-on: ubuntu-latest
 
-    # TimescaleDB 서비스 추가
+    # 운영(Supabase PostgreSQL 15, timescaledb 확장 없음)과 같은 구성
     services:
       postgres:
-        image: timescale/timescaledb:latest-pg15
+        image: postgres:15
         env:
           POSTGRES_USER: vd2
           POSTGRES_PASSWORD: vd2
@@ -61,7 +61,7 @@ jobs:
         run: |
           echo "SECRET_KEY=adsfgdsftrgdfsvdf" >> .env
           echo "DEBUG=True" >> .env
-          echo "DATABASE_ENGINE=timescale.db.backends.postgresql" >> .env
+          echo "DATABASE_ENGINE=django.db.backends.postgresql" >> .env
           echo "DATABASE_NAME=postgres" >> .env
           echo "POSTGRES_USER=vd2" >> .env
           echo "POSTGRES_PASSWORD=vd2" >> .env
@@ -82,11 +82,6 @@ jobs:
           echo "AES_KEY_7=${{ secrets.AES_KEY_7 }}" >> .env
           echo "AES_KEY_8=${{ secrets.AES_KEY_8 }}" >> .env
           echo "AES_KEY_9=${{ secrets.AES_KEY_9 }}" >> .env
-
-      # TimescaleDB 확장 생성 확인
-      - name: Verify TimescaleDB extension
-        run: |
-          PGPASSWORD=vd2 psql -h localhost -U vd2 -d postgres -c "SELECT extname, extversion FROM pg_extension WHERE extname = 'timescaledb';"
 
       - name: Run migrations
         run: poetry run python manage.py migrate
