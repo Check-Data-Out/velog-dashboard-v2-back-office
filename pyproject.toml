@@ -45,6 +45,11 @@ build-backend = "poetry.core.masonry.api"
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "backoffice.settings.local"
 python_files = ["test_*.py"]
+# pytest 기본값 + 로컬 DB 데이터 디렉터리 (postgres 컨테이너가 0700 으로 만들어 수집 시 PermissionError)
+norecursedirs = [
+    "*.egg", ".*", "_darcs", "build", "CVS", "dist", "node_modules", "venv", "{arch}",
+    "postgres_data", "timescale_data*",
+]
 filterwarnings = [
     "ignore::pytest.PytestDeprecationWarning",
     # 테스트 DB 를 못 지우면(연결 누수) 실패시킨다. 숨기면 test_* DB 가 남는다
