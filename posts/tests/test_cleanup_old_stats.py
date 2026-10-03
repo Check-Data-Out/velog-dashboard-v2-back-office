@@ -155,6 +155,18 @@ def test_orm_fallback_deletes_rows_below_cutoff(post_stats_factory):
     assert PostDailyStatistics.objects.filter(pk=new_stats.pk).exists()
 
 
+# transaction=True: 하이퍼테이블(timescale 엔진)에서 drop_chunks 는 같은 트랜잭션의
+# 미처리 FK 트리거 이벤트가 있으면 거부되므로 행을 커밋해 둔다
+@pytest.mark.django_db(transaction=True)
+def test_cleanup_deletes_old_rows_without_patching(post_stats_factory):
+    """patch 없이 실제 DB 경로(일반 테이블이면 drop_chunks 실패 → ORM 삭제)로 정리한다."""
+    old_stats = post_stats_factory(date=timezone.now() - timedelta(days=200))
+    new_stats = post_stats_factory(date=timezone.now() - timedelta(days=10))
+    call_command("cleanup_old_stats")
+    assert not PostDailyStatistics.objects.filter(pk=old_stats.pk).exists()
+    assert PostDailyStatistics.objects.filter(pk=new_stats.pk).exists()
+
+
 @pytest.mark.django_db
 def test_second_run_is_noop_after_cleanup(post_stats_factory):
     """1차 실행 후 데이터 정리됨 → 2차 실행은 빈 ORM 폴백으로 정상 종료."""
@@ -170,7 +182,7 @@ def test_second_run_is_noop_after_cleanup(post_stats_factory):
 def test_unexpected_db_error_raises_command_error_and_notifies_failure(
     quiet_external_calls,
 ):
-    """폴백 대상이 아닌 DB 오류는 실패로 끝나고 알림을 보낸다."""
+    """정리 중 DB 오류가 나면 CommandError 로 끝나고 실패 알림을 보낸다."""
     with patch(
         DROP_CHUNKS_HELPER,
         side_effect=OperationalError(
