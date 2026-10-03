@@ -12,5 +12,14 @@ def is_safe_test_db_host(host: str) -> bool:
 
 
 def resolve_test_db_host(settings_host: str, environ: dict[str, str]) -> str:
-    """실제 접속 대상 HOST. 설정이 비면 libpq 가 PGHOST 로 접속한다."""
+    """libpq 가 실제로 접속할 HOST.
+
+    PGHOSTADDR 는 host 보다 우선한다. PGSERVICE 는 서비스 파일이 host/hostaddr 를
+    바꿀 수 있어 판정할 수 없으므로 로컬이 아닌 값으로 돌려줘 거부되게 한다.
+    설정 HOST 가 비면 libpq 가 PGHOST 로 접속한다.
+    """
+    if environ.get("PGHOSTADDR"):
+        return environ["PGHOSTADDR"]
+    if environ.get("PGSERVICE"):
+        return f"service={environ['PGSERVICE']}"
     return settings_host or environ.get("PGHOST", "")

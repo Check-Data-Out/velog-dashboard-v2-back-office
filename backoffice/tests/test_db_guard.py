@@ -32,3 +32,17 @@ def test_settings_host_wins_over_pghost():
     assert (
         resolve_test_db_host("localhost", {"PGHOST": "remote"}) == "localhost"
     )
+
+
+def test_pghostaddr_wins_over_settings_host():
+    """libpq 는 hostaddr 가 있으면 host 대신 그 주소로 접속한다."""
+    assert (
+        resolve_test_db_host("localhost", {"PGHOSTADDR": "10.0.0.5"})
+        == "10.0.0.5"
+    )
+
+
+def test_pgservice_is_rejected():
+    """서비스 파일이 host/hostaddr 를 바꿀 수 있어 접속 대상을 판정할 수 없다."""
+    host = resolve_test_db_host("localhost", {"PGSERVICE": "prod"})
+    assert not is_safe_test_db_host(host)
