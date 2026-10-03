@@ -211,3 +211,22 @@ class RequestLifecycleService:
                 ],
             ).values_list("user_id", flat=True)
         )
+
+
+def find_db_invariant_violations(
+    extensions: list[str], databases: list[str]
+) -> list[str]:
+    """운영 DB 가 지켜야 할 불변식 위반 목록을 반환한다.
+
+    - timescaledb 확장: Apache 빌드의 job 3 이 실패 로그를 무한히 쌓는다.
+    - test_* DB: pytest 가 운영 DB 에 남긴 테스트 DB.
+    """
+    violations = []
+    if "timescaledb" in extensions:
+        violations.append("timescaledb 확장이 존재합니다")
+    violations += [
+        f"테스트 DB 가 존재합니다: {name}"
+        for name in databases
+        if name.startswith("test_")
+    ]
+    return violations
