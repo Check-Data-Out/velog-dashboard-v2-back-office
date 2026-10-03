@@ -67,6 +67,7 @@ cp .env.sample .env
 docker compose up -d
 ```
 
+- 기존 `.env` 의 `DATABASE_ENGINE` 이 `timescale.db.backends.postgresql` 이면 `django.db.backends.postgresql` 로 바꾼다 (postgres:15 에는 timescaledb 가 없어 `migrate` 가 실패한다).
 - 로컬 DB 데이터는 `./postgres_data` 에 저장된다. 예전 TimescaleDB 컨테이너가 쓰던 `./timescale_data*` 는 PG17 클러스터라 재사용할 수 없으니 필요 없으면 지운다.
 
 ## Pre-configue
