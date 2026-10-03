@@ -12,7 +12,7 @@ jobs:
   test-ci:
     runs-on: ubuntu-latest
 
-    # 운영(Supabase PostgreSQL 15, timescaledb 확장 없음)과 같은 구성
+    # 운영(Supabase PostgreSQL 15, 앱은 TimescaleDB 기능을 쓰지 않음)과 같은 구성
     services:
       postgres:
         image: postgres:15
