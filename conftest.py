@@ -1,3 +1,5 @@
+import os
+
 import pytest
 import sentry_sdk
 from django.conf import settings
@@ -8,7 +10,10 @@ from backoffice.db_guard import is_safe_test_db_host
 @pytest.fixture(scope="session")
 def django_db_modify_db_settings(django_db_modify_db_settings_parallel_suffix):
     """테스트 DB 생성 직전, 로컬이 아닌 HOST 면 세션을 중단한다."""
-    host = settings.DATABASES["default"]["HOST"]
+    # HOST 가 비면 libpq 가 PGHOST 를 쓰므로 함께 판정한다
+    host = settings.DATABASES["default"]["HOST"] or os.environ.get(
+        "PGHOST", ""
+    )
     if not is_safe_test_db_host(host):
         pytest.exit(
             f"테스트 DB HOST 가 로컬이 아닙니다: {host!r}. 운영 접속정보로 pytest 실행 금지.",
