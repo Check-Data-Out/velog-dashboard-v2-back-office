@@ -17,22 +17,15 @@ def test_no_violation_without_timescaledb_and_test_databases():
     )
 
 
-def test_timescaledb_extension_is_violation():
+def test_timescaledb_extension_and_test_database_are_both_reported():
     violations = find_db_invariant_violations(
-        extensions=["plpgsql", "timescaledb"], databases=["postgres"]
+        extensions=["plpgsql", "timescaledb"],
+        databases=["postgres", "test_postgres"],
     )
 
-    assert len(violations) == 1
-    assert "timescaledb" in violations[0]
-
-
-def test_test_database_is_violation():
-    violations = find_db_invariant_violations(
-        extensions=["plpgsql"], databases=["postgres", "test_postgres"]
-    )
-
-    assert len(violations) == 1
-    assert "test_postgres" in violations[0]
+    assert len(violations) == 2
+    assert any("timescaledb" in v for v in violations)
+    assert any("test_postgres" in v for v in violations)
 
 
 @pytest.mark.django_db
