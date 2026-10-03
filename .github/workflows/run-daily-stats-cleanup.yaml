@@ -109,6 +109,7 @@ jobs:
   # timescaledb 확장 또는 test_* DB 가 다시 생기면 실패 → Slack 알림.
   db-invariants:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
@@ -153,11 +154,16 @@ jobs:
         timeout-minutes: 5
         env:
           DJANGO_SETTINGS_MODULE: backoffice.settings.prod
-        run: poetry run python manage.py check_db_invariants
+        run: |
+          set -o pipefail
+          poetry run python manage.py check_db_invariants 2>&1 | tee invariants.txt
 
       - name: Get Current KST Time
         if: always()
-        run: echo "KST_TIME=$(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M:%S')" >> "$GITHUB_ENV"
+        run: |
+          echo "KST_TIME=$(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M:%S')" >> "$GITHUB_ENV"
+          # 위반 목록(CommandError 마지막 줄) 또는 실행 오류 마지막 줄. 비어 있으면 실행 전 단계 실패
+          echo "INVARIANTS_RESULT=$(tail -n 1 invariants.txt 2>/dev/null | sed 's/["\\]//g')" >> "$GITHUB_ENV"
 
       - name: Send Slack Notification on Failure
         if: failure()
@@ -165,7 +171,7 @@ jobs:
         with:
           payload: |
             {
-              "text": "*DB Invariants*\n\n❌ *Status:* 위반 (timescaledb 확장 또는 test_* DB 존재)\n📅 *Timestamp (KST):* ${{ env.KST_TIME }}\n🔗 *Workflow URL:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow>"
+              "text": "*DB Invariants*\n\n❌ *Status:* 실패 (위반 또는 실행 오류)\n📝 *Result:* ${{ env.INVARIANTS_RESULT }}\n📅 *Timestamp (KST):* ${{ env.KST_TIME }}\n🔗 *Workflow URL:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow>"
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
