@@ -154,6 +154,8 @@ jobs:
         timeout-minutes: 5
         env:
           DJANGO_SETTINGS_MODULE: backoffice.settings.prod
+          # .env.prod 파싱은 '#' 이후를 잘라내므로 비밀번호는 env 로 덮어쓴다 (11b517e)
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
         run: |
           set -o pipefail
           poetry run python manage.py check_db_invariants 2>&1 | tee invariants.txt
@@ -162,8 +164,9 @@ jobs:
         if: always()
         run: |
           echo "KST_TIME=$(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M:%S')" >> "$GITHUB_ENV"
-          # 위반 목록(CommandError 마지막 줄) 또는 실행 오류 마지막 줄. 비어 있으면 실행 전 단계 실패
-          echo "INVARIANTS_RESULT=$(tail -n 1 invariants.txt 2>/dev/null | sed 's/["\\]//g')" >> "$GITHUB_ENV"
+          # 위반 목록만 싣는다. 접속 오류 등은 host/user 가 섞일 수 있어 로그로 안내
+          RESULT=$(grep '^CommandError:' invariants.txt 2>/dev/null | tail -n 1 | sed 's/["\\]//g')
+          echo "INVARIANTS_RESULT=${RESULT:-실행 오류 - 워크플로 로그 확인}" >> "$GITHUB_ENV"
 
       - name: Send Slack Notification on Failure
         if: failure()
