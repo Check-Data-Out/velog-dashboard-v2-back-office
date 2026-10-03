@@ -165,7 +165,7 @@ jobs:
         run: |
           echo "KST_TIME=$(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M:%S')" >> "$GITHUB_ENV"
           # 위반 목록만 싣는다. 접속 오류 등은 host/user 가 섞일 수 있어 로그로 안내
-          RESULT=$(grep '^CommandError:' invariants.txt 2>/dev/null | tail -n 1 | sed 's/["\\]//g')
+          RESULT=$( (grep '^CommandError:' invariants.txt 2>/dev/null || true) | tail -n 1 | sed 's/["\\]//g')
           echo "INVARIANTS_RESULT=${RESULT:-실행 오류 - 워크플로 로그 확인}" >> "$GITHUB_ENV"
 
       - name: Send Slack Notification on Failure
