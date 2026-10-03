@@ -186,7 +186,7 @@ poetry run pre-commit run --all-files
 
 ### Stats 데이터 정리 (cleanup_old_stats)
 
-`PostDailyStatistics` 의 6개월 이전 데이터를 폐기. `drop_chunks` 를 먼저 시도하고, 일반 테이블이거나 TimescaleDB 가 없으면(운영) ORM chunk DELETE 로 정리한다. 매일 KST 04:00 cron 자동 실행 (`.github/workflows/run-daily-stats-cleanup.yaml`). 초기 1회는 누적 데이터로 오래 걸리나 이후는 1일치만 정리되어 빠름.
+`PostDailyStatistics` 의 6개월 이전 데이터를 폐기. `drop_chunks` 를 먼저 시도(일반 테이블이거나 TimescaleDB 가 없으면 — 운영 — 건너뜀)한 뒤 남은 행을 ORM chunk DELETE 로 정리한다. 매일 KST 04:00 cron 자동 실행 (`.github/workflows/run-daily-stats-cleanup.yaml`). 초기 1회는 누적 데이터로 오래 걸리나 이후는 1일치만 정리되어 빠름.
 
 운영 DB 는 Supabase 기반 PostgreSQL 15 (`posts_postdailystatistics` 는 일반 테이블). **Session Mode (포트 5432) 또는 Direct Connection 사용 필수** — Transaction Mode(6543)에서는 `SET LOCAL` / `transaction.atomic` 이 보장되지 않는다. 운영 DB role 은 `run-daily-aggre-set*.yaml` 의 `POSTGRES_USER` 와 동일 (이미 매일 stats INSERT/UPDATE/DELETE 권한 보유).
 
