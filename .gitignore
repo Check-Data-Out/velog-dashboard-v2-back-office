@@ -10,6 +10,7 @@ SYSTEM_DESIGN.md
 
 # CUSTOM
 **/timescale_data*/**
+**/postgres_data/**
 *_result.txt
 .vscode
 

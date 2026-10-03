@@ -32,9 +32,9 @@ def create_index(apps, schema_editor):
     if schema_editor.connection.vendor != "postgresql":
         return
 
-    # 운영 DB 의 이 테이블은 일반 테이블이라 CONCURRENTLY 로 쓰기 락을 피해야 하지만,
-    # CI 는 timescale 백엔드로 하이퍼테이블을 만들고 하이퍼테이블은 CONCURRENTLY 를 거부한다.
-    # 런타임에 판정해 양쪽 모두에서 동작하게 한다.
+    # 운영 DB·CI 의 이 테이블은 일반 테이블이라 CONCURRENTLY 로 쓰기 락을 피한다.
+    # 단 timescale 백엔드로 만든 기존 DB 에서는 하이퍼테이블이고, 하이퍼테이블은
+    # CONCURRENTLY 를 거부하므로 런타임에 판정한다.
     concurrently = "" if _is_hypertable(schema_editor) else "CONCURRENTLY "
     schema_editor.execute(
         f"CREATE INDEX {concurrently}IF NOT EXISTS {INDEX_NAME} "

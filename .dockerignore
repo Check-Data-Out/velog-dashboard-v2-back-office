@@ -45,7 +45,8 @@ docker-compose*.yaml
 docker-compose*.yml
 
 # Data directories
-timescale_data/
+timescale_data*/
+postgres_data/
 
 # macOS
 .DS_Store

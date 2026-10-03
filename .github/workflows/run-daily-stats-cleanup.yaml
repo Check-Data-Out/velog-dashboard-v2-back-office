@@ -104,3 +104,77 @@ jobs:
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # cleanup 성공 여부와 무관하게 매일 운영 DB 불변식을 검사한다.
+  # timescaledb 확장 또는 test_* DB 가 다시 생기면 실패 → Slack 알림.
+  db-invariants:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.13.0
+
+      - name: Install Poetry
+        uses: abatilo/actions-poetry@v2
+        with:
+          poetry-version: 1.8.4
+
+      - name: Setup a local virtual environment
+        run: |
+          poetry config virtualenvs.create true --local
+          poetry config virtualenvs.in-project true --local
+
+      - name: Define a cache for the virtual environment
+        uses: actions/cache@v4
+        with:
+          path: ./.venv
+          key: venv-${{ hashFiles('poetry.lock') }}-${{ runner.os }}
+
+      - name: Install dependencies
+        run: poetry install --with dev
+
+      - name: Create .env.prod file
+        run: |
+          echo "SECRET_KEY=${{ secrets.SECRET_KEY }}" >> .env.prod
+          echo "DEBUG=False" >> .env.prod
+          echo "DATABASE_ENGINE=${{ secrets.DATABASE_ENGINE }}" >> .env.prod
+          echo "DATABASE_NAME=${{ secrets.DATABASE_NAME }}" >> .env.prod
+          echo "POSTGRES_USER=${{ secrets.POSTGRES_USER }}" >> .env.prod
+          echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" >> .env.prod
+          echo "POSTGRES_HOST=${{ secrets.POSTGRES_HOST }}" >> .env.prod
+          echo "POSTGRES_PORT=${{ secrets.POSTGRES_PORT }}" >> .env.prod
+
+      - name: Run check_db_invariants
+        timeout-minutes: 5
+        env:
+          DJANGO_SETTINGS_MODULE: backoffice.settings.prod
+          # .env.prod 파싱은 '#' 이후를 잘라내므로 비밀번호는 env 로 덮어쓴다 (11b517e)
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        run: |
+          set -o pipefail
+          poetry run python manage.py check_db_invariants 2>&1 | tee invariants.txt
+
+      - name: Get Current KST Time
+        if: always()
+        run: |
+          echo "KST_TIME=$(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M:%S')" >> "$GITHUB_ENV"
+          # 위반 목록만 싣는다. 접속 오류 등은 host/user 가 섞일 수 있어 로그로 안내
+          RESULT=$( (grep '^CommandError:' invariants.txt 2>/dev/null || true) | tail -n 1 | sed 's/["\\]//g')
+          echo "INVARIANTS_RESULT=${RESULT:-실행 오류 - 워크플로 로그 확인}" >> "$GITHUB_ENV"
+
+      - name: Send Slack Notification on Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "*DB Invariants*\n\n❌ *Status:* 실패 (위반 또는 실행 오류)\n📝 *Result:* ${{ env.INVARIANTS_RESULT }}\n📅 *Timestamp (KST):* ${{ env.KST_TIME }}\n🔗 *Workflow URL:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow>"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

@@ -147,7 +147,8 @@ class Command(BaseCommand):
 
     def _count_chunks_safely(self, cutoff_ts: datetime) -> int:
         try:
-            with connection.cursor() as cursor:
+            # savepoint: 실패해도 바깥 트랜잭션이 abort 되지 않게 한다
+            with transaction.atomic(), connection.cursor() as cursor:
                 cursor.execute(
                     "SELECT count(*) FROM show_chunks(%s::regclass, older_than => %s)",
                     [HYPERTABLE_NAME, cutoff_ts],

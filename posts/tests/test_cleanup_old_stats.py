@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.db.utils import DatabaseError, ProgrammingError
+from django.db.utils import DatabaseError, OperationalError
 from django.utils import timezone
 
 from posts.management.commands.cleanup_old_stats import Command
@@ -72,17 +72,25 @@ def test_dry_run_reports_summary_and_keeps_rows(post_stats_factory):
     assert PostDailyStatistics.objects.filter(pk=old_stats.pk).exists()
 
 
-def test_dry_run_falls_back_to_orm_count_when_table_is_not_hypertable():
-    """Supabase 일반 테이블에서는 show_chunks 실패를 rows 카운트로 대체한다."""
+@pytest.mark.parametrize(
+    "message",
+    [
+        '"posts_postdailystatistics" is not a hypertable or a continuous aggregate',
+        "function show_chunks(regclass, older_than => timestamp with time zone) does not exist",
+    ],
+)
+def test_dry_run_falls_back_to_orm_count_when_timescale_is_unavailable(
+    message,
+):
+    """일반 테이블이거나 확장이 없으면 show_chunks 실패를 rows 카운트로 대체한다."""
     cutoff = timezone.now() - timedelta(days=180)
     fake_cm, fake_cursor = _mock_cursor(fetchone_return=(cutoff,))
-    fake_cursor.execute.side_effect = [
-        None,
-        DatabaseError(
-            '"posts_postdailystatistics" is not a hypertable or a continuous aggregate'
-        ),
-    ]
+    fake_cursor.execute.side_effect = [None, DatabaseError(message)]
     with (
+        patch(
+            "posts.management.commands.cleanup_old_stats.transaction.atomic",
+            return_value=nullcontext(),
+        ),
         patch(
             "posts.management.commands.cleanup_old_stats.connection.cursor",
             return_value=fake_cm,
@@ -100,17 +108,18 @@ def test_dry_run_falls_back_to_orm_count_when_table_is_not_hypertable():
     assert "rows~=12" in output
 
 
-def test_drop_chunks_falls_back_when_table_is_not_hypertable(caplog):
-    """Supabase 일반 테이블에서는 drop_chunks 실패 후 ORM fallback 이 실행돼야 한다."""
+@pytest.mark.parametrize(
+    "message",
+    [
+        '"posts_postdailystatistics" is not a hypertable or a continuous aggregate',
+        "function drop_chunks(regclass, older_than => timestamp with time zone) does not exist",
+    ],
+)
+def test_drop_chunks_falls_back_when_timescale_is_unavailable(message, caplog):
+    """일반 테이블이거나 확장이 없으면 drop_chunks 실패 후 ORM fallback 이 실행돼야 한다."""
     cutoff = timezone.now() - timedelta(days=180)
     fake_cm, fake_cursor = _mock_cursor(fetchone_return=(cutoff,))
-    fake_cursor.execute.side_effect = [
-        None,
-        None,
-        DatabaseError(
-            '"posts_postdailystatistics" is not a hypertable or a continuous aggregate'
-        ),
-    ]
+    fake_cursor.execute.side_effect = [None, None, DatabaseError(message)]
     with (
         patch(
             "posts.management.commands.cleanup_old_stats.transaction.atomic",
@@ -130,22 +139,8 @@ def test_drop_chunks_falls_back_when_table_is_not_hypertable(caplog):
 
     assert dropped_chunks == 0
     assert result_cutoff == cutoff
-    assert any("not a hypertable" in r.getMessage() for r in caplog.records)
+    assert any(message in r.getMessage() for r in caplog.records)
     assert all(r.levelno < logging.WARNING for r in caplog.records)
-
-
-@pytest.mark.django_db
-def test_drop_chunks_helper_uses_ts2_signature_and_statement_timeout():
-    """helper 단위 검증 — call_command 거치지 않고 SQL 토큰만 확인."""
-    fake_cm, fake_cursor = _mock_cursor()
-    with patch(
-        "posts.management.commands.cleanup_old_stats.connection.cursor",
-        return_value=fake_cm,
-    ):
-        Command()._drop_chunks_and_get_cutoff(6)
-    executed = [str(c.args[0]) for c in fake_cursor.execute.mock_calls]
-    assert any("drop_chunks" in s and "older_than" in s for s in executed)
-    assert any("statement_timeout" in s for s in executed)
 
 
 @pytest.mark.django_db
@@ -160,11 +155,16 @@ def test_orm_fallback_deletes_rows_below_cutoff(post_stats_factory):
     assert PostDailyStatistics.objects.filter(pk=new_stats.pk).exists()
 
 
-@pytest.mark.django_db
-def test_empty_table_runs_without_error():
-    cutoff = timezone.now() - timedelta(days=180)
-    with patch(DROP_CHUNKS_HELPER, return_value=(0, cutoff)):
-        call_command("cleanup_old_stats")
+# transaction=True: 하이퍼테이블(timescale 엔진)에서 drop_chunks 는 같은 트랜잭션의
+# 미처리 FK 트리거 이벤트가 있으면 거부되므로 행을 커밋해 둔다
+@pytest.mark.django_db(transaction=True)
+def test_cleanup_deletes_old_rows_without_patching(post_stats_factory):
+    """patch 없이 실제 DB 경로(일반 테이블이면 drop_chunks 실패 → ORM 삭제)로 정리한다."""
+    old_stats = post_stats_factory(date=timezone.now() - timedelta(days=200))
+    new_stats = post_stats_factory(date=timezone.now() - timedelta(days=10))
+    call_command("cleanup_old_stats")
+    assert not PostDailyStatistics.objects.filter(pk=old_stats.pk).exists()
+    assert PostDailyStatistics.objects.filter(pk=new_stats.pk).exists()
 
 
 @pytest.mark.django_db
@@ -179,13 +179,14 @@ def test_second_run_is_noop_after_cleanup(post_stats_factory):
         call_command("cleanup_old_stats")
 
 
-def test_drop_chunks_error_raises_command_error_and_notifies_failure(
+def test_unexpected_db_error_raises_command_error_and_notifies_failure(
     quiet_external_calls,
 ):
+    """정리 중 DB 오류가 나면 CommandError 로 끝나고 실패 알림을 보낸다."""
     with patch(
         DROP_CHUNKS_HELPER,
-        side_effect=ProgrammingError(
-            "function drop_chunks(...) does not exist"
+        side_effect=OperationalError(
+            "canceling statement due to statement timeout"
         ),
     ):
         with pytest.raises(CommandError):

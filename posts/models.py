@@ -1,6 +1,5 @@
 from django.db import models
 from timescale.db.models import fields as timescale_models
-from timescale.db.models.managers import TimescaleManager
 
 from common.models import TimeStampedModel
 from posts.managers import PostStatsMonitoringManager
@@ -82,7 +81,6 @@ class PostDailyStatistics(TimeStampedModel):
     )
 
     objects = models.Manager()
-    timescale = TimescaleManager()
 
     def __str__(self) -> str:
         return f"{self.post.post_uuid}"

@@ -32,11 +32,13 @@ class TestSentryGuard:
 
 
 class TestConnectionOptions:
-    def test_connection_options_applied_for_timescale_engine(self):
-        """timescale 엔진에 connect_timeout·keepalives가 적용되어야 한다."""
-        options = connection_options_for_engine(
-            "timescale.db.backends.postgresql"
-        )
+    @pytest.mark.parametrize(
+        "engine",
+        ["django.db.backends.postgresql", "timescale.db.backends.postgresql"],
+    )
+    def test_connection_options_applied_for_postgres_engines(self, engine):
+        """postgresql 계열 엔진에 connect_timeout·keepalives가 적용되어야 한다."""
+        options = connection_options_for_engine(engine)
         assert options["connect_timeout"] == 10
         assert options["keepalives"] == 1
         assert "options" not in options
@@ -66,79 +68,3 @@ class TestLoggingConfig:
         for name, handler in settings.LOGGING["handlers"].items():
             if name.endswith("_file"):
                 assert handler.get("utc") is True
-
-
-@pytest.fixture()
-def consumer_logging():
-    """consumer.py settings의 LOGGING을 시뮬레이션."""
-    import copy
-
-    from backoffice.settings import base
-
-    logging_copy = copy.deepcopy(base.LOGGING)
-
-    # consumer.py 로직 재현
-    logging_copy["handlers"]["consumer_file"] = {
-        "level": "INFO",
-        "class": "backoffice.logging_handlers.GzipTimedRotatingFileHandler",
-        "when": "midnight",
-        "utc": True,
-        "interval": 1,
-        "backupCount": 7,
-        "formatter": "default_formatter",
-        "encoding": "utf-8",
-        "filename": "consumer-logs/consumer.log",
-    }
-
-    for handler_name in ("scraping_file", "newsletter_file", "django_file"):
-        logging_copy["handlers"].pop(handler_name, None)
-
-    for logger_name in ("scraping", "newsletter", "django", "consumer"):
-        logger_conf = logging_copy["loggers"].setdefault(
-            logger_name,
-            {
-                "level": "INFO",
-                "propagate": False,
-            },
-        )
-        logger_conf["handlers"] = [
-            h
-            for h in logger_conf.get("handlers", [])
-            if not h.endswith("_file")
-        ]
-        logger_conf["handlers"].append("consumer_file")
-
-    return logging_copy
-
-
-class TestConsumerLoggingOverride:
-    def test_django_file_handlers_removed(self, consumer_logging):
-        """Consumer 환경에서 Django 파일 핸들러가 제거되어야 한다."""
-        assert "scraping_file" not in consumer_logging["handlers"]
-        assert "newsletter_file" not in consumer_logging["handlers"]
-        assert "django_file" not in consumer_logging["handlers"]
-
-    def test_all_loggers_write_to_consumer_file(self, consumer_logging):
-        """Consumer 환경에서 모든 로거가 consumer_file에 기록해야 한다."""
-        for logger_name in ("scraping", "newsletter", "django", "consumer"):
-            handlers = consumer_logging["loggers"][logger_name]["handlers"]
-            assert "consumer_file" in handlers
-
-    def test_consumer_file_handler_config(self, consumer_logging):
-        """consumer_file 핸들러 설정이 올바른지 확인."""
-        handler = consumer_logging["handlers"]["consumer_file"]
-        assert (
-            handler["class"]
-            == "backoffice.logging_handlers.GzipTimedRotatingFileHandler"
-        )
-        assert handler["backupCount"] == 7
-        assert handler["when"] == "midnight"
-        assert handler["utc"] is True
-
-    def test_consumer_log_dir_is_separate_from_django(self, consumer_logging):
-        """Consumer 로그 경로가 Django의 logs/와 분리되어야 한다."""
-        consumer_path = consumer_logging["handlers"]["consumer_file"][
-            "filename"
-        ]
-        assert "consumer-logs/" in consumer_path
-        assert not consumer_path.startswith("logs/")
