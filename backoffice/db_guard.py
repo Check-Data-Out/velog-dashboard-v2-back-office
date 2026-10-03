@@ -9,3 +9,8 @@ SAFE_TEST_DB_HOSTS = frozenset({"", "localhost", "127.0.0.1", "db"})
 
 def is_safe_test_db_host(host: str) -> bool:
     return host in SAFE_TEST_DB_HOSTS
+
+
+def resolve_test_db_host(settings_host: str, environ: dict[str, str]) -> str:
+    """실제 접속 대상 HOST. 설정이 비면 libpq 가 PGHOST 로 접속한다."""
+    return settings_host or environ.get("PGHOST", "")

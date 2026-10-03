@@ -1,6 +1,6 @@
 import pytest
 
-from backoffice.db_guard import is_safe_test_db_host
+from backoffice.db_guard import is_safe_test_db_host, resolve_test_db_host
 
 
 @pytest.mark.parametrize("host", ["", "localhost", "127.0.0.1", "db"])
@@ -18,3 +18,17 @@ def test_local_hosts_are_safe_for_test_db(host):
 )
 def test_remote_hosts_are_rejected_for_test_db(host):
     assert not is_safe_test_db_host(host)
+
+
+def test_empty_host_resolves_to_pghost():
+    """HOST 가 비면 libpq 가 PGHOST 로 접속하므로 그 값으로 판정해야 한다."""
+    assert (
+        resolve_test_db_host("", {"PGHOST": "db.abcdefghijkl.supabase.co"})
+        == "db.abcdefghijkl.supabase.co"
+    )
+
+
+def test_settings_host_wins_over_pghost():
+    assert (
+        resolve_test_db_host("localhost", {"PGHOST": "remote"}) == "localhost"
+    )
