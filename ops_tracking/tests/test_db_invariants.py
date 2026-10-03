@@ -2,7 +2,9 @@ import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
-from ops_tracking.services import find_db_invariant_violations
+from ops_tracking.management.commands.check_db_invariants import (
+    find_db_invariant_violations,
+)
 
 
 def test_no_violation_without_timescaledb_and_test_databases():
