@@ -12,10 +12,10 @@ jobs:
   test-ci:
     runs-on: ubuntu-latest
 
-    # 운영(Supabase PostgreSQL 15, 앱은 TimescaleDB 기능을 쓰지 않음)과 같은 구성
+    # 운영(Supabase PostgreSQL 17, 앱은 TimescaleDB 기능을 쓰지 않음)과 같은 구성
     services:
       postgres:
-        image: postgres:15
+        image: postgres:17
         env:
           POSTGRES_USER: vd2
           POSTGRES_PASSWORD: vd2

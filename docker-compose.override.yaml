@@ -2,13 +2,13 @@
 # Local Development Overrides (자동 로드)
 # =============================================================================
 # docker compose up 실행 시 자동으로 병합됨
-# - 로컬 PostgreSQL 15 인스턴스 추가 (운영 Supabase 와 같은 메이저, TimescaleDB 미사용)
+# - 로컬 PostgreSQL 17 인스턴스 추가 (운영 Supabase 와 같은 메이저, TimescaleDB 미사용)
 # - consumer가 로컬 db에 연결하도록 설정
 # =============================================================================
 
 services:
   db:
-    image: postgres:15
+    image: postgres:17
     container_name: vd2-postgres
     env_file:
       - .env

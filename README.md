@@ -63,12 +63,12 @@ cp .env.sample .env
 #### 2. `docker compose up -d`로 실행
 
 ```bash
-# 로컬: db(postgres:15) + consumer 모두 실행 (override.yml 자동 로드)
+# 로컬: db(postgres:17) + consumer 모두 실행 (override.yml 자동 로드)
 docker compose up -d
 ```
 
-- 기존 `.env` 의 `DATABASE_ENGINE` 이 `timescale.db.backends.postgresql` 이면 `django.db.backends.postgresql` 로 바꾼다 (postgres:15 에는 timescaledb 가 없어 `migrate` 가 실패한다).
-- 로컬 DB 데이터는 `./postgres_data` 에 저장된다. 예전 TimescaleDB 컨테이너가 쓰던 `./timescale_data*` 는 PG17 클러스터라 재사용할 수 없으니 필요 없으면 지운다.
+- 기존 `.env` 의 `DATABASE_ENGINE` 이 `timescale.db.backends.postgresql` 이면 `django.db.backends.postgresql` 로 바꾼다 (postgres:17 에는 timescaledb 가 없어 `migrate` 가 실패한다).
+- 로컬 DB 데이터는 `./postgres_data` 에 저장된다. 메이저 버전이 다른 데이터(예전 postgres:15 의 `./postgres_data`, TimescaleDB 컨테이너의 `./timescale_data*`)는 재사용할 수 없으니 지우고 다시 `migrate` 한다.
 
 ## Pre-configue
 
@@ -188,7 +188,7 @@ poetry run pre-commit run --all-files
 
 `PostDailyStatistics` 의 6개월 이전 데이터를 폐기. `drop_chunks` 를 먼저 시도(일반 테이블이거나 TimescaleDB 가 없으면 — 운영 — 건너뜀)한 뒤 남은 행을 ORM chunk DELETE 로 정리한다. 매일 KST 04:00 cron 자동 실행 (`.github/workflows/run-daily-stats-cleanup.yaml`). 초기 1회는 누적 데이터로 오래 걸리나 이후는 1일치만 정리되어 빠름.
 
-운영 DB 는 Supabase 기반 PostgreSQL 15 (`posts_postdailystatistics` 는 일반 테이블). **Session Mode (포트 5432) 또는 Direct Connection 사용 필수** — Transaction Mode(6543)에서는 `SET LOCAL` / `transaction.atomic` 이 보장되지 않는다. 운영 DB role 은 `run-daily-aggre-set*.yaml` 의 `POSTGRES_USER` 와 동일 (이미 매일 stats INSERT/UPDATE/DELETE 권한 보유).
+운영 DB 는 Supabase 기반 PostgreSQL 17 (`posts_postdailystatistics` 는 일반 테이블). **Session Mode (포트 5432) 또는 Direct Connection 사용 필수** — Transaction Mode(6543)에서는 `SET LOCAL` / `transaction.atomic` 이 보장되지 않는다. 운영 DB role 은 `run-daily-aggre-set*.yaml` 의 `POSTGRES_USER` 와 동일 (이미 매일 stats INSERT/UPDATE/DELETE 권한 보유).
 
 같은 workflow 의 `db-invariants` job 이 매일 `manage.py check_db_invariants` 로 운영 DB 에 `timescaledb` 확장이나 `test_*` DB 가 없는지 검사하고, 위반 시 Slack 으로 알린다. Supabase 의 TimescaleDB(Apache 빌드)는 기본 job 이 라이선스 오류로 초당 1회 실패하며 로그를 무한히 쌓아 디스크를 키운다.
 
