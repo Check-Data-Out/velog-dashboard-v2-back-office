@@ -68,7 +68,7 @@ docker compose up -d
 ```
 
 - 기존 `.env` 의 `DATABASE_ENGINE` 이 `timescale.db.backends.postgresql` 이면 `django.db.backends.postgresql` 로 바꾼다 (postgres:17 에는 timescaledb 가 없어 `migrate` 가 실패한다).
-- 로컬 DB 데이터는 `./postgres_data` 에 저장된다. 메이저 버전이 다른 데이터(예전 postgres:15 의 `./postgres_data`, TimescaleDB 컨테이너의 `./timescale_data*`)는 재사용할 수 없으니 지우고 다시 `migrate` 한다.
+- 로컬 DB 데이터는 `./postgres_data` 에 저장된다. 메이저 버전이 다른 데이터(예전 postgres:15 의 `./postgres_data`, TimescaleDB 컨테이너의 `./timescale_data*`)로는 postgres:17 이 시작되지 않으므로, **`docker compose up -d` 전에** 지우고(필요하면 먼저 백업) 기동 후 다시 `migrate` 한다.
 
 ## Pre-configue
 
