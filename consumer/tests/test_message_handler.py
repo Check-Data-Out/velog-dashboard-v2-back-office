@@ -244,6 +244,5 @@ class TestMessageProcessor:
         assert mock_scraper.run.call_count == 3
         mock_capture.assert_called_once()
         assert mock_capture.call_args.args[0] is failure
-        assert mock_capture.call_args.args[0].__cause__ is failure.__cause__
         mock_logger.error.assert_not_called()
         assert mock_logger.warning.call_count >= 3

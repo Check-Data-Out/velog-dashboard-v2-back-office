@@ -249,12 +249,14 @@ class TestReplaceProcessingHead:
         """CAS_MAX_ATTEMPTS 번 모두 WatchError 면 False."""
         client, pipe = self._client_with_pipe(mock_redis_class)
         pipe.lindex.return_value = "expected-raw"
-        pipe.execute.side_effect = [WatchError("changed")] * 3
+        pipe.execute.side_effect = [
+            WatchError("changed")
+        ] * RedisConfig.CAS_MAX_ATTEMPTS
 
         ok = client.replace_processing_head("expected-raw", "new-raw")
 
         assert ok is False
-        assert pipe.execute.call_count == 3
+        assert pipe.execute.call_count == RedisConfig.CAS_MAX_ATTEMPTS
 
     @patch("modules.redis.client.redis.Redis")
     def test_redis_error_returns_false(self, mock_redis_class):

@@ -61,21 +61,21 @@ class TestCaptureScraperFailure:
             tags={"scraper.cause": "ssl", "username": "u1"},
         )
 
-    @patch("scraping.reporting.time.monotonic")
     @patch("sentry_sdk.capture_exception")
     def test_without_source_uses_default_grouping_and_no_dedupe(
-        self, mock_capture, mock_monotonic
+        self, mock_capture
     ):
-        """source 없음 → fingerprint 없이 capture, 윈도 상태도 건드리지 않는다."""
-        mock_monotonic.return_value = 1000.0
+        """source 없음 → fingerprint 없이 capture, 윈도 dedupe 도 없다.
+
+        값이 None 인 태그는 생략된다.
+        """
         exc = KeyError("data")
 
-        capture_scraper_failure(exc, user_id=7)
-        capture_scraper_failure(exc, user_id=7)
+        capture_scraper_failure(exc, user_id=7, username=None)
+        capture_scraper_failure(exc, user_id=7, username=None)
 
         assert mock_capture.call_count == 2
         mock_capture.assert_called_with(exc, tags={"user_id": "7"})
-        assert "fingerprint" not in mock_capture.call_args.kwargs
 
     @patch("scraping.reporting.time.monotonic")
     @patch("sentry_sdk.capture_exception")
@@ -116,11 +116,3 @@ class TestCaptureScraperFailure:
         )
 
         assert mock_capture.call_count == 2
-
-    @patch("sentry_sdk.capture_exception")
-    def test_none_valued_tags_are_omitted(self, mock_capture):
-        exc = Exception("x")
-
-        capture_scraper_failure(exc, user_id=None)
-
-        mock_capture.assert_called_once_with(exc, tags={})

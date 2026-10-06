@@ -40,14 +40,23 @@ logger = logging.getLogger("consumer")
 
 
 class _StopWhenShutdown(stop_base):
-    """재연결 재시도 중 종료 요청(shutdown Event)이 오면 즉시 멈춘다."""
+    """재연결 재시도 중 종료 요청(shutdown Event)이 오면 즉시 멈춘다.
+
+    tenacity 내장 ``stop_when_event_set`` 과 같은 뜻이지만, shutdown Event 는
+    ``reset_shutdown_event()`` 로 교체되는 지연 생성 싱글톤이라 데코레이터
+    평가 시점이 아니라 **호출 시점**에 ``get_shutdown_event()`` 로 찾아야 한다.
+    """
 
     def __call__(self, retry_state: RetryCallState) -> bool:
         return get_shutdown_event().is_set()
 
 
 def _interruptible_sleep(seconds: float) -> None:
-    """tenacity 대기를 time.sleep 대신 Event.wait 로 — 종료 신호에 즉시 깨어남."""
+    """tenacity 대기를 time.sleep 대신 Event.wait 로 — 종료 신호에 즉시 깨어남.
+
+    내장 ``sleep_using_event`` 와 동등하나 위와 같은 이유로 Event 를 호출
+    시점에 조회한다.
+    """
     get_shutdown_event().wait(seconds)
 
 
