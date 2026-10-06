@@ -260,7 +260,6 @@ class ProcessingReclaimer:
                 # 메시지 유실은 reclaim_once 가 error 로 남긴다.
                 logger.warning(f"reclaim iteration failed: {e}")
                 if consecutive_failures >= self.STUCK_FAILURE_THRESHOLD:
-                    # 임계마다 1건 — 다음 보고는 다시 THRESHOLD 번 연속 실패 후
                     consecutive_failures = 0
                     with sentry_sdk.new_scope() as scope:
                         scope.fingerprint = [

@@ -121,7 +121,7 @@ class MessageProcessor:
                 return True
 
             except ValueError as e:
-                # Invalid message format - don't retry (R2: capture 와 짝인 로그는 warning)
+                # Invalid message format - don't retry
                 logger.warning(f"Invalid message format: {e}")
                 sentry_sdk.capture_exception(e)
                 return False

@@ -56,7 +56,7 @@ class TestStatsRefreshConsumer:
             # 비동기 시그널 핸들러 안에서는 logging 호출 금지
             mock_logger.info.assert_not_called()
 
-        # 핸들러 직후(shutdown 전) 상태 — 6Q 회귀 가드
+        # 핸들러 직후(shutdown 전) 상태
         assert consumer.running is False
         consumer.redis_client.close.assert_not_called()
         # Event.set 은 핸들러 밖(스레드)에서 수행되므로 잠시 기다린다

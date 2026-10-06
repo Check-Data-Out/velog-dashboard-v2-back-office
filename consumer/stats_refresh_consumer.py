@@ -109,14 +109,8 @@ class StatsRefreshConsumer:
     def _handle_shutdown_signal(self, signum: int, frame) -> None:
         """Handle shutdown signals.
 
-        비동기 시그널 핸들러 안에서는 logging 을 호출하지 않는다 — logging 의
-        락은 RLock 이라 데드락은 아니지만 재진입 안전하지 않아 출력이 손상될
-        수 있다(Python logging 문서 "Thread Safety").
-        시그널 이름은 shutdown() 로그에 남긴다.
-
-        Args:
-            signum: Signal number
-            frame: Current stack frame
+        비동기 시그널 핸들러에서는 logging 을 호출하지 않는다(재진입 안전하지
+        않음). 시그널 이름은 shutdown() 로그에 남긴다.
         """
         self._shutdown_signum = signum
         self.request_shutdown()
@@ -171,7 +165,7 @@ class StatsRefreshConsumer:
                 self.shutdown()
 
         except Exception as e:
-            # R2': 치명 종료는 critical(exc_info) 1건 — logging 통합이 이벤트를 만든다
+            # 치명 종료는 critical(exc_info) 1건 — logging 통합이 이벤트를 만든다
             with sentry_sdk.new_scope() as scope:
                 scope.fingerprint = ["consumer", "fatal-start", "{{ type }}"]
                 logger.critical(f"Fatal error in consumer: {e}", exc_info=e)

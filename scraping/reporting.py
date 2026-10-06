@@ -5,8 +5,7 @@ cause 당 REPORT_WINDOW_SEC 윈도 안에서는 1건만 보낸다(억제 건수�
 이벤트의 tag/extra 로). 그 외(source 없음·미지 원인)는 기본 그룹핑으로
 그대로 보낸다 — 오분류·과억제 방지.
 
-루트 conftest 가 ``sentry_sdk.capture_exception`` 을 monkeypatch 하므로
-반드시 속성 접근(``sentry_sdk.capture_exception``)으로 호출한다.
+``sentry_sdk.capture_exception`` 은 속성 접근으로 호출한다(테스트 monkeypatch 호환).
 """
 
 import time

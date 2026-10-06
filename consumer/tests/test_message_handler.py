@@ -12,7 +12,7 @@ from scraping.main import TokenUpdateError
 
 
 def _token_error_from_db() -> TokenUpdateError:
-    """R5 경로: TokenUpdateError 의 __cause__ 가 DB 예외."""
+    """__cause__ 가 DB 예외인 TokenUpdateError."""
     try:
         raise OperationalError("connection lost")
     except OperationalError as cause:
