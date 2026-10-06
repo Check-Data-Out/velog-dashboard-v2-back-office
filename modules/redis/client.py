@@ -58,8 +58,8 @@ class RedisQueueClient:
                 password=self.config.PASSWORD,
                 db=self.config.DB,
                 decode_responses=True,
-                socket_connect_timeout=5,
-                socket_keepalive=True,
+                socket_connect_timeout=self.config.SOCKET_CONNECT_TIMEOUT,
+                socket_keepalive=self.config.SOCKET_KEEPALIVE,
             )
             # Test connection
             self.client.ping()

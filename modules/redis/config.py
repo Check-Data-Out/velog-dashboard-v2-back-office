@@ -37,6 +37,10 @@ class RedisConfig:
     QUEUE_STATS_REFRESH_PROCESSING = "vd2:queue:stats-refresh:processing"
     QUEUE_STATS_REFRESH_FAILED = "vd2:queue:stats-refresh:failed"
 
+    # 연결 인자 (redis.Redis kwargs)
+    SOCKET_CONNECT_TIMEOUT = 5
+    SOCKET_KEEPALIVE = True
+
     # Consumer settings
     BLOCKING_TIMEOUT = 5  # seconds for BRPOP/BLMOVE
     MAX_RETRIES = 3  # process_with_retry 최대 재시도
