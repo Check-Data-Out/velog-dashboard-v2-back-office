@@ -66,7 +66,8 @@ class StatsRefreshMessageHandler:
 
         except Exception as e:
             elapsed_time = time.time() - start_time
-            # 시도별 로그는 warning, 이벤트는 process_with_retry 의 최종 1회 (R1)
+            # 시도별 로그는 warning — 재시도 중간 단계라 이벤트는 process_with_retry
+            # 의 최종 실패 시 1회만 보낸다.
             logger.warning(
                 f"Failed to process stats refresh for user_id={user_id} "
                 f"after {elapsed_time:.2f}s: {e}"
@@ -138,7 +139,8 @@ class MessageProcessor:
                     logger.info(f"Retrying in {backoff_time}s...")
                     time.sleep(backoff_time)
                 else:
-                    # Final failure — 이벤트는 여기서 1건만 (R2)
+                    # Final failure — 이벤트는 여기서 1건만. capture 와 짝인 로그는
+                    # warning 으로 두어 logging 통합이 중복 이벤트를 만들지 않게 한다.
                     logger.warning(
                         f"All {max_retries} attempts failed for "
                         f"user_id={message.get('userId')}"

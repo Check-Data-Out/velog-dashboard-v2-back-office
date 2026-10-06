@@ -25,6 +25,10 @@ logger = logging.getLogger("consumer")
 class ProcessingReclaimer:
     """Processing 큐의 stuck 메시지를 주기적으로 pending/DLQ 로 복원."""
 
+    # loop 에서 연속 실패가 이 횟수에 닿으면 1건만 error 로 보고한다
+    # (반복되는 실패마다 이벤트를 내지 않기 위해).
+    STUCK_FAILURE_THRESHOLD = 5
+
     def __init__(
         self,
         redis_client: RedisQueueClient,
@@ -241,9 +245,6 @@ class ProcessingReclaimer:
             logger.warning(f"reclaim is_terminal check failed: {e}")
             return False
 
-    # 연속 실패가 이 횟수에 닿으면 1건만 error 로 보고 (R1: 반복은 warning)
-    STUCK_FAILURE_THRESHOLD = 5
-
     def loop(self) -> None:
         """daemon thread 진입점. shutdown_event 가 set 될 때까지 반복."""
         interval = self.config.RECLAIM_INTERVAL_SEC
@@ -255,7 +256,8 @@ class ProcessingReclaimer:
                 consecutive_failures = 0
             except Exception as e:
                 consecutive_failures += 1
-                # 60s 마다 반복되는 경로 — warning (R1). 유실은 reclaim_once 가 error.
+                # 60s 마다 반복되는 경로라 매번 이벤트를 내지 않는다(warning).
+                # 메시지 유실은 reclaim_once 가 error 로 남긴다.
                 logger.warning(f"reclaim iteration failed: {e}")
                 if consecutive_failures >= self.STUCK_FAILURE_THRESHOLD:
                     # 임계마다 1건 — 다음 보고는 다시 THRESHOLD 번 연속 실패 후

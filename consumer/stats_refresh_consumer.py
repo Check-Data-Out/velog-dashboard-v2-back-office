@@ -109,8 +109,9 @@ class StatsRefreshConsumer:
     def _handle_shutdown_signal(self, signum: int, frame) -> None:
         """Handle shutdown signals.
 
-        비동기 시그널 핸들러 안에서는 logging 을 호출하지 않는다 (logging 모듈
-        락을 main thread 가 쥔 채 시그널이 오면 데드락 — Python logging 문서).
+        비동기 시그널 핸들러 안에서는 logging 을 호출하지 않는다 — logging 의
+        락은 RLock 이라 데드락은 아니지만 재진입 안전하지 않아 출력이 손상될
+        수 있다(Python logging 문서 "Thread Safety").
         시그널 이름은 shutdown() 로그에 남긴다.
 
         Args:
@@ -323,7 +324,8 @@ class StatsRefreshConsumer:
 
             except Exception as e:
                 consecutive_errors += 1
-                # 반복 중 로그는 warning (R1) — 한계 도달 시에만 critical 1건
+                # 반복 중 로그는 warning — 매 반복이 이벤트가 되지 않도록 하고,
+                # 한계 도달 시에만 critical 1건을 낸다.
                 logger.warning(
                     f"Error in consume loop (consecutive: {consecutive_errors}): {e}"
                 )
@@ -425,7 +427,7 @@ class StatsRefreshConsumer:
                     error="process_with_retry returned False",
                     retry_count=retry_cnt,
                 )
-                # 이벤트는 process_with_retry 가 이미 1건 보냈다 (R2)
+                # 이벤트는 process_with_retry 가 이미 1건 보냈으므로 여기서는 warning
                 logger.warning(
                     f"Message processing failed after all retries. Stats: {self._get_stats_summary()}"
                 )

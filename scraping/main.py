@@ -71,7 +71,8 @@ class Scraper:
             return True
         except Exception as e:
             # 상위(process_user → consumer 재시도)가 최종 1회만 보고하므로
-            # 여기서는 capture 하지 않고 원인을 체인해 전파한다 (R5).
+            # 여기서는 capture 하지 않고 원인을 체인해 전파한다 — 재시도마다
+            # 보고하면 최종 실패 1건이 여러 이벤트로 불어난다.
             logger.warning(
                 f"Failed to update tokens: {e}"
                 f"(user velog uuid: {user.velog_uuid})",

@@ -91,7 +91,8 @@ class RedisQueueClient:
                 f"Redis connection established: {self.config.HOST}:{self.config.PORT}"
             )
         except RedisError as e:
-            # 재연결 루프(tenacity)가 시도마다 호출 — warning (R1)
+            # 재연결 루프(tenacity)가 시도마다 호출하므로 warning — 소진 시
+            # consumer 가 critical 1건으로 보고한다.
             logger.warning(f"Failed to connect to Redis: {e}")
             raise
 

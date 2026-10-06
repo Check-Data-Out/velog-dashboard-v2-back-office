@@ -207,7 +207,10 @@ class TestStatsRefreshConsumer:
         mock_redis_client_class,
         mock_processor_class,
     ) -> None:
-        """재연결 소진은 critical(exc_info) 1회 + exit(1), capture 는 없다 (R2')."""
+        """재연결 소진은 critical(exc_info) 1회 + exit(1), capture 는 없다.
+
+        logging 통합이 critical 로 이벤트를 만들므로 capture 까지 하면 2건이 된다.
+        """
         mock_client = Mock()
         mock_client.blocking_move_pending_to_processing.side_effect = (
             RedisConnectionError("down")
