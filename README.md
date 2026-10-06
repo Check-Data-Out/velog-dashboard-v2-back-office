@@ -54,6 +54,7 @@ cp .env.sample .env
 
 # 2. notion을 참조하여 실제 값 입력
 # ⚠️ .env 파일이 없거나 SECRET_KEY가 없으면 실행 불가
+# ⚠️ 로컬 .env 의 SENTRY_DSN 은 비워 둔다 — 로컬 이벤트가 운영 Sentry 프로젝트로 섞인다
 ```
 
 ## Database Configuration
