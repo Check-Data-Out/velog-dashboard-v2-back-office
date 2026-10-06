@@ -248,7 +248,8 @@ class ProcessingReclaimer:
             try:
                 self.reclaim_once()
             except Exception as e:
-                logger.error(f"reclaim iteration failed: {e}")
+                # 60s 마다 반복되는 경로 — warning (R1). 유실은 reclaim_once 가 error.
+                logger.warning(f"reclaim iteration failed: {e}")
             # shutdown 이 오면 즉시 종료, 아니면 interval 만큼 대기
             self.shutdown_event.wait(timeout=interval)
         logger.info("Reclaimer loop stopped")

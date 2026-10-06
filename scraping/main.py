@@ -12,6 +12,7 @@ from modules.token_encryption.aes_encryption import AESEncryption
 from posts.models import Post, PostDailyStatistics
 from scraping.apis import fetch_all_velog_posts, fetch_velog_user_chk
 from scraping.constants import VELOG_HTTP_TIMEOUT
+from scraping.reporting import capture_scraper_failure
 from users.models import User
 from utils.utils import get_local_now
 
@@ -148,7 +149,7 @@ class Scraper:
                 await asyncio.sleep(0.2)
             return True
         except Exception as e:
-            logger.error(
+            logger.warning(
                 f"Failed to bulk upsert posts. {e}"
                 f" (user velog uuid: {user.velog_uuid})"
             )
@@ -326,7 +327,7 @@ class Scraper:
         except Post.DoesNotExist:
             return False
         except Exception as e:
-            logger.error(
+            logger.warning(
                 f"Failed to update daily statistics for post {post['id']}: {str(e)}"
             )
             sentry_sdk.capture_exception(e)
@@ -456,11 +457,11 @@ class Scraper:
             try:
                 await self.process_user(user, session)
             except Exception as e:
-                logger.error(
+                logger.warning(
                     f"Failed to process user: {e} "
                     f"(user velog uuid: {user.velog_uuid})"
                 )
-                sentry_sdk.capture_exception(e)
+                capture_scraper_failure(e, user_id=user.id)
 
     async def run(self) -> None:
         """스크래핑 작업 실행"""

@@ -294,7 +294,8 @@ class TestScraperTokenAndUserInfoAndProcessing:
             await scraper.process_users([user, other], AsyncMock())
 
         assert mock_process.call_count == 2
-        assert mock_logger.error.called
+        assert mock_logger.warning.called
+        assert not mock_logger.error.called
 
     @patch("scraping.main.logger")
     @pytest.mark.asyncio

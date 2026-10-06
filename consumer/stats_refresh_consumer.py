@@ -159,8 +159,10 @@ class StatsRefreshConsumer:
                 self.shutdown()
 
         except Exception as e:
-            logger.error(f"Fatal error in consumer: {e}")
-            sentry_sdk.capture_exception(e)
+            # R2': 치명 종료는 critical(exc_info) 1건 — logging 통합이 이벤트를 만든다
+            with sentry_sdk.new_scope() as scope:
+                scope.fingerprint = ["consumer", "fatal-start"]
+                logger.critical(f"Fatal error in consumer: {e}", exc_info=e)
             sys.exit(1)
 
     def _start_reclaimer(self) -> None:
@@ -177,7 +179,7 @@ class StatsRefreshConsumer:
             if result["reclaimed"] or result["dlq"]:
                 logger.warning(f"Cold-start reclaim: {result}")
         except Exception as e:
-            logger.error(f"Cold-start reclaim failed: {e}")
+            logger.warning(f"Cold-start reclaim failed: {e}")
             sentry_sdk.capture_exception(e)
 
         self._reclaimer_thread = threading.Thread(
@@ -295,25 +297,30 @@ class StatsRefreshConsumer:
                     if not self.running:
                         # 정상 종료 중 Redis 장애 — 이벤트 없이 루프 탈출
                         break
-                    logger.critical(
-                        "Redis reconnect backoff exhausted. Shutting down."
-                    )
-                    sentry_sdk.capture_exception(e)
+                    with sentry_sdk.new_scope() as scope:
+                        scope.fingerprint = ["consumer", "redis-unavailable"]
+                        logger.critical(
+                            "Redis reconnect backoff exhausted. Shutting down.",
+                            exc_info=e,
+                        )
                     self.shutdown()
                     sys.exit(1)
 
             except Exception as e:
                 consecutive_errors += 1
-                logger.error(
+                # 반복 중 로그는 warning (R1) — 한계 도달 시에만 critical 1건
+                logger.warning(
                     f"Error in consume loop (consecutive: {consecutive_errors}): {e}"
                 )
 
                 if consecutive_errors >= max_consecutive_errors:
-                    logger.critical(
-                        f"Too many consecutive errors ({consecutive_errors}). "
-                        f"Shutting down consumer."
-                    )
-                    sentry_sdk.capture_exception(e)
+                    with sentry_sdk.new_scope() as scope:
+                        scope.fingerprint = ["consumer", "consecutive-errors"]
+                        logger.critical(
+                            f"Too many consecutive errors ({consecutive_errors}). "
+                            f"Shutting down consumer.",
+                            exc_info=e,
+                        )
                     self.shutdown()
                     sys.exit(1)
 
@@ -372,7 +379,7 @@ class StatsRefreshConsumer:
                     original_raw,
                 )
             except Exception as e:
-                logger.error(f"terminal drop: processing LREM failed: {e}")
+                logger.warning(f"terminal drop: processing LREM failed: {e}")
             self.processing_message = False
             return
 
@@ -399,7 +406,8 @@ class StatsRefreshConsumer:
                     error="process_with_retry returned False",
                     retry_count=retry_cnt,
                 )
-                logger.error(
+                # 이벤트는 process_with_retry 가 이미 1건 보냈다 (R2)
+                logger.warning(
                     f"Message processing failed after all retries. Stats: {self._get_stats_summary()}"
                 )
 
@@ -414,7 +422,7 @@ class StatsRefreshConsumer:
 
         except Exception as e:
             self.stats["failed"] += 1
-            logger.error(f"Unexpected error processing message: {e}")
+            logger.warning(f"Unexpected error processing message: {e}")
             sentry_sdk.capture_exception(e)
             try:
                 assert self.redis_client is not None
@@ -506,8 +514,9 @@ def main() -> None:
     try:
         consumer.start()
     except Exception as e:
-        logger.critical(f"Consumer crashed: {e}")
-        sentry_sdk.capture_exception(e)
+        with sentry_sdk.new_scope() as scope:
+            scope.fingerprint = ["consumer", "crashed"]
+            logger.critical(f"Consumer crashed: {e}", exc_info=e)
         sys.exit(1)
 
 

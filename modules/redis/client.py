@@ -41,7 +41,12 @@ def reset_redis_client() -> None:
 
 
 class RedisQueueClient:
-    """Redis client for queue operations."""
+    """Redis client for queue operations.
+
+    로그 규칙: 호출자에게 raise / 0 / False 로 실패를 넘기는 메서드는
+    ``warning`` 만 남긴다 — error 로그·Sentry capture 는 호출자 책임이다.
+    데이터 유실·손상(malformed DLQ 이동 실패 등)만 이 모듈이 ``error``.
+    """
 
     def __init__(self, config: type[RedisConfig] | None = None) -> None:
         """Initialize Redis client.
@@ -86,7 +91,8 @@ class RedisQueueClient:
                 f"Redis connection established: {self.config.HOST}:{self.config.PORT}"
             )
         except RedisError as e:
-            logger.error(f"Failed to connect to Redis: {e}")
+            # 재연결 루프(tenacity)가 시도마다 호출 — warning (R1)
+            logger.warning(f"Failed to connect to Redis: {e}")
             raise
 
     def pop_message(self, timeout: int = 5) -> dict[str, Any] | None:
@@ -122,7 +128,7 @@ class RedisQueueClient:
                     return None
             return None
         except RedisError as e:
-            logger.error(f"Redis error while popping message: {e}")
+            logger.warning(f"Redis error while popping message: {e}")
             raise
 
     def _push_raw_to_failed(self, raw_message: str, error: str) -> bool:
@@ -179,7 +185,7 @@ class RedisQueueClient:
             )
             logger.debug(f"Pushed message to processing queue: {message}")
         except RedisError as e:
-            logger.error(f"Failed to push to processing queue: {e}")
+            logger.warning(f"Failed to push to processing queue: {e}")
             raise
 
     def remove_from_processing(self, message: dict[str, Any]) -> None:
@@ -198,7 +204,7 @@ class RedisQueueClient:
             )
             logger.debug(f"Removed message from processing queue: {message}")
         except RedisError as e:
-            logger.error(f"Failed to remove from processing queue: {e}")
+            logger.warning(f"Failed to remove from processing queue: {e}")
             raise
 
     def push_to_failed(self, message: dict[str, Any]) -> None:
@@ -227,7 +233,7 @@ class RedisQueueClient:
             )
             logger.warning(f"Pushed message to failed queue: {message}")
         except RedisError as e:
-            logger.error(f"Failed to push to failed queue: {e}")
+            logger.warning(f"Failed to push to failed queue: {e}")
             raise
 
     def get_queue_size(self, queue_name: str) -> int:
@@ -246,7 +252,7 @@ class RedisQueueClient:
             result = cast(int, self.client.llen(queue_name))
             return result
         except RedisError as e:
-            logger.error(f"Failed to get queue size: {e}")
+            logger.warning(f"Failed to get queue size: {e}")
             return 0
 
     # ------------------------------------------------------------------
@@ -316,7 +322,7 @@ class RedisQueueClient:
                     )
                 return None
         except RedisError as e:
-            logger.error(f"Redis error in BLMOVE: {e}")
+            logger.warning(f"Redis error in BLMOVE: {e}")
             raise
 
     def get_messages(
@@ -337,7 +343,7 @@ class RedisQueueClient:
         try:
             raws = self.client.lrange(queue_name, start, end)
         except RedisError as e:
-            logger.error(f"Failed to LRANGE {queue_name}: {e}")
+            logger.warning(f"Failed to LRANGE {queue_name}: {e}")
             return []
 
         parsed_only: list[dict[str, Any]] = []
@@ -381,7 +387,7 @@ class RedisQueueClient:
                 f"userId={message.get('userId')}"
             )
         except RedisError as e:
-            logger.error(f"Failed to enqueue message: {e}")
+            logger.warning(f"Failed to enqueue message: {e}")
             raise
 
     def replace_processing_head(self, expected_raw: str, new_raw: str) -> bool:
@@ -449,7 +455,7 @@ class RedisQueueClient:
             removed = cast(int, self.client.lrem(queue_name, 1, message_str))
             return removed
         except RedisError as e:
-            logger.error(f"Failed to LREM from {queue_name}: {e}")
+            logger.warning(f"Failed to LREM from {queue_name}: {e}")
             return 0
 
     def flush_queue(self, queue_name: str) -> int:
@@ -475,4 +481,4 @@ class RedisQueueClient:
                 self.client.close()
                 logger.info("Redis connection closed")
             except RedisError as e:
-                logger.error(f"Error closing Redis connection: {e}")
+                logger.warning(f"Error closing Redis connection: {e}")

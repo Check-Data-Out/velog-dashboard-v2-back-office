@@ -174,6 +174,34 @@ class TestStatsRefreshConsumer:
         mock_capture.assert_not_called()
         mock_client.close.assert_called_once()
 
+    @patch("sentry_sdk.capture_exception")
+    @patch("consumer.stats_refresh_consumer.logger")
+    @patch.object(StatsRefreshConsumer, "_reconnect_with_backoff")
+    def test_reconnect_exhausted_is_single_critical_without_capture(
+        self,
+        mock_reconnect,
+        mock_logger,
+        mock_capture,
+        mock_redis_client_class,
+        mock_processor_class,
+    ) -> None:
+        """재연결 소진은 critical(exc_info) 1회 + exit(1), capture 는 없다 (R2')."""
+        mock_client = Mock()
+        mock_client.blocking_move_pending_to_processing.side_effect = (
+            RedisConnectionError("down")
+        )
+        consumer = StatsRefreshConsumer(redis_client=mock_client)
+        consumer.redis_client = mock_client
+        consumer.running = True
+        mock_reconnect.side_effect = RetryError(Mock())
+
+        with pytest.raises(SystemExit):
+            consumer._consume_loop()
+
+        mock_logger.critical.assert_called_once()
+        assert mock_logger.critical.call_args.kwargs.get("exc_info")
+        mock_capture.assert_not_called()
+
     def test_process_message_success(
         self, mock_redis_client_class, mock_processor_class, sample_message
     ) -> None:
