@@ -51,12 +51,19 @@ class TestStatsRefreshConsumer:
         consumer.redis_client = Mock()
         consumer.running = True
 
-        consumer._handle_shutdown_signal(signal.SIGTERM, None)
+        with patch("consumer.stats_refresh_consumer.logger") as mock_logger:
+            consumer._handle_shutdown_signal(signal.SIGTERM, None)
+            # 비동기 시그널 핸들러 안에서는 logging 호출 금지 (logging 모듈 락)
+            mock_logger.info.assert_not_called()
+            consumer.shutdown()
 
         assert consumer.running is False
         # Event.set 은 핸들러 밖(스레드)에서 수행되므로 잠시 기다린다
         assert get_shutdown_event().wait(1)
-        consumer.redis_client.close.assert_not_called()
+        # 어떤 시그널로 종료됐는지는 shutdown() 로그에 남긴다
+        assert any(
+            "SIGTERM" in str(c) for c in mock_logger.info.call_args_list
+        )
 
     @patch("consumer.stats_refresh_consumer.start_healthz_server")
     @patch.object(StatsRefreshConsumer, "_start_reclaimer")

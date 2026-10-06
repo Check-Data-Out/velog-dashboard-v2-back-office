@@ -84,6 +84,7 @@ class StatsRefreshConsumer:
         self.running = False
         self.processing_message = False
         self._closed = False
+        self._shutdown_signum: int | None = None
         self._reclaimer_thread: threading.Thread | None = None
         self._lifecycle = None  # 지연 import
 
@@ -108,14 +109,15 @@ class StatsRefreshConsumer:
     def _handle_shutdown_signal(self, signum: int, frame) -> None:
         """Handle shutdown signals.
 
+        비동기 시그널 핸들러 안에서는 logging 을 호출하지 않는다 (logging 모듈
+        락을 main thread 가 쥔 채 시그널이 오면 데드락 — Python logging 문서).
+        시그널 이름은 shutdown() 로그에 남긴다.
+
         Args:
             signum: Signal number
             frame: Current stack frame
         """
-        signal_name = "SIGTERM" if signum == signal.SIGTERM else "SIGINT"
-        logger.info(
-            f"Received {signal_name} signal, initiating graceful shutdown..."
-        )
+        self._shutdown_signum = signum
         self.request_shutdown()
 
     def request_shutdown(self) -> None:
@@ -503,7 +505,12 @@ class StatsRefreshConsumer:
             return
         self._closed = True
 
-        logger.info("Shutting down consumer...")
+        signal_name = (
+            signal.Signals(self._shutdown_signum).name
+            if self._shutdown_signum is not None
+            else None
+        )
+        logger.info(f"Shutting down consumer... (signal={signal_name})")
         self.running = False
         get_shutdown_event().set()
 
