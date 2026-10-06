@@ -69,6 +69,8 @@ class TestStatsRefreshConsumer:
         """start() 는 _consume_loop 가 반환한 뒤에 Redis 를 1회 닫는다."""
         mock_client = Mock()
         consumer = StatsRefreshConsumer(redis_client=mock_client)
+        # 루프가 도는 동안에는 아직 닫히지 않았어야 한다 (상태 단언)
+        mock_loop.side_effect = lambda: mock_client.close.assert_not_called()
 
         consumer.start()
 
