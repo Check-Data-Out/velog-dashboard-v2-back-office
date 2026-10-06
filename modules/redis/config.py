@@ -43,8 +43,14 @@ class RedisConfig:
     SOCKET_CONNECT_TIMEOUT = 5
     SOCKET_KEEPALIVE = True
     HEALTH_CHECK_INTERVAL = 30
-    # ConnectionError 만 1회 재시도. TimeoutError 는 명령 적용 여부가 불명이라
-    # 비멱등 LPUSH 중복을 피하기 위해 제외한다.
+    # 재시도 범위(redis-py 5.3):
+    # - connect 단계: 재시도 없음 — _connect 는 raw OSError/socket.timeout 을
+    #   내고 supported_errors 가 ConnectionError 뿐이라 매치되지 않는다.
+    # - 명령 단계: ConnectionError 만 1회 재시도. 읽기 중 ConnectionError 는
+    #   비멱등 LPUSH 가 이미 적용됐을 수 있어 중복 가능 — mark_processing
+    #   terminal 체크 / reclaimer 가 흡수한다.
+    # - TimeoutError 는 제외: 느린 서버에 재시도 폭주를 막고, 적용 여부 불명인
+    #   명령을 다시 보내지 않기 위해.
     RETRY_ATTEMPTS = 1
     RETRY_BACKOFF_BASE_SEC = 0.5
     RETRY_BACKOFF_CAP_SEC = 2

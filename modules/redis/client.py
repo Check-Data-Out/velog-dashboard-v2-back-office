@@ -66,6 +66,8 @@ class RedisQueueClient:
                 socket_connect_timeout=self.config.SOCKET_CONNECT_TIMEOUT,
                 socket_keepalive=self.config.SOCKET_KEEPALIVE,
                 health_check_interval=self.config.HEALTH_CHECK_INTERVAL,
+                # 재시도 범위는 RedisConfig 의 RETRY_* 주석 참고 — connect 단계는
+                # 사실상 재시도 없음, 명령 단계만 ConnectionError 1회.
                 # supported_errors 를 명시해야 connect 경로(retry_on_error
                 # 필터 없음)에서도 TimeoutError 가 재시도 대상에서 빠진다.
                 retry=Retry(
