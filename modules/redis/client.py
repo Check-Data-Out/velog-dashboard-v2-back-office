@@ -392,8 +392,12 @@ class RedisQueueClient:
         https://redis.io/docs/latest/develop/using-commands/transactions/
 
         WATCH 는 키 단위라 같은 키의 다른 원소 변경(reclaimer 의 LREM, 다음
-        BLMOVE)으로도 EXEC 이 취소된다 → WatchError 면 head 를 다시 읽고
-        최대 CAS_MAX_ATTEMPTS 회 재시도한다.
+        BLMOVE)으로도 EXEC 이 취소된다 → **EXEC 단계의 WatchError 만** head 를
+        다시 읽고 최대 CAS_MAX_ATTEMPTS 회 재시도한다. WATCH/LINDEX 단계의
+        오류는 RedisError 로 잡혀 False.
+
+        EXEC 은 적용됐는데 응답만 유실된 경우(연결 재시도 등) head 가 이미
+        new_raw 이므로 그때는 멱등 성공(True)으로 본다.
 
         Args:
             expected_raw: BLMOVE 가 반환한 원본 raw 문자열
@@ -412,6 +416,9 @@ class RedisQueueClient:
                 for _ in range(self.config.CAS_MAX_ATTEMPTS):
                     pipe.watch(key)
                     head = pipe.lindex(key, 0)
+                    if head == new_raw:
+                        pipe.unwatch()
+                        return True
                     if head != expected_raw:
                         pipe.unwatch()
                         return False

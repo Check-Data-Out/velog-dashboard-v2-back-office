@@ -182,7 +182,6 @@ class TestReplaceProcessingHead:
     def test_cas_match_returns_true(self, mock_redis_class):
         client, pipe = self._client_with_pipe(mock_redis_class)
         pipe.lindex.return_value = "expected-raw"
-        pipe.execute.return_value = [True]
 
         ok = client.replace_processing_head("expected-raw", "new-raw")
 
@@ -230,6 +229,32 @@ class TestReplaceProcessingHead:
         assert ok is False
         assert pipe.lset.call_count == 1
         pipe.unwatch.assert_called_once()
+
+    @patch("modules.redis.client.redis.Redis")
+    def test_head_already_new_raw_returns_true_without_lset(
+        self, mock_redis_class
+    ):
+        """EXEC 은 적용됐는데 응답만 유실된 뒤의 재호출은 멱등 성공."""
+        client, pipe = self._client_with_pipe(mock_redis_class)
+        pipe.lindex.return_value = "new-raw"
+
+        ok = client.replace_processing_head("expected-raw", "new-raw")
+
+        assert ok is True
+        pipe.lset.assert_not_called()
+        pipe.execute.assert_not_called()
+
+    @patch("modules.redis.client.redis.Redis")
+    def test_watch_error_every_attempt_gives_up_false(self, mock_redis_class):
+        """CAS_MAX_ATTEMPTS 번 모두 WatchError 면 False."""
+        client, pipe = self._client_with_pipe(mock_redis_class)
+        pipe.lindex.return_value = "expected-raw"
+        pipe.execute.side_effect = [WatchError("changed")] * 3
+
+        ok = client.replace_processing_head("expected-raw", "new-raw")
+
+        assert ok is False
+        assert pipe.execute.call_count == 3
 
     @patch("modules.redis.client.redis.Redis")
     def test_redis_error_returns_false(self, mock_redis_class):
