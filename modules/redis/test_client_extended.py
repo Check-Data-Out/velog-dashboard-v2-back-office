@@ -259,6 +259,19 @@ class TestReplaceProcessingHead:
         assert pipe.execute.call_count == RedisConfig.CAS_MAX_ATTEMPTS
 
     @patch("modules.redis.client.redis.Redis")
+    def test_watch_stage_watch_error_retries(self, mock_redis_class):
+        """WATCH/LINDEX 단계의 WatchError(연결 끊김 등)도 재시도한다."""
+        client, pipe = self._client_with_pipe(mock_redis_class)
+        pipe.watch.side_effect = [WatchError("conn"), None]
+        pipe.lindex.return_value = "expected-raw"
+
+        ok = client.replace_processing_head("expected-raw", "new-raw")
+
+        assert ok is True
+        assert pipe.watch.call_count == 2
+        pipe.execute.assert_called_once()
+
+    @patch("modules.redis.client.redis.Redis")
     def test_redis_error_returns_false(self, mock_redis_class):
         """RedisError 는 밖으로 내지 않고 False (호출자가 LREM 기준 유지)."""
         client, pipe = self._client_with_pipe(mock_redis_class)
