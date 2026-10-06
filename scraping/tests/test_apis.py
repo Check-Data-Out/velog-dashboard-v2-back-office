@@ -42,17 +42,18 @@ class TestFetchVelogPosts:
         assert "views" in sent_query
 
     @pytest.mark.asyncio
-    async def test_returns_none_on_malformed_response(self):
-        """응답에 data 키가 없으면 예외 없이 None(실패)을 반환하는지.
+    async def test_malformed_response_raises_with_cause(self):
+        """응답에 data 키가 없으면 VelogFetchError(원인 체인)로 실패하는지.
 
         빈 목록([])은 "정상적으로 더 없음" 이므로 실패와 구분해야
         fetch_all 이 잘린 목록으로 비활성화를 돌리지 않는다.
         """
         session = _mock_session({"errors": [{"message": "boom"}]})
 
-        result = await fetch_velog_posts(session, "tester", "at", "rt")
+        with pytest.raises(VelogFetchError) as exc_info:
+            await fetch_velog_posts(session, "tester", "at", "rt")
 
-        assert result is None
+        assert isinstance(exc_info.value.__cause__, KeyError)
 
     @pytest.mark.asyncio
     @patch("scraping.apis.capture_scraper_failure")
@@ -65,9 +66,10 @@ class TestFetchVelogPosts:
         session = MagicMock()
         session.post = MagicMock(side_effect=exc)
 
-        result = await fetch_velog_posts(session, "tester", "at", "rt")
+        with pytest.raises(VelogFetchError) as exc_info:
+            await fetch_velog_posts(session, "tester", "at", "rt")
 
-        assert result is None
+        assert exc_info.value.__cause__ is exc
         mock_logger.warning.assert_called_once()
         mock_logger.error.assert_not_called()
         mock_capture.assert_called_once_with(
@@ -89,13 +91,14 @@ class TestFetchAllVelogPosts:
         page1_cm.__aenter__ = AsyncMock(return_value=page1_response)
         page1_cm.__aexit__ = AsyncMock(return_value=False)
         session = MagicMock()
-        session.post = MagicMock(
-            side_effect=[page1_cm, aiohttp.ServerTimeoutError("slow")]
-        )
+        page2_error = aiohttp.ServerTimeoutError("slow")
+        session.post = MagicMock(side_effect=[page1_cm, page2_error])
 
         with patch("scraping.apis.capture_scraper_failure"):
-            with pytest.raises(VelogFetchError):
+            with pytest.raises(VelogFetchError) as exc_info:
                 await fetch_all_velog_posts(session, "tester", "at", "rt")
+
+        assert exc_info.value.__cause__ is page2_error
 
     @pytest.mark.asyncio
     async def test_genuine_empty_page_ends_pagination(self):
