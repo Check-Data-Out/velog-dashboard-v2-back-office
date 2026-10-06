@@ -11,6 +11,7 @@ from django.db import transaction
 from modules.token_encryption.aes_encryption import AESEncryption
 from posts.models import Post, PostDailyStatistics
 from scraping.apis import fetch_all_velog_posts, fetch_velog_user_chk
+from scraping.constants import VELOG_HTTP_TIMEOUT
 from users.models import User
 from utils.utils import get_local_now
 
@@ -463,6 +464,7 @@ class Scraper:
         async with aiohttp.ClientSession(
             connector=connector,
             cookie_jar=cookie_jar,
+            timeout=VELOG_HTTP_TIMEOUT,
         ) as session:
             await self.process_users(users, session)
 
@@ -500,7 +502,8 @@ class ScraperTargetUser(Scraper):
             async for user in User.objects.filter(id__in=self.user_pk_list)
         ]
         async with aiohttp.ClientSession(
-            connector=aiohttp.TCPConnector(limit=30)
+            connector=aiohttp.TCPConnector(limit=30),
+            timeout=VELOG_HTTP_TIMEOUT,
         ) as session:
             await self.process_users(users, session)
 

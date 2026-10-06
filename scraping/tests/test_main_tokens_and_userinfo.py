@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from asgiref.sync import sync_to_async
 
+from scraping.constants import VELOG_HTTP_TIMEOUT
 from scraping.main import ScraperTargetUser
 from users.models import User
 
@@ -492,6 +493,7 @@ class TestScraperTokenAndUserInfoAndProcessing:
         # 로그 및 메서드 호출 확인
         assert mock_logger.info.call_count >= 2  # 시작과 종료 로그
         mock_process.assert_called_once_with(test_user, mock_session_instance)
+        assert mock_session.call_args.kwargs["timeout"] is VELOG_HTTP_TIMEOUT
 
     @pytest.mark.asyncio
     @pytest.mark.django_db
@@ -528,6 +530,7 @@ class TestScraperTokenAndUserInfoAndProcessing:
 
         # process_user 호출 확인
         mock_process.assert_called_once()
+        assert mock_session.call_args.kwargs["timeout"] is VELOG_HTTP_TIMEOUT
 
     @patch("scraping.main.AESEncryption")
     @pytest.mark.asyncio
