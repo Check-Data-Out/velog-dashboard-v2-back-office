@@ -1,7 +1,11 @@
 import json
 from unittest.mock import MagicMock, patch
 
+from redis import RedisError
+from redis.exceptions import WatchError
+
 from modules.redis.client import RedisQueueClient
+from modules.redis.config import RedisConfig
 
 
 class TestBlockingMovePendingToProcessing:
@@ -162,49 +166,77 @@ class TestRemoveMessage:
 
 
 class TestReplaceProcessingHead:
-    """Lua CAS 로 head 교체 — reclaimer 와의 race 를 atomic 하게 차단한다."""
+    """WATCH/MULTI CAS 로 head 교체 — reclaimer 와의 race 를 재시도로 흡수한다."""
+
+    KEY = RedisConfig.QUEUE_STATS_REFRESH_PROCESSING
+
+    def _client_with_pipe(self, mock_redis_class):
+        mock_client = MagicMock()
+        mock_client.ping.return_value = True
+        pipe = MagicMock()
+        mock_client.pipeline.return_value.__enter__.return_value = pipe
+        mock_redis_class.return_value = mock_client
+        return RedisQueueClient(), pipe
 
     @patch("modules.redis.client.redis.Redis")
     def test_cas_match_returns_true(self, mock_redis_class):
-        mock_client = MagicMock()
-        mock_client.ping.return_value = True
-        mock_client.eval.return_value = 1  # Lua 1 반환 = match + LSET 성공
-        mock_redis_class.return_value = mock_client
+        client, pipe = self._client_with_pipe(mock_redis_class)
+        pipe.lindex.return_value = "expected-raw"
+        pipe.execute.return_value = [True]
 
-        client = RedisQueueClient()
         ok = client.replace_processing_head("expected-raw", "new-raw")
+
         assert ok is True
-        mock_client.eval.assert_called_once()
-        args = mock_client.eval.call_args[0]
-        # (script, numkeys, key, expected, new)
-        assert args[1] == 1
-        assert args[2] == client.config.QUEUE_STATS_REFRESH_PROCESSING
-        assert args[3] == "expected-raw"
-        assert args[4] == "new-raw"
+        pipe.watch.assert_called_once_with(self.KEY)
+        pipe.lindex.assert_called_once_with(self.KEY, 0)
+        pipe.lset.assert_called_once_with(self.KEY, 0, "new-raw")
+        pipe.execute.assert_called_once()
 
     @patch("modules.redis.client.redis.Redis")
-    def test_cas_mismatch_returns_false(self, mock_redis_class):
-        """reclaimer 가 head 를 LREM/수정했다면 CAS 가 0 반환 → False."""
-        mock_client = MagicMock()
-        mock_client.ping.return_value = True
-        mock_client.eval.return_value = 0
-        mock_redis_class.return_value = mock_client
+    def test_cas_mismatch_returns_false_without_lset(self, mock_redis_class):
+        """reclaimer 가 head 를 LREM/수정했다면 UNWATCH 후 False."""
+        client, pipe = self._client_with_pipe(mock_redis_class)
+        pipe.lindex.return_value = "other-raw"
 
-        client = RedisQueueClient()
-        assert (
-            client.replace_processing_head("expected-raw", "new-raw") is False
-        )
+        ok = client.replace_processing_head("expected-raw", "new-raw")
+
+        assert ok is False
+        pipe.unwatch.assert_called_once()
+        pipe.lset.assert_not_called()
+        pipe.execute.assert_not_called()
+
+    @patch("modules.redis.client.redis.Redis")
+    def test_watch_error_retries_and_succeeds(self, mock_redis_class):
+        """EXEC 이 WatchError 로 취소되면 head 를 다시 확인하고 재시도한다."""
+        client, pipe = self._client_with_pipe(mock_redis_class)
+        pipe.lindex.side_effect = ["expected-raw", "expected-raw"]
+        pipe.execute.side_effect = [WatchError("changed"), [True]]
+
+        ok = client.replace_processing_head("expected-raw", "new-raw")
+
+        assert ok is True
+        assert pipe.lset.call_count == 2
+        assert pipe.execute.call_count == 2
+
+    @patch("modules.redis.client.redis.Redis")
+    def test_watch_error_then_mismatch_returns_false(self, mock_redis_class):
+        """재시도 중 head 가 바뀌어 있으면 더 이상 LSET 하지 않고 False."""
+        client, pipe = self._client_with_pipe(mock_redis_class)
+        pipe.lindex.side_effect = ["expected-raw", "other-raw"]
+        pipe.execute.side_effect = [WatchError("changed")]
+
+        ok = client.replace_processing_head("expected-raw", "new-raw")
+
+        assert ok is False
+        assert pipe.lset.call_count == 1
+        pipe.unwatch.assert_called_once()
 
     @patch("modules.redis.client.redis.Redis")
     def test_redis_error_returns_false(self, mock_redis_class):
-        from redis import RedisError
+        """RedisError 는 밖으로 내지 않고 False (호출자가 LREM 기준 유지)."""
+        client, pipe = self._client_with_pipe(mock_redis_class)
+        pipe.watch.side_effect = RedisError("boom")
 
-        mock_client = MagicMock()
-        mock_client.ping.return_value = True
-        mock_client.eval.side_effect = RedisError("boom")
-        mock_redis_class.return_value = mock_client
-
-        client = RedisQueueClient()
         assert (
             client.replace_processing_head("expected-raw", "new-raw") is False
         )

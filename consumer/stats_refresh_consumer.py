@@ -228,8 +228,8 @@ class StatsRefreshConsumer:
                 enriched["processingStartedAt"] = get_local_now().isoformat()
                 # processingStartedAt 을 Redis processing 큐에도 반영해야
                 # reclaimer 가 enqueuedAt 으로 fallback 하지 않는다.
-                # CAS(LINDEX 0 == raw_str 일 때만 LSET) 로 reclaimer 가 head 를 LREM
-                # 한 경우에도 엉뚱한 메시지를 오염시키지 않는다.
+                # CAS(WATCH 후 LINDEX 0 == raw_str 일 때만 MULTI/LSET) 로
+                # reclaimer 가 head 를 LREM 한 경우에도 엉뚱한 메시지를 오염시키지 않는다.
                 new_raw = json.dumps(enriched)
                 if self.redis_client.replace_processing_head(raw_str, new_raw):
                     raw_str = new_raw

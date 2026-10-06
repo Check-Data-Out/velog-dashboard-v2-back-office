@@ -45,6 +45,7 @@ class RedisConfig:
     BLOCKING_TIMEOUT = 5  # seconds for BRPOP/BLMOVE
     MAX_RETRIES = 3  # process_with_retry 최대 재시도
     RETRY_BACKOFF_BASE = 2  # exponential backoff base (seconds)
+    CAS_MAX_ATTEMPTS = 3  # replace_processing_head WATCH/MULTI 재시도 상한
 
     # DLQ 크기 제한 (초과 시 오래된 것부터 삭제)
     MAX_FAILED_QUEUE_SIZE = _env_int(

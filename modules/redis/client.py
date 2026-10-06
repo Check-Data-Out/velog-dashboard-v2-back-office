@@ -4,6 +4,7 @@ from typing import Any, cast
 
 import redis
 from redis import Redis, RedisError
+from redis.exceptions import WatchError
 
 from modules.redis.config import RedisConfig
 
@@ -365,28 +366,18 @@ class RedisQueueClient:
             logger.error(f"Failed to enqueue message: {e}")
             raise
 
-    # Lua CAS: head index 0 == expected_raw 일 때만 LSET.
-    # 전체 스크립트가 단일 atomic transaction 으로 실행된다.
-    # https://redis.io/docs/latest/commands/eval/
-    _REPLACE_HEAD_LUA = """
-    local current = redis.call('LINDEX', KEYS[1], 0)
-    if current == ARGV[1] then
-        redis.call('LSET', KEYS[1], 0, ARGV[2])
-        return 1
-    end
-    return 0
-    """
-
     def replace_processing_head(self, expected_raw: str, new_raw: str) -> bool:
         """Processing 큐 head 가 expected_raw 일 때만 new_raw 로 교체 (CAS).
 
         BLMOVE 직후 consumer 가 processingStartedAt 을 enrich 한 JSON 을
         Redis 저장값에 반영하기 위해 사용한다. reclaimer thread 가 BLMOVE 와
-        LSET 사이에 개입해 head 를 LREM 하는 race 를 Lua LINDEX+LSET CAS 로 차단.
+        LSET 사이에 개입해 head 를 LREM 하는 race 를 WATCH/MULTI/EXEC 로
+        차단한다 (운영 Redis 는 EVAL/SCRIPT 가 rename 돼 스크립트를 쓸 수 없다).
+        https://redis.io/docs/latest/develop/using-commands/transactions/
 
-        단일 consumer 전제이지만 reclaimer daemon thread 와 동일 프로세스에서
-        동작하므로 BLMOVE→LSET 구간은 threading.Lock 으로 보호되지 않는다.
-        Lua 스크립트는 Redis 단일 서버에서 atomic 하게 실행된다.
+        WATCH 는 키 단위라 같은 키의 다른 원소 변경(reclaimer 의 LREM, 다음
+        BLMOVE)으로도 EXEC 이 취소된다 → WatchError 면 head 를 다시 읽고
+        최대 CAS_MAX_ATTEMPTS 회 재시도한다.
 
         Args:
             expected_raw: BLMOVE 가 반환한 원본 raw 문자열
@@ -395,18 +386,31 @@ class RedisQueueClient:
         Returns:
             CAS 성공(head==expected 일 때 LSET 성공) 여부.
             False 면 호출자는 expected_raw 를 계속 LREM 기준으로 사용해야 한다.
+            RedisError 는 밖으로 내지 않는다.
         """
         if not self.client:
             raise RuntimeError("Redis client not connected")
+        key = self.config.QUEUE_STATS_REFRESH_PROCESSING
         try:
-            result = self.client.eval(
-                self._REPLACE_HEAD_LUA,
-                1,  # numkeys
-                self.config.QUEUE_STATS_REFRESH_PROCESSING,
-                expected_raw,
-                new_raw,
+            with self.client.pipeline() as pipe:
+                for _ in range(self.config.CAS_MAX_ATTEMPTS):
+                    pipe.watch(key)
+                    head = pipe.lindex(key, 0)
+                    if head != expected_raw:
+                        pipe.unwatch()
+                        return False
+                    pipe.multi()
+                    pipe.lset(key, 0, new_raw)
+                    try:
+                        pipe.execute()
+                    except WatchError:
+                        continue
+                    return True
+            logger.warning(
+                "CAS replace processing head gave up after "
+                f"{self.config.CAS_MAX_ATTEMPTS} attempts"
             )
-            return bool(cast(int, result))
+            return False
         except RedisError as e:
             logger.warning(f"Failed to CAS replace processing head: {e}")
             return False
