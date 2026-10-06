@@ -153,20 +153,6 @@ yarl = ">=1.17.0,<2.0"
 speedups = ["Brotli (>=1.2)", "aiodns (>=3.3.0)", "backports.zstd", "brotlicffi (>=1.2)"]
 
 [[package]]
-name = "aiohttp-retry"
-version = "2.9.1"
-description = "Simple retry client for aiohttp"
-optional = false
-python-versions = ">=3.7"
-files = [
-    {file = "aiohttp_retry-2.9.1-py3-none-any.whl", hash = "sha256:66d2759d1921838256a05a3f80ad7e724936f083e35be5abb5e16eed6be6dc54"},
-    {file = "aiohttp_retry-2.9.1.tar.gz", hash = "sha256:8eb75e904ed4ee5c2ec242fefe85bf04240f685391c4879d8f541d6028ff01f1"},
-]
-
-[package.dependencies]
-aiohttp = "*"
-
-[[package]]
 name = "aiosignal"
 version = "1.4.0"
 description = "aiosignal: a list of registered asynchronous callbacks"
@@ -236,17 +222,6 @@ files = [
 [package.extras]
 astroid = ["astroid (>=2,<5)"]
 test = ["astroid (>=2,<5)", "pytest (<9.0)", "pytest-cov", "pytest-xdist"]
-
-[[package]]
-name = "async-timeout"
-version = "5.0.1"
-description = "Timeout context manager for asyncio programs"
-optional = false
-python-versions = ">=3.8"
-files = [
-    {file = "async_timeout-5.0.1-py3-none-any.whl", hash = "sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c"},
-    {file = "async_timeout-5.0.1.tar.gz", hash = "sha256:d9321a7a3d5a6a5e187e824d2fa0793ce379a202935782d555d6e9d2735677d3"},
-]
 
 [[package]]
 name = "attrs"
@@ -2808,4 +2783,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.13"
-content-hash = "6b6ea34c855c8ffec848cd9224ba1f092e0869f3777ee6d3c3ba176d6d8c3cd9"
+content-hash = "aa8a899be61f4b64568f681cfb01d250a9e7f9b5a69434f52b31865d35e02bcc"
