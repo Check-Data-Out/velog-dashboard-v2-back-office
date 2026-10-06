@@ -18,6 +18,9 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: backoffice.settings.consumer
     restart: unless-stopped
+    # SIGTERM 핸들러는 플래그만 세우고 처리 중인 메시지를 끝낸 뒤 종료하므로
+    # compose 기본 10s 보다 길게 (스크래퍼 HTTP 타임아웃 30s + 정리 여유).
+    stop_grace_period: 45s
     volumes:
       - ./consumer-logs:/app/consumer-logs
       - ./consumer-logs:/app/logs
