@@ -34,8 +34,9 @@ def reset_report_window() -> None:
 def cause_for(exc: BaseException) -> str | None:
     """velog API 호출 실패의 알려진 원인 분류. 모르면 None (기본 그룹핑).
 
-    aiohttp 계층: ClientSSLError ⊂ ClientConnectorError 이므로 ssl 을 먼저,
-    ServerTimeoutError ⊂ TimeoutError.
+    aiohttp 계층: ClientSSLError ⊂ ClientConnectorError ⊂ ClientOSError ⊂
+    ClientConnectionError 이므로 구체적인 것부터 검사하고, 연결 계열의
+    나머지는 ClientConnectionError 로 묶는다. ServerTimeoutError ⊂ TimeoutError.
     """
     if isinstance(exc, aiohttp.ClientSSLError):
         return "ssl"
@@ -45,6 +46,12 @@ def cause_for(exc: BaseException) -> str | None:
         return "dns"
     if isinstance(exc, aiohttp.ClientConnectorError):
         return "connect"
+    if isinstance(exc, aiohttp.ClientPayloadError):
+        return "payload"
+    # ServerDisconnectedError / ClientOSError / ClientConnectionResetError 등
+    # 연결 후 끊김 계열 — ClientConnectionError 로 묶는다.
+    if isinstance(exc, aiohttp.ClientConnectionError):
+        return "connection"
     if isinstance(exc, aiohttp.ClientResponseError):
         return "http"
     if isinstance(exc, KeyError):
