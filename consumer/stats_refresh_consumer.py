@@ -18,6 +18,7 @@ from tenacity import (
     wait_exponential,
     wait_random,
 )
+from tenacity.stop import stop_base
 
 # Django setup must be imported first
 import consumer.setup_django  # noqa: F401
@@ -38,9 +39,16 @@ from utils.utils import get_local_now
 logger = logging.getLogger("consumer")
 
 
-def _stop_when_shutdown(retry_state: RetryCallState) -> bool:
-    """재연결 재시도 중 종료 요청이 오면 즉시 멈춘다 (args[0] = consumer self)."""
-    return not retry_state.args[0].running
+class _StopWhenShutdown(stop_base):
+    """재연결 재시도 중 종료 요청(shutdown Event)이 오면 즉시 멈춘다."""
+
+    def __call__(self, retry_state: RetryCallState) -> bool:
+        return get_shutdown_event().is_set()
+
+
+def _interruptible_sleep(seconds: float) -> None:
+    """tenacity 대기를 time.sleep 대신 Event.wait 로 — 종료 신호에 즉시 깨어남."""
+    get_shutdown_event().wait(seconds)
 
 
 class StatsRefreshConsumer:
@@ -109,10 +117,17 @@ class StatsRefreshConsumer:
         실제 정리(close)는 _consume_loop 반환 뒤 start() 가 shutdown() 으로.
         """
         self.running = False
-        get_shutdown_event().set()
+        # Event.set() 은 Condition lock 을 잡는다. main thread 가 Event.wait 안에서
+        # 그 lock 을 쥔 채 시그널을 받으면 핸들러의 set() 이 데드락이므로
+        # set 은 별도 스레드에 넘긴다 (핸들러 자체는 플래그만 동기 변경).
+        threading.Thread(target=get_shutdown_event().set, daemon=True).start()
 
     def start(self) -> None:
         """Start the consumer process."""
+        if get_shutdown_event().is_set():
+            logger.info("Shutdown already requested before start; skipping.")
+            return
+
         logger.info(f"Starting {self.consumer_config.PROCESS_NAME}...")
 
         try:
@@ -137,9 +152,11 @@ class StatsRefreshConsumer:
                 f"{self.redis_config.QUEUE_STATS_REFRESH}"
             )
 
-            # Main loop
-            self._consume_loop()
-            self.shutdown()
+            # Main loop — 예외로 빠져나와도 Redis close/reclaimer join 은 보장
+            try:
+                self._consume_loop()
+            finally:
+                self.shutdown()
 
         except Exception as e:
             logger.error(f"Fatal error in consumer: {e}")
@@ -174,25 +191,26 @@ class StatsRefreshConsumer:
         return self._lifecycle
 
     @retry(
-        stop=stop_after_attempt(30) | _stop_when_shutdown,
+        stop=stop_after_attempt(30) | _StopWhenShutdown(),
         wait=wait_exponential(multiplier=1, min=1, max=60) + wait_random(0, 2),
         retry=retry_if_exception_type(
             (RedisConnectionError, RedisTimeoutError)
         ),
-        # 종료 신호에 즉시 깨어나도록 time.sleep 대신 Event.wait
-        sleep=lambda seconds: get_shutdown_event().wait(seconds),
+        sleep=_interruptible_sleep,
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
     def _reconnect_with_backoff(self) -> None:
         """Redis 연결을 backoff 재시도. tenacity 로 최대 30회.
 
-        종료 요청(running=False) 이 오면 stop 조건이 참이 돼 RetryError 로
-        빠져나온다 (tenacity 는 reraise=False 기본).
+        종료 요청이 오면 연결을 더 시도하지 않고 stop 조건(shutdown Event)이
+        참이 돼 RetryError 로 빠져나온다 (tenacity 는 reraise=False 기본).
 
         주입된 redis_client 가 있고 실제 RedisQueueClient 인 경우 동일 config 로
         재인스턴스화. mock/fake 주입 시엔 singleton 경로로 fallback — mock 이
         config 인자를 요구하지 않아 ``TypeError`` 로 튀는 문제 방어.
         """
+        if not self.running:
+            raise RedisConnectionError("shutdown requested")
         injected = self._injected_redis_client
         reconnected = False
         if injected is not None and hasattr(injected, "config"):

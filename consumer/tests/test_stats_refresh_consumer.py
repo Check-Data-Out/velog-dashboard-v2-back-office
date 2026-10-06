@@ -1,7 +1,9 @@
 import signal
 from unittest.mock import Mock, patch
 
+import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
+from tenacity import RetryError
 
 from consumer.shutdown import get_shutdown_event
 from consumer.stats_refresh_consumer import StatsRefreshConsumer
@@ -52,7 +54,8 @@ class TestStatsRefreshConsumer:
         consumer._handle_shutdown_signal(signal.SIGTERM, None)
 
         assert consumer.running is False
-        assert get_shutdown_event().is_set()
+        # Event.set 은 핸들러 밖(스레드)에서 수행되므로 잠시 기다린다
+        assert get_shutdown_event().wait(1)
         consumer.redis_client.close.assert_not_called()
 
     @patch("consumer.stats_refresh_consumer.start_healthz_server")
@@ -77,24 +80,79 @@ class TestStatsRefreshConsumer:
         mock_loop.assert_called_once()
         mock_client.close.assert_called_once()
 
+    @patch("consumer.stats_refresh_consumer.start_healthz_server")
+    @patch.object(StatsRefreshConsumer, "_start_reclaimer")
+    @patch.object(StatsRefreshConsumer, "_consume_loop")
+    def test_start_skips_loop_when_shutdown_already_requested(
+        self,
+        mock_loop,
+        mock_start_reclaimer,
+        mock_healthz,
+        mock_redis_client_class,
+        mock_processor_class,
+    ) -> None:
+        """start 전에 종료 요청이 있었으면 루프에 들어가지 않는다."""
+        consumer = StatsRefreshConsumer(redis_client=Mock())
+        get_shutdown_event().set()
+
+        consumer.start()
+
+        mock_loop.assert_not_called()
+
+    @patch("consumer.stats_refresh_consumer.start_healthz_server")
+    @patch.object(StatsRefreshConsumer, "_start_reclaimer")
+    @patch.object(StatsRefreshConsumer, "_consume_loop")
+    def test_start_closes_redis_when_consume_loop_raises(
+        self,
+        mock_loop,
+        mock_start_reclaimer,
+        mock_healthz,
+        mock_redis_client_class,
+        mock_processor_class,
+    ) -> None:
+        """루프가 예외로 빠져나와도 Redis 는 닫힌다 (finally)."""
+        mock_client = Mock()
+        consumer = StatsRefreshConsumer(redis_client=mock_client)
+        mock_loop.side_effect = RuntimeError("boom")
+
+        with pytest.raises(SystemExit):
+            consumer.start()
+
+        mock_client.close.assert_called_once()
+
+    @patch("consumer.stats_refresh_consumer.get_redis_client")
+    def test_reconnect_skips_connect_when_shutdown_requested(
+        self, mock_get_client, mock_redis_client_class, mock_processor_class
+    ) -> None:
+        """종료 요청 이후에는 연결 시도 없이 바로 RetryError 로 끝난다."""
+        consumer = StatsRefreshConsumer(redis_client=Mock(spec=["close"]))
+        consumer.request_shutdown()
+
+        with pytest.raises(RetryError):
+            consumer._reconnect_with_backoff()
+
+        mock_get_client.assert_not_called()
+
     @patch("sentry_sdk.capture_exception")
     @patch("consumer.stats_refresh_consumer.logger")
-    @patch("consumer.stats_refresh_consumer.time.sleep")
     @patch("consumer.stats_refresh_consumer.get_redis_client")
     @patch("consumer.stats_refresh_consumer.start_healthz_server")
     @patch.object(StatsRefreshConsumer, "_start_reclaimer")
-    def test_shutdown_during_reconnect_exits_loop_without_event(
+    def test_shutdown_during_reconnect_exits_loop_without_critical_or_capture(
         self,
         mock_start_reclaimer,
         mock_healthz,
         mock_get_client,
-        mock_sleep,
         mock_logger,
         mock_capture,
         mock_redis_client_class,
         mock_processor_class,
     ) -> None:
-        """재연결 대기 중 SIGTERM 이 오면 critical/이벤트 없이 정상 종료한다."""
+        """재연결 대기 중 SIGTERM 이 오면 critical/이벤트 없이 정상 종료한다.
+
+        종료 후의 재연결 대기는 Event.wait 라 즉시 깨어나므로, 회귀 시에도
+        30회 재시도가 긴 대기 없이 빠르게 실패한다.
+        """
         mock_client = Mock(
             spec=["blocking_move_pending_to_processing", "close"]
         )
@@ -104,7 +162,7 @@ class TestStatsRefreshConsumer:
         consumer = StatsRefreshConsumer(redis_client=mock_client)
 
         def fail_then_request_shutdown():
-            consumer.running = False
+            consumer.request_shutdown()
             raise RedisConnectionError("still down")
 
         mock_get_client.side_effect = fail_then_request_shutdown
@@ -255,4 +313,5 @@ class TestStatsRefreshConsumer:
         consumer.shutdown()
 
         assert consumer.running is False
+        assert get_shutdown_event().is_set()
         mock_redis_client.close.assert_called_once()
