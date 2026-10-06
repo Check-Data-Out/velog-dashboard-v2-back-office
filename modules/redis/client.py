@@ -4,7 +4,10 @@ from typing import Any, cast
 
 import redis
 from redis import Redis, RedisError
+from redis.backoff import ExponentialBackoff
+from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import WatchError
+from redis.retry import Retry
 
 from modules.redis.config import RedisConfig
 
@@ -59,8 +62,21 @@ class RedisQueueClient:
                 password=self.config.PASSWORD,
                 db=self.config.DB,
                 decode_responses=True,
+                socket_timeout=self.config.SOCKET_TIMEOUT,
                 socket_connect_timeout=self.config.SOCKET_CONNECT_TIMEOUT,
                 socket_keepalive=self.config.SOCKET_KEEPALIVE,
+                health_check_interval=self.config.HEALTH_CHECK_INTERVAL,
+                # supported_errors 를 명시해야 connect 경로(retry_on_error
+                # 필터 없음)에서도 TimeoutError 가 재시도 대상에서 빠진다.
+                retry=Retry(
+                    ExponentialBackoff(
+                        cap=self.config.RETRY_BACKOFF_CAP_SEC,
+                        base=self.config.RETRY_BACKOFF_BASE_SEC,
+                    ),
+                    self.config.RETRY_ATTEMPTS,
+                    supported_errors=(RedisConnectionError,),
+                ),
+                retry_on_error=[RedisConnectionError],
             )
             # Test connection
             self.client.ping()

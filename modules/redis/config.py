@@ -38,8 +38,16 @@ class RedisConfig:
     QUEUE_STATS_REFRESH_FAILED = "vd2:queue:stats-refresh:failed"
 
     # 연결 인자 (redis.Redis kwargs)
+    # SOCKET_TIMEOUT 은 BLOCKING_TIMEOUT 보다 커야 한다 (BLMOVE 정상 대기 보호).
+    SOCKET_TIMEOUT = 10
     SOCKET_CONNECT_TIMEOUT = 5
     SOCKET_KEEPALIVE = True
+    HEALTH_CHECK_INTERVAL = 30
+    # ConnectionError 만 1회 재시도. TimeoutError 는 명령 적용 여부가 불명이라
+    # 비멱등 LPUSH 중복을 피하기 위해 제외한다.
+    RETRY_ATTEMPTS = 1
+    RETRY_BACKOFF_BASE_SEC = 0.5
+    RETRY_BACKOFF_CAP_SEC = 2
 
     # Consumer settings
     BLOCKING_TIMEOUT = 5  # seconds for BRPOP/BLMOVE
