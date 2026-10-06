@@ -6,7 +6,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from tenacity import RetryError
 
 from consumer.shutdown import get_shutdown_event
-from consumer.stats_refresh_consumer import StatsRefreshConsumer
+from consumer.stats_refresh_consumer import StatsRefreshConsumer, main
 
 
 @patch("consumer.stats_refresh_consumer.MessageProcessor")
@@ -174,6 +174,7 @@ class TestStatsRefreshConsumer:
         mock_capture.assert_not_called()
         mock_client.close.assert_called_once()
 
+    @patch("consumer.stats_refresh_consumer.sentry_sdk.new_scope")
     @patch("sentry_sdk.capture_exception")
     @patch("consumer.stats_refresh_consumer.logger")
     @patch.object(StatsRefreshConsumer, "_reconnect_with_backoff")
@@ -182,6 +183,7 @@ class TestStatsRefreshConsumer:
         mock_reconnect,
         mock_logger,
         mock_capture,
+        mock_new_scope,
         mock_redis_client_class,
         mock_processor_class,
     ) -> None:
@@ -201,6 +203,31 @@ class TestStatsRefreshConsumer:
         mock_logger.critical.assert_called_once()
         assert mock_logger.critical.call_args.kwargs.get("exc_info")
         mock_capture.assert_not_called()
+        scope = mock_new_scope.return_value.__enter__.return_value
+        assert scope.fingerprint == [
+            "consumer",
+            "redis-unavailable",
+            "{{ type }}",
+        ]
+
+    @patch("consumer.stats_refresh_consumer.sentry_sdk.new_scope")
+    @patch("consumer.stats_refresh_consumer.logger")
+    @patch.object(StatsRefreshConsumer, "start", side_effect=RuntimeError("x"))
+    def test_main_crash_is_single_critical_with_type_fingerprint(
+        self,
+        mock_start,
+        mock_logger,
+        mock_new_scope,
+        mock_redis_client_class,
+        mock_processor_class,
+    ) -> None:
+        with pytest.raises(SystemExit):
+            main()
+
+        mock_logger.critical.assert_called_once()
+        assert mock_logger.critical.call_args.kwargs.get("exc_info")
+        scope = mock_new_scope.return_value.__enter__.return_value
+        assert scope.fingerprint == ["consumer", "crashed", "{{ type }}"]
 
     def test_process_message_success(
         self, mock_redis_client_class, mock_processor_class, sample_message

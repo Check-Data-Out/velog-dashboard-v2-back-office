@@ -170,7 +170,7 @@ class StatsRefreshConsumer:
         except Exception as e:
             # R2': 치명 종료는 critical(exc_info) 1건 — logging 통합이 이벤트를 만든다
             with sentry_sdk.new_scope() as scope:
-                scope.fingerprint = ["consumer", "fatal-start"]
+                scope.fingerprint = ["consumer", "fatal-start", "{{ type }}"]
                 logger.critical(f"Fatal error in consumer: {e}", exc_info=e)
             sys.exit(1)
 
@@ -307,7 +307,11 @@ class StatsRefreshConsumer:
                         # 정상 종료 중 Redis 장애 — 이벤트 없이 루프 탈출
                         break
                     with sentry_sdk.new_scope() as scope:
-                        scope.fingerprint = ["consumer", "redis-unavailable"]
+                        scope.fingerprint = [
+                            "consumer",
+                            "redis-unavailable",
+                            "{{ type }}",  # ConnectionError vs TimeoutError 구분
+                        ]
                         logger.critical(
                             "Redis reconnect backoff exhausted. Shutting down.",
                             exc_info=e,
@@ -324,7 +328,11 @@ class StatsRefreshConsumer:
 
                 if consecutive_errors >= max_consecutive_errors:
                     with sentry_sdk.new_scope() as scope:
-                        scope.fingerprint = ["consumer", "consecutive-errors"]
+                        scope.fingerprint = [
+                            "consumer",
+                            "consecutive-errors",
+                            "{{ type }}",
+                        ]
                         logger.critical(
                             f"Too many consecutive errors ({consecutive_errors}). "
                             f"Shutting down consumer.",
@@ -524,7 +532,7 @@ def main() -> None:
         consumer.start()
     except Exception as e:
         with sentry_sdk.new_scope() as scope:
-            scope.fingerprint = ["consumer", "crashed"]
+            scope.fingerprint = ["consumer", "crashed", "{{ type }}"]
             logger.critical(f"Consumer crashed: {e}", exc_info=e)
         sys.exit(1)
 
