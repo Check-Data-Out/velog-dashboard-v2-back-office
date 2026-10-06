@@ -9,6 +9,7 @@ import sentry_sdk
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 from tenacity import (
+    RetryCallState,
     RetryError,
     before_sleep_log,
     retry,
@@ -37,6 +38,11 @@ from utils.utils import get_local_now
 logger = logging.getLogger("consumer")
 
 
+def _stop_when_shutdown(retry_state: RetryCallState) -> bool:
+    """재연결 재시도 중 종료 요청이 오면 즉시 멈춘다 (args[0] = consumer self)."""
+    return not retry_state.args[0].running
+
+
 class StatsRefreshConsumer:
     """Main consumer process for stats refresh queue."""
 
@@ -60,6 +66,7 @@ class StatsRefreshConsumer:
         self.message_processor = MessageProcessor(config=self.redis_config)
         self.running = False
         self.processing_message = False
+        self._closed = False
         self._reclaimer_thread: threading.Thread | None = None
         self._lifecycle = None  # 지연 import
 
@@ -92,7 +99,17 @@ class StatsRefreshConsumer:
         logger.info(
             f"Received {signal_name} signal, initiating graceful shutdown..."
         )
-        self.shutdown()
+        self.request_shutdown()
+
+    def request_shutdown(self) -> None:
+        """루프에 종료를 요청한다 — 플래그와 Event 만 건드린다.
+
+        시그널 핸들러는 BLMOVE 대기 중인 main thread 를 가로채 실행되므로
+        여기서 Redis 를 닫으면 'I/O operation on closed file' 이 난다.
+        실제 정리(close)는 _consume_loop 반환 뒤 start() 가 shutdown() 으로.
+        """
+        self.running = False
+        get_shutdown_event().set()
 
     def start(self) -> None:
         """Start the consumer process."""
@@ -122,6 +139,7 @@ class StatsRefreshConsumer:
 
             # Main loop
             self._consume_loop()
+            self.shutdown()
 
         except Exception as e:
             logger.error(f"Fatal error in consumer: {e}")
@@ -156,15 +174,20 @@ class StatsRefreshConsumer:
         return self._lifecycle
 
     @retry(
-        stop=stop_after_attempt(30),
+        stop=stop_after_attempt(30) | _stop_when_shutdown,
         wait=wait_exponential(multiplier=1, min=1, max=60) + wait_random(0, 2),
         retry=retry_if_exception_type(
             (RedisConnectionError, RedisTimeoutError)
         ),
+        # 종료 신호에 즉시 깨어나도록 time.sleep 대신 Event.wait
+        sleep=lambda seconds: get_shutdown_event().wait(seconds),
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
     def _reconnect_with_backoff(self) -> None:
         """Redis 연결을 backoff 재시도. tenacity 로 최대 30회.
+
+        종료 요청(running=False) 이 오면 stop 조건이 참이 돼 RetryError 로
+        빠져나온다 (tenacity 는 reraise=False 기본).
 
         주입된 redis_client 가 있고 실제 RedisQueueClient 인 경우 동일 config 로
         재인스턴스화. mock/fake 주입 시엔 singleton 경로로 fallback — mock 이
@@ -241,6 +264,8 @@ class StatsRefreshConsumer:
                 break
 
             except (RedisConnectionError, RedisTimeoutError) as e:
+                if not self.running:
+                    break
                 consecutive_errors += 1
                 logger.warning(
                     f"Redis transient error (consecutive: {consecutive_errors}): {e}"
@@ -249,6 +274,9 @@ class StatsRefreshConsumer:
                     self._reconnect_with_backoff()
                     consecutive_errors = 0
                 except RetryError:
+                    if not self.running:
+                        # 정상 종료 중 Redis 장애 — 이벤트 없이 루프 탈출
+                        break
                     logger.critical(
                         "Redis reconnect backoff exhausted. Shutting down."
                     )
@@ -271,8 +299,8 @@ class StatsRefreshConsumer:
                     self.shutdown()
                     sys.exit(1)
 
-                # Backoff before retrying (max 32s)
-                time.sleep(2 ** min(consecutive_errors, 5))
+                # Backoff before retrying (max 32s) — 종료 신호에 즉시 깨어남
+                get_shutdown_event().wait(2 ** min(consecutive_errors, 5))
 
     def _process_message(
         self, message: dict, raw_str: str | None = None
@@ -423,30 +451,21 @@ class StatsRefreshConsumer:
         )
 
     def shutdown(self) -> None:
-        """Gracefully shutdown the consumer."""
-        if not self.running:
+        """루프 종료 뒤 자원 정리 (멱등).
+
+        시그널 핸들러가 먼저 running=False 를 세우므로 running 으로 가드하지
+        않고 _closed 로 가드한다. reclaimer 는 shutdown Event 로 깨워 join.
+        """
+        if self._closed:
             return
+        self._closed = True
 
         logger.info("Shutting down consumer...")
         self.running = False
+        get_shutdown_event().set()
 
-        # Wait for current message processing to complete
-        if self.processing_message:
-            logger.info("Waiting for current message to finish processing...")
-            timeout = self.consumer_config.GRACEFUL_SHUTDOWN_TIMEOUT
-            start_time = time.time()
-
-            while (
-                self.processing_message
-                and (time.time() - start_time) < timeout
-            ):
-                time.sleep(0.5)
-
-            if self.processing_message:
-                logger.warning(
-                    "Graceful shutdown timeout reached. "
-                    "Current message may not complete."
-                )
+        if self._reclaimer_thread is not None:
+            self._reclaimer_thread.join(timeout=5)
 
         # Close Redis connection
         if self.redis_client:

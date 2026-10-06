@@ -1,6 +1,9 @@
 import signal
 from unittest.mock import Mock, patch
 
+from redis.exceptions import ConnectionError as RedisConnectionError
+
+from consumer.shutdown import get_shutdown_event
 from consumer.stats_refresh_consumer import StatsRefreshConsumer
 
 
@@ -37,13 +40,79 @@ class TestStatsRefreshConsumer:
     def test_handle_shutdown_signal(
         self, mock_redis_client_class, mock_processor_class
     ) -> None:
-        """Shutdown 시그널 처리 테스트."""
+        """시그널 핸들러는 플래그/Event 만 세우고 Redis 를 닫지 않는다.
+
+        BLMOVE 대기 중 핸들러가 close 하면 main thread 가
+        'I/O operation on closed file' 로 깨진다 (VD-BACKOFFICE-6Q).
+        """
         consumer = StatsRefreshConsumer()
+        consumer.redis_client = Mock()
         consumer.running = True
 
         consumer._handle_shutdown_signal(signal.SIGTERM, None)
 
         assert consumer.running is False
+        assert get_shutdown_event().is_set()
+        consumer.redis_client.close.assert_not_called()
+
+    @patch("consumer.stats_refresh_consumer.start_healthz_server")
+    @patch.object(StatsRefreshConsumer, "_start_reclaimer")
+    @patch.object(StatsRefreshConsumer, "_consume_loop")
+    def test_start_closes_redis_after_consume_loop(
+        self,
+        mock_loop,
+        mock_start_reclaimer,
+        mock_healthz,
+        mock_redis_client_class,
+        mock_processor_class,
+    ) -> None:
+        """start() 는 _consume_loop 가 반환한 뒤에 Redis 를 1회 닫는다."""
+        mock_client = Mock()
+        consumer = StatsRefreshConsumer(redis_client=mock_client)
+
+        consumer.start()
+
+        mock_loop.assert_called_once()
+        mock_client.close.assert_called_once()
+
+    @patch("sentry_sdk.capture_exception")
+    @patch("consumer.stats_refresh_consumer.logger")
+    @patch("consumer.stats_refresh_consumer.time.sleep")
+    @patch("consumer.stats_refresh_consumer.get_redis_client")
+    @patch("consumer.stats_refresh_consumer.start_healthz_server")
+    @patch.object(StatsRefreshConsumer, "_start_reclaimer")
+    def test_shutdown_during_reconnect_exits_loop_without_event(
+        self,
+        mock_start_reclaimer,
+        mock_healthz,
+        mock_get_client,
+        mock_sleep,
+        mock_logger,
+        mock_capture,
+        mock_redis_client_class,
+        mock_processor_class,
+    ) -> None:
+        """재연결 대기 중 SIGTERM 이 오면 critical/이벤트 없이 정상 종료한다."""
+        mock_client = Mock(
+            spec=["blocking_move_pending_to_processing", "close"]
+        )
+        mock_client.blocking_move_pending_to_processing.side_effect = (
+            RedisConnectionError("down")
+        )
+        consumer = StatsRefreshConsumer(redis_client=mock_client)
+
+        def fail_then_request_shutdown():
+            consumer.running = False
+            raise RedisConnectionError("still down")
+
+        mock_get_client.side_effect = fail_then_request_shutdown
+
+        consumer.start()  # SystemExit 없이 반환해야 한다
+
+        assert mock_get_client.call_count == 1
+        mock_logger.critical.assert_not_called()
+        mock_capture.assert_not_called()
+        mock_client.close.assert_called_once()
 
     def test_process_message_success(
         self, mock_redis_client_class, mock_processor_class, sample_message
@@ -169,54 +238,19 @@ class TestStatsRefreshConsumer:
         assert "failed=2" in summary
         assert "uptime=" in summary
 
-    @patch("consumer.stats_refresh_consumer.time.sleep")
-    def test_shutdown_graceful(
-        self, mock_sleep, mock_redis_client_class, mock_processor_class
-    ) -> None:
-        """Graceful shutdown 테스트."""
-        mock_redis_client = Mock()
-        mock_redis_client_class.return_value = mock_redis_client
-
-        consumer = StatsRefreshConsumer()
-        consumer.redis_client = mock_redis_client
-        consumer.running = True
-        consumer.processing_message = False
-
-        consumer.shutdown()
-
-        assert consumer.running is False
-        mock_redis_client.close.assert_called_once()
-
-    @patch("consumer.stats_refresh_consumer.time.sleep")
-    def test_shutdown_with_processing_message(
-        self, mock_sleep, mock_redis_client_class, mock_processor_class
-    ) -> None:
-        """메시지 처리 중 shutdown 테스트."""
-        mock_redis_client = Mock()
-        mock_redis_client_class.return_value = mock_redis_client
-
-        consumer = StatsRefreshConsumer()
-        consumer.redis_client = mock_redis_client
-        consumer.running = True
-        consumer.processing_message = True
-
-        def sleep_side_effect(duration):
-            consumer.processing_message = False
-
-        mock_sleep.side_effect = sleep_side_effect
-
-        consumer.shutdown()
-
-        assert consumer.running is False
-        mock_redis_client.close.assert_called_once()
-
-    def test_shutdown_already_stopped(
+    def test_shutdown_is_idempotent_after_signal_cleared_running(
         self, mock_redis_client_class, mock_processor_class
     ) -> None:
-        """이미 중지된 상태에서 shutdown 테스트."""
-        consumer = StatsRefreshConsumer()
-        consumer.running = False
+        """핸들러가 running=False 를 먼저 세운 뒤에도 shutdown 은 close 를 정확히 1회."""
+        mock_redis_client = Mock()
+        mock_redis_client_class.return_value = mock_redis_client
 
+        consumer = StatsRefreshConsumer()
+        consumer.redis_client = mock_redis_client
+        consumer.running = False  # 시그널 핸들러가 먼저 내린 상태
+
+        consumer.shutdown()
         consumer.shutdown()
 
         assert consumer.running is False
+        mock_redis_client.close.assert_called_once()
