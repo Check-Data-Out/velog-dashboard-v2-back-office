@@ -18,6 +18,14 @@ from utils.utils import get_local_now
 logger = logging.getLogger("scraping")
 
 
+class TokenUpdateError(Exception):
+    """토큰 갱신(DB 저장) 실패 — 원인은 ``__cause__`` 에 체인."""
+
+
+class UserInfoUpdateError(Exception):
+    """유저 정보 갱신(DB 저장) 실패 — 원인은 ``__cause__`` 에 체인."""
+
+
 class Scraper:
     def __init__(self, group_range: range):
         self.env = environ.Env()
@@ -60,11 +68,16 @@ class Scraper:
                 logger.info(f"Updated tokens for user {user.velog_uuid}")
                 return True
         except Exception as e:
-            logger.error(
+            # 상위(process_user → consumer 재시도)가 최종 1회만 보고하므로
+            # 여기서는 capture 하지 않고 원인을 체인해 전파한다 (R5).
+            logger.warning(
                 f"Failed to update tokens: {e}"
-                f"(user velog uuid: {user.velog_uuid})"
+                f"(user velog uuid: {user.velog_uuid})",
+                exc_info=e,
             )
-            sentry_sdk.capture_exception(e)
+            raise TokenUpdateError(
+                f"Failed to update tokens (user velog uuid: {user.velog_uuid})"
+            ) from e
         return False
 
     async def update_old_user_info(
@@ -110,13 +123,15 @@ class Scraper:
             return True
 
         except Exception as e:
-            logger.error(
+            logger.warning(
                 "Failed to update user info: %s (user velog uuid: %s)",
                 e,
                 user.velog_uuid,
+                exc_info=e,
             )
-            sentry_sdk.capture_exception(e)
-        return False
+            raise UserInfoUpdateError(
+                f"Failed to update user_info (user velog uuid: {user.velog_uuid})"
+            ) from e
 
     async def bulk_upsert_posts(
         self,
@@ -354,7 +369,9 @@ class Scraper:
                 new_user_cookies,
             )
             if not user_token_result:
-                raise Exception("Failed to update tokens, Check the logs")
+                raise TokenUpdateError(
+                    "Failed to update tokens, Check the logs"
+                )
             origin_access_token = new_user_cookies["access_token"]
             origin_refresh_token = new_user_cookies["refresh_token"]
 
@@ -365,7 +382,9 @@ class Scraper:
             user_data["data"]["currentUser"],
         )
         if not user_info_result:
-            raise Exception("Failed to update user_info, Check the logs")
+            raise UserInfoUpdateError(
+                "Failed to update user_info, Check the logs"
+            )
 
         # ========================================================== #
         # STEP2: 게시물 전체 목록을 가져와서 upsert 와 상태 동기화 (비활성, 활성)

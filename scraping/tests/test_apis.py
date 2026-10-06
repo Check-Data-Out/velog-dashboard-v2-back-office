@@ -1,8 +1,10 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import pytest
 
 from scraping.apis import fetch_velog_posts
+from scraping.reporting import SOURCE_VELOG_API
 
 
 def _mock_session(payload: dict) -> MagicMock:
@@ -47,3 +49,23 @@ class TestFetchVelogPosts:
         result = await fetch_velog_posts(session, "tester", "at", "rt")
 
         assert result == []
+
+    @pytest.mark.asyncio
+    @patch("scraping.apis.capture_scraper_failure")
+    @patch("scraping.apis.logger")
+    async def test_network_failure_is_warning_and_reported_once(
+        self, mock_logger, mock_capture
+    ):
+        """네트워크 실패는 warning 로그 + 보고 헬퍼 1회(source=velog-api)."""
+        exc = aiohttp.ServerTimeoutError("slow")
+        session = MagicMock()
+        session.post = MagicMock(side_effect=exc)
+
+        result = await fetch_velog_posts(session, "tester", "at", "rt")
+
+        assert result == []
+        mock_logger.warning.assert_called_once()
+        mock_logger.error.assert_not_called()
+        mock_capture.assert_called_once_with(
+            exc, source=SOURCE_VELOG_API, username="tester"
+        )

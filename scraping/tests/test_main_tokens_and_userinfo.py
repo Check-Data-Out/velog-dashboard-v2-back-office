@@ -3,9 +3,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from asgiref.sync import sync_to_async
+from django.db import OperationalError
 
 from scraping.constants import VELOG_HTTP_TIMEOUT
-from scraping.main import ScraperTargetUser
+from scraping.main import (
+    ScraperTargetUser,
+    TokenUpdateError,
+    UserInfoUpdateError,
+)
 from users.models import User
 
 MISSING_VIEWS = object()
@@ -161,6 +166,42 @@ class TestScraperTokenAndUserInfoAndProcessing:
 
         assert result is False
         mock_asave.assert_not_called()
+
+    @patch("sentry_sdk.capture_exception")
+    @patch("scraping.main.logger")
+    @patch("scraping.main.AESEncryption")
+    @pytest.mark.asyncio
+    async def test_update_old_tokens_db_error_raises_token_update_error(
+        self,
+        mock_aes,
+        mock_logger,
+        mock_capture,
+        scraper,
+        user,
+        mock_new_tokens,
+    ):
+        """DB 실패는 capture 없이 warning 만 남기고 전용 예외로 원인 체인 전파."""
+        mock_encryption = mock_aes.return_value
+        mock_encryption.decrypt.side_effect = (
+            lambda token: f"decrypted-{token}"
+        )
+        mock_encryption.encrypt.side_effect = (
+            lambda token: f"encrypted-{token}"
+        )
+        db_error = OperationalError("connection lost")
+
+        with patch.object(
+            user, "asave", new_callable=AsyncMock, side_effect=db_error
+        ):
+            with pytest.raises(TokenUpdateError) as exc_info:
+                await scraper.update_old_tokens(
+                    user, mock_encryption, mock_new_tokens
+                )
+
+        assert exc_info.value.__cause__ is db_error
+        mock_capture.assert_not_called()
+        mock_logger.warning.assert_called_once()
+        mock_logger.error.assert_not_called()
 
     @pytest.mark.parametrize(
         "views, expected",
@@ -419,7 +460,7 @@ class TestScraperTokenAndUserInfoAndProcessing:
             new_callable=AsyncMock,
             return_value=False,
         ):
-            with pytest.raises(Exception, match="Failed to update tokens"):
+            with pytest.raises(TokenUpdateError):
                 await scraper.process_user(user, AsyncMock())
 
     @patch("scraping.main.fetch_velog_user_chk")
@@ -456,7 +497,7 @@ class TestScraperTokenAndUserInfoAndProcessing:
                 return_value=False,
             ),
         ):
-            with pytest.raises(Exception, match="Failed to update user_info"):
+            with pytest.raises(UserInfoUpdateError):
                 await scraper.process_user(user, AsyncMock())
 
     @patch("scraping.main.logger")
@@ -617,12 +658,11 @@ class TestScraperTokenAndUserInfoAndProcessing:
         }
 
         # asave에서 예외 발생하도록 모킹
+        db_error = OperationalError("DB Error")
         with patch.object(
-            user,
-            "asave",
-            new_callable=AsyncMock,
-            side_effect=Exception("DB Error"),
+            user, "asave", new_callable=AsyncMock, side_effect=db_error
         ):
-            result = await scraper.update_old_user_info(user, user_data)
+            with pytest.raises(UserInfoUpdateError) as exc_info:
+                await scraper.update_old_user_info(user, user_data)
 
-        assert result is False
+        assert exc_info.value.__cause__ is db_error

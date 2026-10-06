@@ -8,6 +8,7 @@ from scraping.constants import (
     V3_URL,
     VELOG_POSTS_QUERY,
 )
+from scraping.reporting import SOURCE_VELOG_API, capture_scraper_failure
 
 logger = logging.getLogger("scraping")
 
@@ -42,7 +43,9 @@ async def fetch_velog_user_chk(
             }
             return cookies, data
     except Exception as e:
-        logger.error(f"Failed to fetch user: {e}")
+        # 호출자는 빈 값으로 실패를 알 수 있으므로 로그는 warning, 이벤트는 1건.
+        logger.warning(f"Failed to fetch user: {e}")
+        capture_scraper_failure(e, source=SOURCE_VELOG_API)
         return {}, {}
 
 
@@ -76,7 +79,8 @@ async def fetch_velog_posts(
             posts: list[dict[str, Any]] = data["data"]["posts"]
             return posts
     except Exception as e:
-        logger.error(f"Failed to fetch posts: {e} (username: {username})")
+        logger.warning(f"Failed to fetch posts: {e} (username: {username})")
+        capture_scraper_failure(e, source=SOURCE_VELOG_API, username=username)
         return []
 
 
