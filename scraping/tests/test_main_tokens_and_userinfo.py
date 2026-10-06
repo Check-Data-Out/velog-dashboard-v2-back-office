@@ -116,7 +116,9 @@ class TestScraperTokenAndUserInfoAndProcessing:
                 user, mock_encryption, new_tokens
             )
 
-        assert result is False
+        # 변경 없음 = 성공. False 면 process_user 가 TokenUpdateError 로
+        # 실패시켜 멀쩡한 유저가 DLQ 로 간다.
+        assert result is True
         mock_asave.assert_not_called()
 
     @patch("scraping.main.AESEncryption")
@@ -144,7 +146,8 @@ class TestScraperTokenAndUserInfoAndProcessing:
                 user, mock_encryption, new_tokens
             )
 
-        assert result is False
+        # 새 쿠키가 저장값과 같으면 변경 없음 = 성공
+        assert result is True
         mock_asave.assert_not_called()
 
     @patch("scraping.main.AESEncryption")

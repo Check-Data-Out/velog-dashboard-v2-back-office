@@ -63,11 +63,12 @@ class Scraper:
             if new_user_cookies["refresh_token"] != current_refresh_token:
                 update_fields.append("refresh_token")
 
-            # 변경된 필드가 있을 때만 저장
+            # 변경된 필드가 있을 때만 저장. 변경 없음도 성공 — False 를 돌려주면
+            # process_user 가 TokenUpdateError 로 실패시켜 유저가 DLQ 로 간다.
             if update_fields:
                 await user.asave(update_fields=update_fields)
                 logger.info(f"Updated tokens for user {user.velog_uuid}")
-                return True
+            return True
         except Exception as e:
             # 상위(process_user → consumer 재시도)가 최종 1회만 보고하므로
             # 여기서는 capture 하지 않고 원인을 체인해 전파한다 (R5).
@@ -79,7 +80,6 @@ class Scraper:
             raise TokenUpdateError(
                 f"Failed to update tokens (user velog uuid: {user.velog_uuid})"
             ) from e
-        return False
 
     async def update_old_user_info(
         self, user: User, user_data: dict[str, Any]
