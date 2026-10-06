@@ -13,6 +13,10 @@ from scraping.reporting import SOURCE_VELOG_API, capture_scraper_failure
 logger = logging.getLogger("scraping")
 
 
+class VelogFetchError(Exception):
+    """페이지 조회 실패 — 잘린 목록으로 진행하지 않도록 호출자에게 전파."""
+
+
 def get_header(access_token: str, refresh_token: str) -> dict[str, str]:
     return {
         "authority": "v3.velog.io",
@@ -55,8 +59,12 @@ async def fetch_velog_posts(
     access_token: str,
     refresh_token: str,
     cursor: str = "",
-) -> list[dict[str, Any]]:
-    """한 유저의 포스트를 50개씩(최대 개수) 가져오는 함수"""
+) -> list[dict[str, Any]] | None:
+    """한 유저의 포스트를 50개씩(최대 개수) 가져오는 함수.
+
+    Returns:
+        포스트 목록. 빈 목록은 "더 없음"(정상), **None 은 조회 실패**.
+    """
     query = VELOG_POSTS_QUERY
     variables = {
         "input": {
@@ -81,7 +89,7 @@ async def fetch_velog_posts(
     except Exception as e:
         logger.warning(f"Failed to fetch posts: {e} (username: {username})")
         capture_scraper_failure(e, source=SOURCE_VELOG_API, username=username)
-        return []
+        return None
 
 
 async def fetch_all_velog_posts(
@@ -90,7 +98,13 @@ async def fetch_all_velog_posts(
     access_token: str,
     refresh_token: str,
 ) -> list[dict[str, Any]]:
-    """한 유저의 모든 포스트를 가져오는 함수"""
+    """한 유저의 모든 포스트를 가져오는 함수.
+
+    Raises:
+        VelogFetchError: 어느 페이지든 조회에 실패하면. 실패를 마지막 페이지로
+            오인해 잘린 목록을 돌려주면 sync_post_active_status 가 멀쩡한
+            글을 비활성화하므로 유저 단위로 실패시킨다(consumer 는 재시도).
+    """
     cursor = ""
     total_posts = list()
     while True:
@@ -101,6 +115,11 @@ async def fetch_all_velog_posts(
             refresh_token,
             cursor,
         )
+        if posts is None:
+            raise VelogFetchError(
+                f"Failed to fetch posts page (username: {username}, "
+                f"cursor: {cursor!r})"
+            )
         if not posts or "id" not in posts[-1]:
             break
         total_posts.extend(posts)
