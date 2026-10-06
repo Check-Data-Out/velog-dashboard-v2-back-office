@@ -347,7 +347,12 @@ class TestLoop:
 
 
 class TestLoopStuckReporting:
-    """reclaim_once 가 연속 실패하면 1건만 error(exc_info) 로 보고한다."""
+    """reclaim_once 가 연속 실패하면 1건만 error(exc_info) 로 보고한다.
+
+    여기서 잡는 것은 reclaimer 자체의 예기치 않은 버그(예: 파싱/타입 오류)다.
+    실제 Redis 장애는 get_messages 가 [] 를 돌려주므로 reclaim_once 가 예외를
+    내지 않고, consumer 의 `redis-unavailable` 로 표면화된다.
+    """
 
     def _run_loop(self, outcomes):
         """outcomes: 각 iteration 의 예외(또는 None=성공). 소진되면 루프 종료."""
@@ -382,7 +387,7 @@ class TestLoopStuckReporting:
         return mock_logger, mock_scope
 
     def test_five_consecutive_failures_report_once_with_exc_info(self):
-        failures = [RuntimeError("redis down")] * 5
+        failures = [TypeError("unexpected reclaimer bug")] * 5
         mock_logger, mock_scope = self._run_loop(failures)
 
         mock_logger.error.assert_called_once()

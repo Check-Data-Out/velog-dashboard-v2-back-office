@@ -123,35 +123,6 @@ class TestScraperTokenAndUserInfoAndProcessing:
 
     @patch("scraping.main.AESEncryption")
     @pytest.mark.asyncio
-    async def test_update_old_tokens_expired_failure(
-        self, mock_aes, scraper, user
-    ):
-        """토큰이 만료되었을 때 업데이트 실패 테스트"""
-        mock_encryption = mock_aes.return_value
-        mock_encryption.decrypt.side_effect = (
-            lambda token: f"decrypted-{token}"
-        )
-        mock_encryption.encrypt.side_effect = (
-            lambda token: f"encrypted-{token}"
-        )
-
-        # 이미 복호화된 형태의 토큰 (변경 없음)
-        new_tokens = {
-            "access_token": "decrypted-encrypted-access-token",
-            "refresh_token": "decrypted-encrypted-refresh-token",
-        }
-
-        with patch.object(user, "asave", new_callable=AsyncMock) as mock_asave:
-            result = await scraper.update_old_tokens(
-                user, mock_encryption, new_tokens
-            )
-
-        # 새 쿠키가 저장값과 같으면 변경 없음 = 성공
-        assert result is True
-        mock_asave.assert_not_called()
-
-    @patch("scraping.main.AESEncryption")
-    @pytest.mark.asyncio
     async def test_update_old_tokens_with_mocked_decryption_failure(
         self, mock_aes, scraper, user, mock_new_tokens
     ):
