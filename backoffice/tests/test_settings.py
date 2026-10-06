@@ -1,6 +1,7 @@
 import pytest
 import sentry_sdk
 from django.conf import settings
+from sentry_sdk.integrations.logging import _IGNORED_LOGGERS
 
 from backoffice.settings.base import connection_options_for_engine
 
@@ -29,6 +30,14 @@ class TestSentryGuard:
         except Exception as e:
             result = sentry_sdk.capture_exception(e)
         assert result is None
+
+    def test_disallowed_host_logger_is_ignored_by_sentry(self):
+        """스캐너 Host 헤더(DisallowedHost) 로그는 Sentry 로 가지 않는다.
+
+        `_IGNORED_LOGGERS` 는 비공개 집합이지만 ignore_logger 의 유일한
+        관측점이라 그대로 단언한다 (설정 동작을 보는 이 클래스에 둔다).
+        """
+        assert "django.security.DisallowedHost" in _IGNORED_LOGGERS
 
 
 class TestConnectionOptions:
