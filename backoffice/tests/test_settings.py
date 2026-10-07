@@ -3,7 +3,10 @@ import sentry_sdk
 from django.conf import settings
 from sentry_sdk.integrations import logging as sentry_logging
 
-from backoffice.settings.base import connection_options_for_engine
+from backoffice.settings.base import (
+    SENTRY_EVENT_SCRUBBER,
+    connection_options_for_engine,
+)
 
 
 class TestSentryGuard:
@@ -40,6 +43,49 @@ class TestSentryGuard:
         assert (
             "django.security.DisallowedHost" in sentry_logging._IGNORED_LOGGERS
         )
+
+    def test_event_scrubber_filters_velog_tokens_and_nested_cookies(self):
+        """토큰 변수·중첩 cookie 헤더가 이벤트에서 [Filtered] 로 지워진다."""
+        event = {
+            "exception": {
+                "values": [
+                    {
+                        "stacktrace": {
+                            "frames": [
+                                {
+                                    "vars": {
+                                        "access_token": "at-secret",
+                                        "refresh_token": "rt-secret",
+                                        "new_user_cookies": {
+                                            "access_token": "nested-secret"
+                                        },
+                                        "username": "tester",
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "request": {"headers": {"Cookie": "access_token=at-secret"}},
+            "extra": {"payload": {"headers": {"cookie": "rt-secret"}}},
+        }
+
+        SENTRY_EVENT_SCRUBBER.scrub_event(event)
+
+        def filtered(value) -> bool:
+            # 스크러버는 AnnotatedValue(value="[Filtered]") 로 치환한다
+            return getattr(value, "value", value) == "[Filtered]"
+
+        frame_vars = event["exception"]["values"][0]["stacktrace"]["frames"][
+            0
+        ]["vars"]
+        assert filtered(frame_vars["access_token"])
+        assert filtered(frame_vars["refresh_token"])
+        assert filtered(frame_vars["new_user_cookies"])
+        assert frame_vars["username"] == "tester"
+        assert filtered(event["request"]["headers"]["Cookie"])
+        assert filtered(event["extra"]["payload"]["headers"]["cookie"])
 
 
 class TestConnectionOptions:

@@ -17,6 +17,7 @@ import environ
 import sentry_sdk
 from sentry_sdk.integrations.django import DjangoIntegration
 from sentry_sdk.integrations.logging import ignore_logger
+from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
 
 env = environ.Env()
 
@@ -49,6 +50,14 @@ SENTRY_TRACES_SAMPLE_RATE = env.float("SENTRY_TRACES_SAMPLE_RATE", default=1.0)
 # https://docs.sentry.io/platforms/python/integrations/logging/
 ignore_logger("django.security.DisallowedHost")
 
+# send_default_pii=True 에 더해 지역 변수·중첩 dict 까지 velog 토큰을 지운다.
+# https://docs.sentry.io/platforms/python/data-management/sensitive-data/
+SENTRY_EVENT_SCRUBBER = EventScrubber(
+    denylist=DEFAULT_DENYLIST
+    + ["access_token", "refresh_token", "new_user_cookies"],
+    recursive=True,
+)
+
 if SENTRY_DSN and SENTRY_ENVIRONMENT not in ("local", "test"):
     sentry_sdk.init(
         dsn=SENTRY_DSN,
@@ -56,6 +65,7 @@ if SENTRY_DSN and SENTRY_ENVIRONMENT not in ("local", "test"):
             DjangoIntegration(),
         ],
         send_default_pii=True,
+        event_scrubber=SENTRY_EVENT_SCRUBBER,
         environment=SENTRY_ENVIRONMENT,
         traces_sample_rate=SENTRY_TRACES_SAMPLE_RATE,
     )
