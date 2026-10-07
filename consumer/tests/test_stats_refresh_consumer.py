@@ -5,6 +5,7 @@ import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
 from tenacity import RetryError
 
+from consumer.config import ConsumerConfig
 from consumer.shutdown import get_shutdown_event
 from consumer.stats_refresh_consumer import StatsRefreshConsumer, main
 
@@ -230,6 +231,54 @@ class TestStatsRefreshConsumer:
         assert scope.fingerprint == [
             "consumer",
             "redis-unavailable",
+            "{{ type }}",
+        ]
+
+    @patch("consumer.stats_refresh_consumer.time.sleep")
+    @patch("consumer.stats_refresh_consumer.get_shutdown_event")
+    @patch("consumer.stats_refresh_consumer.sentry_sdk.new_scope")
+    @patch("consumer.stats_refresh_consumer.logger")
+    def test_consecutive_generic_errors_exit_with_single_critical(
+        self,
+        mock_logger,
+        mock_new_scope,
+        mock_get_event,
+        mock_sleep,
+        mock_redis_client_class,
+        mock_processor_class,
+    ) -> None:
+        """generic 예외가 한계만큼 연속되면 critical(exc_info) 1회 + exit(1).
+
+        반복 중에는 warning 만, error 는 없다. 백오프는 Event.wait 라
+        time.sleep 이 불리면 안 된다.
+        """
+        mock_sleep.side_effect = AssertionError("time.sleep must not be used")
+        mock_get_event.return_value.wait.return_value = False
+
+        class _Config(ConsumerConfig):
+            MAX_CONSECUTIVE_ERRORS = 2
+
+        mock_client = Mock()
+        mock_client.blocking_move_pending_to_processing.side_effect = (
+            RuntimeError("bug")
+        )
+        consumer = StatsRefreshConsumer(
+            redis_client=mock_client, consumer_config=_Config
+        )
+        consumer.redis_client = mock_client
+        consumer.running = True
+
+        with pytest.raises(SystemExit):
+            consumer._consume_loop()
+
+        mock_logger.critical.assert_called_once()
+        assert mock_logger.critical.call_args.kwargs.get("exc_info")
+        mock_logger.error.assert_not_called()
+        assert mock_logger.warning.call_count == 2
+        scope = mock_new_scope.return_value.__enter__.return_value
+        assert scope.fingerprint == [
+            "consumer",
+            "consecutive-errors",
             "{{ type }}",
         ]
 

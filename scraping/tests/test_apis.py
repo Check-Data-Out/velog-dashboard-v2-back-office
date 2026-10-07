@@ -7,6 +7,7 @@ from scraping.apis import (
     VelogFetchError,
     fetch_all_velog_posts,
     fetch_velog_posts,
+    fetch_velog_user_chk,
 )
 from scraping.reporting import SOURCE_VELOG_API
 
@@ -75,6 +76,25 @@ class TestFetchVelogPosts:
         mock_capture.assert_called_once_with(
             exc, source=SOURCE_VELOG_API, username="tester"
         )
+
+
+class TestFetchVelogUserChk:
+    @pytest.mark.asyncio
+    @patch("scraping.apis.capture_scraper_failure")
+    @patch("scraping.apis.logger")
+    async def test_failure_returns_empty_and_reports_once(
+        self, mock_logger, mock_capture
+    ):
+        """user_chk 는 raise 하지 않고 ({}, {}) 를 돌려주므로 여기서 1회 보고."""
+        exc = aiohttp.ServerTimeoutError("slow")
+        session = MagicMock()
+        session.post = MagicMock(side_effect=exc)
+
+        result = await fetch_velog_user_chk(session, "at", "rt")
+
+        assert result == ({}, {})
+        mock_logger.warning.assert_called_once()
+        mock_capture.assert_called_once_with(exc, source=SOURCE_VELOG_API)
 
 
 class TestFetchAllVelogPosts:

@@ -423,8 +423,10 @@ class RedisQueueClient:
         try:
             with self.client.pipeline() as pipe:
                 for _ in range(self.config.CAS_MAX_ATTEMPTS):
-                    # redis-py 공식 예제처럼 WATCH 부터 EXEC 까지를 한 try 로 —
-                    # WATCH/LINDEX 단계의 WatchError(연결 끊김 등)도 재시도한다.
+                    # redis-py 공식 예제처럼 WATCH 부터 EXEC 까지를 한 try 로.
+                    # WATCH 전송 자체의 실패는 ConnectionError(retry_on_error 1회
+                    # 뒤 바깥 except → False)이고, LINDEX 이후(watching=True)의
+                    # 연결 끊김은 WatchError 로 와서 여기서 재시도된다.
                     try:
                         pipe.watch(key)
                         head = pipe.lindex(key, 0)

@@ -246,10 +246,11 @@ class TestScraperTokenAndUserInfoAndProcessing:
             with pytest.raises(ValueError):
                 await scraper.process_users([user], AsyncMock())
 
+    @patch("scraping.main.capture_scraper_failure")
     @patch("scraping.main.logger")
     @pytest.mark.asyncio
     async def test_process_users_isolates_failing_user(
-        self, mock_logger, scraper, user
+        self, mock_logger, mock_capture, scraper, user
     ):
         """한 유저가 터져도 나머지 유저는 계속 처리하는지.
 
@@ -270,6 +271,8 @@ class TestScraperTokenAndUserInfoAndProcessing:
         assert mock_process.call_count == 2
         assert mock_logger.warning.called
         assert not mock_logger.error.called
+        mock_capture.assert_called_once()
+        assert mock_capture.call_args.kwargs == {"user_id": user.id}
 
     @patch("scraping.main.logger")
     @pytest.mark.asyncio
