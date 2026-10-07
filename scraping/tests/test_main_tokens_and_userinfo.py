@@ -249,6 +249,34 @@ class TestScraperTokenAndUserInfoAndProcessing:
     @patch("scraping.main.capture_scraper_failure")
     @patch("scraping.main.logger")
     @pytest.mark.asyncio
+    async def test_target_batch_isolates_failing_user_when_requested(
+        self, mock_logger, mock_capture, user
+    ):
+        """타겟 배치(isolate_failures=True)는 한 유저 실패에도 다음 유저를 처리.
+
+        consumer 경로(기본값 False)는 예외를 그대로 전파해 재시도/DLQ 를 판정한다.
+        """
+        scraper = ScraperTargetUser(
+            user_pk_list=[user.pk, 999], isolate_failures=True
+        )
+        other = MagicMock(spec=User)
+        other.velog_uuid = "other-uuid"
+        other.id = 999
+
+        with patch.object(
+            scraper,
+            "process_user",
+            new_callable=AsyncMock,
+            side_effect=[ValueError("boom"), None],
+        ) as mock_process:
+            await scraper.process_users([user, other], AsyncMock())
+
+        assert mock_process.call_count == 2
+        mock_capture.assert_called_once()
+
+    @patch("scraping.main.capture_scraper_failure")
+    @patch("scraping.main.logger")
+    @pytest.mark.asyncio
     async def test_process_users_isolates_failing_user(
         self, mock_logger, mock_capture, scraper, user
     ):

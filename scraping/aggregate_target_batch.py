@@ -29,7 +29,7 @@ warnings.filterwarnings(
 
 def run_scraper(user_pk_list: list[int]) -> None:
     """멀티프로세싱에서 실행될 동기 함수, 각 프로세스에서 비동기 루프 실행"""
-    asyncio.run(ScraperTargetUser(user_pk_list).run())
+    asyncio.run(ScraperTargetUser(user_pk_list, isolate_failures=True).run())
 
 
 def main() -> None:

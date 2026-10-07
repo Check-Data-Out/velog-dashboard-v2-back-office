@@ -495,18 +495,31 @@ class Scraper:
 
 
 class ScraperTargetUser(Scraper):
-    def __init__(self, user_pk_list: list[int]) -> None:
+    def __init__(
+        self, user_pk_list: list[int], isolate_failures: bool = False
+    ) -> None:
+        """
+        Args:
+            user_pk_list: 처리할 유저 pk 목록
+            isolate_failures: True 면 유저 단위로 실패를 격리(타겟 배치).
+                기본 False 는 consumer 경로 — 예외를 그대로 전파한다.
+        """
         self.env = environ.Env()
         self.user_pk_list = user_pk_list
+        self.isolate_failures = isolate_failures
 
     async def process_users(
         self, users: list[User], session: aiohttp.ClientSession
     ) -> None:
-        """예외를 그대로 전파한다.
+        """기본은 예외를 그대로 전파한다.
 
         컨슈머(consumer/message_handler.py)가 예외 발생 여부로 재시도와
-        DLQ 이동을 판정하므로, 삼키면 실패가 성공으로 보고된다.
+        DLQ 이동을 판정하므로, 삼키면 실패가 성공으로 보고된다. 여러 유저를
+        도는 타겟 배치는 isolate_failures=True 로 유저 단위 격리를 쓴다.
         """
+        if self.isolate_failures:
+            await super().process_users(users, session)
+            return
         for user in users:
             await self.process_user(user, session)
 
