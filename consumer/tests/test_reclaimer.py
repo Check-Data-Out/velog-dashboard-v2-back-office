@@ -1,7 +1,7 @@
 import json
 import threading
 import time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from consumer.reclaimer import ProcessingReclaimer
 from modules.redis.config import RedisConfig
@@ -344,3 +344,71 @@ class TestLoop:
         event.set()  # 시작 전에 set → 루프 즉시 종료
         reclaimer.loop()
         # exception 없이 종료되면 성공
+
+
+class TestLoopStuckReporting:
+    """reclaim_once 가 연속 실패하면 1건만 error(exc_info) 로 보고한다.
+
+    여기서 잡는 것은 reclaimer 자체의 예기치 않은 버그(예: 파싱/타입 오류)다.
+    실제 Redis 장애는 get_messages 가 [] 를 돌려주므로 reclaim_once 가 예외를
+    내지 않고, consumer 의 `redis-unavailable` 로 표면화된다.
+    """
+
+    def _run_loop(self, outcomes):
+        """outcomes: 각 iteration 의 예외(또는 None=성공). 소진되면 루프 종료."""
+        client = _make_client()
+        event = threading.Event()
+
+        class _C(RedisConfig):
+            RECLAIM_INTERVAL_SEC = 0
+
+        reclaimer = ProcessingReclaimer(
+            client, config=_C, shutdown_event=event
+        )
+        remaining = list(outcomes)
+
+        def reclaim_once():
+            if not remaining:
+                event.set()
+                return {"reclaimed": 0, "dlq": 0}
+            outcome = remaining.pop(0)
+            if len(remaining) == 0:
+                event.set()
+            if outcome is not None:
+                raise outcome
+            return {"reclaimed": 0, "dlq": 0}
+
+        with (
+            patch.object(reclaimer, "reclaim_once", side_effect=reclaim_once),
+            patch("consumer.reclaimer.logger") as mock_logger,
+            patch("consumer.reclaimer.sentry_sdk.new_scope") as mock_scope,
+        ):
+            reclaimer.loop()
+        return mock_logger, mock_scope
+
+    def test_five_consecutive_failures_report_once_with_exc_info(self):
+        failures = [TypeError("unexpected reclaimer bug")] * 5
+        mock_logger, mock_scope = self._run_loop(failures)
+
+        mock_logger.error.assert_called_once()
+        assert mock_logger.error.call_args.kwargs.get("exc_info")
+        scope = mock_scope.return_value.__enter__.return_value
+        assert scope.fingerprint == [
+            "consumer",
+            "reclaimer-stuck",
+            "{{ type }}",
+        ]
+        assert mock_logger.warning.call_count == 5
+
+    def test_four_failures_then_success_resets_without_report(self):
+        outcomes = [RuntimeError("x")] * 4 + [None] + [RuntimeError("x")] * 4
+        mock_logger, _ = self._run_loop(outcomes)
+
+        mock_logger.error.assert_not_called()
+
+    def test_reports_again_only_after_another_five(self):
+        mock_logger, _ = self._run_loop([RuntimeError("x")] * 9)
+        assert mock_logger.error.call_count == 1
+
+        mock_logger, _ = self._run_loop([RuntimeError("x")] * 10)
+        assert mock_logger.error.call_count == 2

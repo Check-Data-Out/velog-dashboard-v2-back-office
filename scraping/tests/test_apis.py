@@ -1,8 +1,15 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import pytest
 
-from scraping.apis import fetch_velog_posts
+from scraping.apis import (
+    VelogFetchError,
+    fetch_all_velog_posts,
+    fetch_velog_posts,
+    fetch_velog_user_chk,
+)
+from scraping.reporting import SOURCE_VELOG_API
 
 
 def _mock_session(payload: dict) -> MagicMock:
@@ -36,14 +43,89 @@ class TestFetchVelogPosts:
         assert "views" in sent_query
 
     @pytest.mark.asyncio
-    async def test_returns_empty_list_on_malformed_response(self):
-        """응답에 data 키가 없으면 예외 없이 빈 목록을 반환하는지.
+    async def test_malformed_response_raises_with_cause(self):
+        """응답에 data 키가 없으면 VelogFetchError(원인 체인)로 실패하는지.
 
-        통계가 이 함수 하나에 전적으로 의존하게 되었으므로 실패
-        경로가 조용히 터지지 않는지 고정한다.
+        빈 목록([])은 "정상적으로 더 없음" 이므로 실패와 구분해야
+        fetch_all 이 잘린 목록으로 비활성화를 돌리지 않는다.
         """
         session = _mock_session({"errors": [{"message": "boom"}]})
 
-        result = await fetch_velog_posts(session, "tester", "at", "rt")
+        with pytest.raises(VelogFetchError) as exc_info:
+            await fetch_velog_posts(session, "tester", "at", "rt")
+
+        assert isinstance(exc_info.value.__cause__, KeyError)
+
+    @pytest.mark.asyncio
+    @patch("scraping.apis.capture_scraper_failure")
+    @patch("scraping.apis.logger")
+    async def test_network_failure_is_warning_and_not_reported_here(
+        self, mock_logger, mock_capture
+    ):
+        """네트워크 실패는 warning + VelogFetchError 전파만.
+
+        보고는 최종 지점(consumer 재시도 소진 / 배치 유저 단위)에서 1회 —
+        여기서도 보내면 같은 실패가 2건이 된다.
+        """
+        exc = aiohttp.ServerTimeoutError("slow")
+        session = MagicMock()
+        session.post = MagicMock(side_effect=exc)
+
+        with pytest.raises(VelogFetchError) as exc_info:
+            await fetch_velog_posts(session, "tester", "at", "rt")
+
+        assert exc_info.value.__cause__ is exc
+        mock_logger.warning.assert_called_once()
+        mock_logger.error.assert_not_called()
+        mock_capture.assert_not_called()
+
+
+class TestFetchVelogUserChk:
+    @pytest.mark.asyncio
+    @patch("scraping.apis.capture_scraper_failure")
+    @patch("scraping.apis.logger")
+    async def test_failure_returns_empty_and_reports_once(
+        self, mock_logger, mock_capture
+    ):
+        """user_chk 는 raise 하지 않고 ({}, {}) 를 돌려주므로 여기서 1회 보고."""
+        exc = aiohttp.ServerTimeoutError("slow")
+        session = MagicMock()
+        session.post = MagicMock(side_effect=exc)
+
+        result = await fetch_velog_user_chk(session, "at", "rt")
+
+        assert result == ({}, {})
+        mock_logger.warning.assert_called_once()
+        mock_capture.assert_called_once_with(exc, source=SOURCE_VELOG_API)
+
+
+class TestFetchAllVelogPosts:
+    @pytest.mark.asyncio
+    async def test_page_failure_propagates_instead_of_truncating(self):
+        """2페이지 실패를 '마지막 페이지' 로 오인하면 잘린 목록으로
+        sync_post_active_status 가 멀쩡한 글을 비활성화한다 → 예외로 전파."""
+        page1 = [{"id": f"p{i}", "title": "t"} for i in range(50)]
+        page1_response = MagicMock()
+        page1_response.json = AsyncMock(
+            return_value={"data": {"posts": page1}}
+        )
+        page1_cm = MagicMock()
+        page1_cm.__aenter__ = AsyncMock(return_value=page1_response)
+        page1_cm.__aexit__ = AsyncMock(return_value=False)
+        session = MagicMock()
+        page2_error = aiohttp.ServerTimeoutError("slow")
+        session.post = MagicMock(side_effect=[page1_cm, page2_error])
+
+        with pytest.raises(VelogFetchError) as exc_info:
+            await fetch_all_velog_posts(session, "tester", "at", "rt")
+
+        assert exc_info.value.__cause__ is page2_error
+
+    @pytest.mark.asyncio
+    async def test_genuine_empty_page_ends_pagination(self):
+        """빈 목록은 정상 종료 — 실패가 아니다."""
+        session = _mock_session({"data": {"posts": []}})
+
+        result = await fetch_all_velog_posts(session, "tester", "at", "rt")
 
         assert result == []

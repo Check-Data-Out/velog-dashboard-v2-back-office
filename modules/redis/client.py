@@ -4,6 +4,11 @@ from typing import Any, cast
 
 import redis
 from redis import Redis, RedisError
+from redis.backoff import ExponentialBackoff
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
+from redis.exceptions import WatchError
+from redis.retry import Retry
 
 from modules.redis.config import RedisConfig
 
@@ -37,7 +42,12 @@ def reset_redis_client() -> None:
 
 
 class RedisQueueClient:
-    """Redis client for queue operations."""
+    """Redis client for queue operations.
+
+    로그 규칙: 호출자에게 raise / 0 / False 로 실패를 넘기는 메서드는
+    ``warning`` 만 남긴다 — error 로그·Sentry capture 는 호출자 책임이다.
+    데이터 유실·손상(malformed DLQ 이동 실패 등)만 이 모듈이 ``error``.
+    """
 
     def __init__(self, config: type[RedisConfig] | None = None) -> None:
         """Initialize Redis client.
@@ -58,8 +68,23 @@ class RedisQueueClient:
                 password=self.config.PASSWORD,
                 db=self.config.DB,
                 decode_responses=True,
-                socket_connect_timeout=5,
-                socket_keepalive=True,
+                socket_timeout=self.config.SOCKET_TIMEOUT,
+                socket_connect_timeout=self.config.SOCKET_CONNECT_TIMEOUT,
+                socket_keepalive=self.config.SOCKET_KEEPALIVE,
+                health_check_interval=self.config.HEALTH_CHECK_INTERVAL,
+                # 재시도 범위는 RedisConfig 의 RETRY_* 주석 참고 — connect 단계는
+                # 사실상 재시도 없음, 명령 단계만 ConnectionError 1회.
+                # supported_errors 를 명시해야 connect 경로(retry_on_error
+                # 필터 없음)에서도 TimeoutError 가 재시도 대상에서 빠진다.
+                retry=Retry(
+                    ExponentialBackoff(
+                        cap=self.config.RETRY_BACKOFF_CAP_SEC,
+                        base=self.config.RETRY_BACKOFF_BASE_SEC,
+                    ),
+                    self.config.RETRY_ATTEMPTS,
+                    supported_errors=(RedisConnectionError,),
+                ),
+                retry_on_error=[RedisConnectionError],
             )
             # Test connection
             self.client.ping()
@@ -67,7 +92,9 @@ class RedisQueueClient:
                 f"Redis connection established: {self.config.HOST}:{self.config.PORT}"
             )
         except RedisError as e:
-            logger.error(f"Failed to connect to Redis: {e}")
+            # 재연결 루프(tenacity)가 시도마다 호출하므로 warning — 소진 시
+            # consumer 가 critical 1건으로 보고한다.
+            logger.warning(f"Failed to connect to Redis: {e}")
             raise
 
     def pop_message(self, timeout: int = 5) -> dict[str, Any] | None:
@@ -103,7 +130,7 @@ class RedisQueueClient:
                     return None
             return None
         except RedisError as e:
-            logger.error(f"Redis error while popping message: {e}")
+            logger.warning(f"Redis error while popping message: {e}")
             raise
 
     def _push_raw_to_failed(self, raw_message: str, error: str) -> bool:
@@ -160,7 +187,7 @@ class RedisQueueClient:
             )
             logger.debug(f"Pushed message to processing queue: {message}")
         except RedisError as e:
-            logger.error(f"Failed to push to processing queue: {e}")
+            logger.warning(f"Failed to push to processing queue: {e}")
             raise
 
     def remove_from_processing(self, message: dict[str, Any]) -> None:
@@ -179,7 +206,7 @@ class RedisQueueClient:
             )
             logger.debug(f"Removed message from processing queue: {message}")
         except RedisError as e:
-            logger.error(f"Failed to remove from processing queue: {e}")
+            logger.warning(f"Failed to remove from processing queue: {e}")
             raise
 
     def push_to_failed(self, message: dict[str, Any]) -> None:
@@ -208,7 +235,7 @@ class RedisQueueClient:
             )
             logger.warning(f"Pushed message to failed queue: {message}")
         except RedisError as e:
-            logger.error(f"Failed to push to failed queue: {e}")
+            logger.warning(f"Failed to push to failed queue: {e}")
             raise
 
     def get_queue_size(self, queue_name: str) -> int:
@@ -227,7 +254,7 @@ class RedisQueueClient:
             result = cast(int, self.client.llen(queue_name))
             return result
         except RedisError as e:
-            logger.error(f"Failed to get queue size: {e}")
+            logger.warning(f"Failed to get queue size: {e}")
             return 0
 
     # ------------------------------------------------------------------
@@ -297,7 +324,7 @@ class RedisQueueClient:
                     )
                 return None
         except RedisError as e:
-            logger.error(f"Redis error in BLMOVE: {e}")
+            logger.warning(f"Redis error in BLMOVE: {e}")
             raise
 
     def get_messages(
@@ -318,7 +345,7 @@ class RedisQueueClient:
         try:
             raws = self.client.lrange(queue_name, start, end)
         except RedisError as e:
-            logger.error(f"Failed to LRANGE {queue_name}: {e}")
+            logger.warning(f"Failed to LRANGE {queue_name}: {e}")
             return []
 
         parsed_only: list[dict[str, Any]] = []
@@ -362,31 +389,27 @@ class RedisQueueClient:
                 f"userId={message.get('userId')}"
             )
         except RedisError as e:
-            logger.error(f"Failed to enqueue message: {e}")
+            logger.warning(f"Failed to enqueue message: {e}")
             raise
-
-    # Lua CAS: head index 0 == expected_raw 일 때만 LSET.
-    # 전체 스크립트가 단일 atomic transaction 으로 실행된다.
-    # https://redis.io/docs/latest/commands/eval/
-    _REPLACE_HEAD_LUA = """
-    local current = redis.call('LINDEX', KEYS[1], 0)
-    if current == ARGV[1] then
-        redis.call('LSET', KEYS[1], 0, ARGV[2])
-        return 1
-    end
-    return 0
-    """
 
     def replace_processing_head(self, expected_raw: str, new_raw: str) -> bool:
         """Processing 큐 head 가 expected_raw 일 때만 new_raw 로 교체 (CAS).
 
         BLMOVE 직후 consumer 가 processingStartedAt 을 enrich 한 JSON 을
         Redis 저장값에 반영하기 위해 사용한다. reclaimer thread 가 BLMOVE 와
-        LSET 사이에 개입해 head 를 LREM 하는 race 를 Lua LINDEX+LSET CAS 로 차단.
+        LSET 사이에 개입해 head 를 LREM 하는 race 를 WATCH/MULTI/EXEC 로
+        차단한다 (운영 Redis 는 EVAL/SCRIPT 가 rename 돼 스크립트를 쓸 수 없다).
+        https://redis.io/docs/latest/develop/using-commands/transactions/
 
-        단일 consumer 전제이지만 reclaimer daemon thread 와 동일 프로세스에서
-        동작하므로 BLMOVE→LSET 구간은 threading.Lock 으로 보호되지 않는다.
-        Lua 스크립트는 Redis 단일 서버에서 atomic 하게 실행된다.
+        WATCH 는 키 단위라 같은 키의 다른 원소 변경(reclaimer 의 LREM, 다음
+        BLMOVE)으로도 EXEC 이 취소된다 → WatchError(WATCH~EXEC 어느 단계든)
+        면 head 를 다시 읽고 최대 CAS_MAX_ATTEMPTS 회 재시도한다. 그 외
+        RedisError 는 False. https://redis.readthedocs.io/en/stable/advanced_features.html
+
+        TimeoutError 는 연결 Retry 의 supported_errors 가 아니라 그대로 올라온다.
+        EXEC 응답이 timeout 으로 유실돼도 쓰기는 적용됐을 수 있으므로 여기서
+        pipe.reset() 후 재시도하고, head 가 이미 new_raw 면 멱등 성공(True)으로
+        본다 — False 로 돌려주면 호출자가 expected_raw 로 LREM 해 놓친다.
 
         Args:
             expected_raw: BLMOVE 가 반환한 원본 raw 문자열
@@ -395,18 +418,42 @@ class RedisQueueClient:
         Returns:
             CAS 성공(head==expected 일 때 LSET 성공) 여부.
             False 면 호출자는 expected_raw 를 계속 LREM 기준으로 사용해야 한다.
+            RedisError 는 밖으로 내지 않는다.
         """
         if not self.client:
             raise RuntimeError("Redis client not connected")
+        key = self.config.QUEUE_STATS_REFRESH_PROCESSING
         try:
-            result = self.client.eval(
-                self._REPLACE_HEAD_LUA,
-                1,  # numkeys
-                self.config.QUEUE_STATS_REFRESH_PROCESSING,
-                expected_raw,
-                new_raw,
+            with self.client.pipeline() as pipe:
+                for _ in range(self.config.CAS_MAX_ATTEMPTS):
+                    # redis-py 공식 예제처럼 WATCH 부터 EXEC 까지를 한 try 로.
+                    # WATCH 전송 자체의 실패는 ConnectionError(retry_on_error 1회
+                    # 뒤 바깥 except → False)이고, LINDEX 이후(watching=True)의
+                    # 연결 끊김은 WatchError 로 와서 여기서 재시도된다.
+                    try:
+                        pipe.watch(key)
+                        head = pipe.lindex(key, 0)
+                        if head == new_raw:
+                            pipe.unwatch()
+                            return True
+                        if head != expected_raw:
+                            pipe.unwatch()
+                            return False
+                        pipe.multi()
+                        pipe.lset(key, 0, new_raw)
+                        pipe.execute()
+                    except WatchError:
+                        continue
+                    except RedisTimeoutError:
+                        # 응답 유실 가능 — 연결/WATCH 상태를 버리고 다시 읽는다
+                        pipe.reset()
+                        continue
+                    return True
+            logger.warning(
+                "CAS replace processing head gave up after "
+                f"{self.config.CAS_MAX_ATTEMPTS} attempts"
             )
-            return bool(cast(int, result))
+            return False
         except RedisError as e:
             logger.warning(f"Failed to CAS replace processing head: {e}")
             return False
@@ -420,7 +467,7 @@ class RedisQueueClient:
             removed = cast(int, self.client.lrem(queue_name, 1, message_str))
             return removed
         except RedisError as e:
-            logger.error(f"Failed to LREM from {queue_name}: {e}")
+            logger.warning(f"Failed to LREM from {queue_name}: {e}")
             return 0
 
     def flush_queue(self, queue_name: str) -> int:
@@ -446,4 +493,4 @@ class RedisQueueClient:
                 self.client.close()
                 logger.info("Redis connection closed")
             except RedisError as e:
-                logger.error(f"Error closing Redis connection: {e}")
+                logger.warning(f"Error closing Redis connection: {e}")

@@ -3,12 +3,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from redis import RedisError
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.retry import Retry
 
 from modules.redis.client import (
     RedisQueueClient,
     get_redis_client,
     reset_redis_client,
 )
+from modules.redis.config import RedisConfig
 
 
 class TestRedisQueueClient:
@@ -25,6 +28,24 @@ class TestRedisQueueClient:
 
         assert client.client is not None
         mock_client.ping.assert_called_once()
+
+    @patch("modules.redis.client.redis.Redis")
+    def test_init_passes_timeout_and_retry_settings(
+        self, mock_redis_class
+    ) -> None:
+        """socket_timeout·health_check·ConnectionError 1회 재시도가 연결에 걸린다."""
+        mock_redis_class.return_value.ping.return_value = True
+
+        RedisQueueClient()
+
+        kwargs = mock_redis_class.call_args.kwargs
+        assert kwargs["socket_timeout"] == RedisConfig.SOCKET_TIMEOUT
+        assert (
+            kwargs["health_check_interval"]
+            == RedisConfig.HEALTH_CHECK_INTERVAL
+        )
+        assert kwargs["retry_on_error"] == [RedisConnectionError]
+        assert isinstance(kwargs["retry"], Retry)
 
     @patch("modules.redis.client.redis.Redis")
     def test_init_failure(self, mock_redis_class) -> None:

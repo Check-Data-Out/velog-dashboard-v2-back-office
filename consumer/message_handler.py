@@ -9,6 +9,7 @@ from django.db import close_old_connections
 
 from modules.redis.config import RedisConfig
 from scraping.main import ScraperTargetUser
+from scraping.reporting import capture_scraper_failure
 from utils.utils import get_local_now
 
 logger = logging.getLogger("consumer")
@@ -65,11 +66,12 @@ class StatsRefreshMessageHandler:
 
         except Exception as e:
             elapsed_time = time.time() - start_time
-            logger.error(
+            # 시도별 로그는 warning — 재시도 중간 단계라 이벤트는 process_with_retry
+            # 의 최종 실패 시 1회만 보낸다.
+            logger.warning(
                 f"Failed to process stats refresh for user_id={user_id} "
                 f"after {elapsed_time:.2f}s: {e}"
             )
-            sentry_sdk.capture_exception(e)
             raise
 
     def handle_message_sync(self, message: dict[str, Any]) -> None:
@@ -120,7 +122,7 @@ class MessageProcessor:
 
             except ValueError as e:
                 # Invalid message format - don't retry
-                logger.error(f"Invalid message format: {e}")
+                logger.warning(f"Invalid message format: {e}")
                 sentry_sdk.capture_exception(e)
                 return False
 
@@ -137,12 +139,13 @@ class MessageProcessor:
                     logger.info(f"Retrying in {backoff_time}s...")
                     time.sleep(backoff_time)
                 else:
-                    # Final failure
-                    logger.error(
+                    # Final failure — 이벤트는 여기서 1건만. capture 와 짝인 로그는
+                    # warning 으로 두어 logging 통합이 중복 이벤트를 만들지 않게 한다.
+                    logger.warning(
                         f"All {max_retries} attempts failed for "
                         f"user_id={message.get('userId')}"
                     )
-                    sentry_sdk.capture_exception(e)
+                    capture_scraper_failure(e, user_id=message.get("userId"))
                     return False
 
         return False

@@ -2,11 +2,24 @@ import threading
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from django.db import OperationalError
 
 from consumer.message_handler import (
     MessageProcessor,
     StatsRefreshMessageHandler,
 )
+from scraping.main import TokenUpdateError
+
+
+def _token_error_from_db() -> TokenUpdateError:
+    """__cause__ 가 DB 예외인 TokenUpdateError."""
+    try:
+        raise OperationalError("connection lost")
+    except OperationalError as cause:
+        try:
+            raise TokenUpdateError("Failed to update tokens") from cause
+        except TokenUpdateError as chained:
+            return chained
 
 
 class TestStatsRefreshMessageHandler:
@@ -196,3 +209,43 @@ class TestMessageProcessor:
         assert result is True
         assert mock_handler.handle_message_sync.call_count == 2
         mock_sleep.assert_called_once()  # 첫 번째 실패 후 1번 sleep
+
+    @pytest.mark.parametrize(
+        "failure",
+        [Exception("Scraper error"), _token_error_from_db()],
+        ids=["generic", "token-update-error-chained"],
+    )
+    @patch("consumer.message_handler.logger")
+    @patch("sentry_sdk.capture_exception")
+    @patch("consumer.message_handler.time.sleep")
+    @patch("consumer.message_handler.close_old_connections")
+    @patch("consumer.message_handler.ScraperTargetUser")
+    def test_final_failure_reports_exactly_one_event(
+        self,
+        mock_scraper_class,
+        mock_close_old_connections,
+        mock_sleep,
+        mock_capture,
+        mock_logger,
+        failure,
+        sample_message,
+    ) -> None:
+        """3회 모두 실패해도 Sentry 이벤트는 최종 1건, error 로그 0건.
+
+        시도마다 capture/error 하면 실패 1건당 이벤트 ~7건이 된다.
+        """
+        mock_scraper = Mock()
+        mock_scraper.run = AsyncMock(side_effect=failure)
+        mock_scraper_class.return_value = mock_scraper
+
+        result = MessageProcessor().process_with_retry(sample_message)
+
+        assert result is False
+        assert mock_scraper.run.call_count == 3
+        mock_capture.assert_called_once()
+        assert mock_capture.call_args.args[0] is failure
+        assert mock_capture.call_args.kwargs["tags"] == {
+            "user_id": str(sample_message["userId"])
+        }
+        mock_logger.error.assert_not_called()
+        assert mock_logger.warning.call_count >= 3

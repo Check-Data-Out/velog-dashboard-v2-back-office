@@ -11,6 +11,7 @@ import logging
 import threading
 import time
 
+import sentry_sdk
 from django.utils import dateparse
 
 from consumer.envelope import ensure_envelope
@@ -23,6 +24,10 @@ logger = logging.getLogger("consumer")
 
 class ProcessingReclaimer:
     """Processing 큐의 stuck 메시지를 주기적으로 pending/DLQ 로 복원."""
+
+    # loop 에서 연속 실패가 이 횟수에 닿으면 1건만 error 로 보고한다
+    # (반복되는 실패마다 이벤트를 내지 않기 위해).
+    STUCK_FAILURE_THRESHOLD = 5
 
     def __init__(
         self,
@@ -244,11 +249,29 @@ class ProcessingReclaimer:
         """daemon thread 진입점. shutdown_event 가 set 될 때까지 반복."""
         interval = self.config.RECLAIM_INTERVAL_SEC
         logger.info(f"Reclaimer loop started (interval={interval}s)")
+        consecutive_failures = 0
         while not self.shutdown_event.is_set():
             try:
                 self.reclaim_once()
+                consecutive_failures = 0
             except Exception as e:
-                logger.error(f"reclaim iteration failed: {e}")
+                consecutive_failures += 1
+                # 60s 마다 반복되는 경로라 매번 이벤트를 내지 않는다(warning).
+                # 메시지 유실은 reclaim_once 가 error 로 남긴다.
+                logger.warning(f"reclaim iteration failed: {e}")
+                if consecutive_failures >= self.STUCK_FAILURE_THRESHOLD:
+                    consecutive_failures = 0
+                    with sentry_sdk.new_scope() as scope:
+                        scope.fingerprint = [
+                            "consumer",
+                            "reclaimer-stuck",
+                            "{{ type }}",
+                        ]
+                        logger.error(
+                            f"reclaimer stuck: {self.STUCK_FAILURE_THRESHOLD} "
+                            f"consecutive failures, last: {e}",
+                            exc_info=e,
+                        )
             # shutdown 이 오면 즉시 종료, 아니면 interval 만큼 대기
             self.shutdown_event.wait(timeout=interval)
         logger.info("Reclaimer loop stopped")

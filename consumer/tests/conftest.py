@@ -4,7 +4,16 @@ from unittest.mock import MagicMock, Mock
 import pytest
 import redis
 
+from consumer.shutdown import reset_shutdown_event
 from users.models import User
+
+
+@pytest.fixture(autouse=True)
+def _reset_shutdown_event():
+    """싱글톤 shutdown Event 가 테스트 간에 누수되지 않도록 리셋."""
+    reset_shutdown_event()
+    yield
+    reset_shutdown_event()
 
 
 @pytest.fixture
