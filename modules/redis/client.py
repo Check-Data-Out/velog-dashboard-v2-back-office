@@ -6,6 +6,7 @@ import redis
 from redis import Redis, RedisError
 from redis.backoff import ExponentialBackoff
 from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 from redis.exceptions import WatchError
 from redis.retry import Retry
 
@@ -405,8 +406,10 @@ class RedisQueueClient:
         면 head 를 다시 읽고 최대 CAS_MAX_ATTEMPTS 회 재시도한다. 그 외
         RedisError 는 False. https://redis.readthedocs.io/en/stable/advanced_features.html
 
-        EXEC 은 적용됐는데 응답만 유실된 경우(연결 재시도 등) head 가 이미
-        new_raw 이므로 그때는 멱등 성공(True)으로 본다.
+        TimeoutError 는 연결 Retry 의 supported_errors 가 아니라 그대로 올라온다.
+        EXEC 응답이 timeout 으로 유실돼도 쓰기는 적용됐을 수 있으므로 여기서
+        pipe.reset() 후 재시도하고, head 가 이미 new_raw 면 멱등 성공(True)으로
+        본다 — False 로 돌려주면 호출자가 expected_raw 로 LREM 해 놓친다.
 
         Args:
             expected_raw: BLMOVE 가 반환한 원본 raw 문자열
@@ -440,6 +443,10 @@ class RedisQueueClient:
                         pipe.lset(key, 0, new_raw)
                         pipe.execute()
                     except WatchError:
+                        continue
+                    except RedisTimeoutError:
+                        # 응답 유실 가능 — 연결/WATCH 상태를 버리고 다시 읽는다
+                        pipe.reset()
                         continue
                     return True
             logger.warning(

@@ -2,6 +2,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 from redis import RedisError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 from redis.exceptions import WatchError
 
 from modules.redis.client import RedisQueueClient
@@ -270,6 +271,35 @@ class TestReplaceProcessingHead:
         assert ok is True
         assert pipe.watch.call_count == 2
         pipe.execute.assert_called_once()
+
+    @patch("modules.redis.client.redis.Redis")
+    def test_timeout_during_exec_retries_and_sees_applied_write(
+        self, mock_redis_class
+    ):
+        """EXEC 응답이 timeout 으로 유실돼도 다음 시도에서 head==new_raw 를
+        보고 멱등 성공한다 (TimeoutError 는 redis-py 재시도 대상이 아니다)."""
+        client, pipe = self._client_with_pipe(mock_redis_class)
+        pipe.lindex.side_effect = ["expected-raw", "new-raw"]
+        pipe.execute.side_effect = [RedisTimeoutError("read timeout")]
+
+        ok = client.replace_processing_head("expected-raw", "new-raw")
+
+        assert ok is True
+        pipe.lset.assert_called_once()
+        pipe.reset.assert_called_once()
+
+    @patch("modules.redis.client.redis.Redis")
+    def test_timeout_every_attempt_gives_up_false(self, mock_redis_class):
+        client, pipe = self._client_with_pipe(mock_redis_class)
+        pipe.lindex.return_value = "expected-raw"
+        pipe.execute.side_effect = [
+            RedisTimeoutError("read timeout")
+        ] * RedisConfig.CAS_MAX_ATTEMPTS
+
+        ok = client.replace_processing_head("expected-raw", "new-raw")
+
+        assert ok is False
+        assert pipe.execute.call_count == RedisConfig.CAS_MAX_ATTEMPTS
 
     @patch("modules.redis.client.redis.Redis")
     def test_redis_error_returns_false(self, mock_redis_class):
