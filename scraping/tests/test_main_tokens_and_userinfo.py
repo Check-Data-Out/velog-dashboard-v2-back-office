@@ -8,6 +8,7 @@ from django.db import OperationalError
 from scraping.constants import VELOG_HTTP_TIMEOUT
 from scraping.main import (
     ScraperTargetUser,
+    TargetBatchFailure,
     TokenUpdateError,
     UserInfoUpdateError,
 )
@@ -273,6 +274,44 @@ class TestScraperTokenAndUserInfoAndProcessing:
 
         assert mock_process.call_count == 2
         mock_capture.assert_called_once()
+
+    @patch("scraping.main.capture_scraper_failure")
+    @patch("scraping.main.logger")
+    @pytest.mark.asyncio
+    async def test_target_batch_run_fails_at_end_when_any_user_failed(
+        self, mock_logger, mock_capture, user
+    ):
+        """격리해도 실패가 있으면 run 이 끝에서 예외 → 프로세스 exit 1 유지.
+
+        조용히 0 으로 끝나면 배치 실패 신호를 잃는다.
+        """
+        scraper = ScraperTargetUser(
+            user_pk_list=[user.pk, 999], isolate_failures=True
+        )
+        other = MagicMock(spec=User)
+        other.velog_uuid = "other-uuid"
+        other.id = 999
+
+        async def two_users(*args, **kwargs):
+            for u in [user, other]:
+                yield u
+
+        with (
+            patch("users.models.User.objects.filter") as mock_filter,
+            patch("aiohttp.ClientSession") as mock_session,
+            patch.object(
+                scraper,
+                "process_user",
+                new_callable=AsyncMock,
+                side_effect=[ValueError("boom"), None],
+            ) as mock_process,
+        ):
+            mock_filter.return_value = two_users()
+            mock_session.return_value.__aenter__.return_value = MagicMock()
+            with pytest.raises(TargetBatchFailure):
+                await scraper.run()
+
+        assert mock_process.call_count == 2
 
     @patch("scraping.main.capture_scraper_failure")
     @patch("scraping.main.logger")

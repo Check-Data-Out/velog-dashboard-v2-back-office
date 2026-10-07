@@ -27,6 +27,10 @@ class UserInfoUpdateError(Exception):
     """유저 정보 갱신(DB 저장) 실패 — 원인은 ``__cause__`` 에 체인."""
 
 
+class TargetBatchFailure(Exception):
+    """타겟 배치에서 유저 단위 실패가 1건 이상 — 모두 처리한 뒤 exit 1 용."""
+
+
 class Scraper:
     def __init__(self, group_range: range):
         self.env = environ.Env()
@@ -446,23 +450,26 @@ class Scraper:
 
     async def process_users(
         self, users: list[User], session: aiohttp.ClientSession
-    ) -> None:
-        """유저 목록을 순회하며 처리한다.
+    ) -> int:
+        """유저 목록을 순회하며 처리하고 실패한 유저 수를 돌려준다.
 
         한 유저의 예외가 프로세스를 죽이면 그 그룹의 남은 유저가 통째로
         누락되므로 유저 단위로 격리한다. 유저가 한 명뿐인 온디맨드
         경로는 격리 이득이 없고 실패 신호만 잃으므로
         ScraperTargetUser 가 이 동작을 재정의한다.
         """
+        failed = 0
         for user in users:
             try:
                 await self.process_user(user, session)
             except Exception as e:
+                failed += 1
                 logger.warning(
                     f"Failed to process user: {e} "
                     f"(user velog uuid: {user.velog_uuid})"
                 )
                 capture_scraper_failure(e, user_id=user.id)
+        return failed
 
     async def run(self) -> None:
         """스크래핑 작업 실행"""
@@ -510,18 +517,19 @@ class ScraperTargetUser(Scraper):
 
     async def process_users(
         self, users: list[User], session: aiohttp.ClientSession
-    ) -> None:
-        """기본은 예외를 그대로 전파한다.
+    ) -> int:
+        """기본은 예외를 그대로 전파한다(반환 0).
 
         컨슈머(consumer/message_handler.py)가 예외 발생 여부로 재시도와
         DLQ 이동을 판정하므로, 삼키면 실패가 성공으로 보고된다. 여러 유저를
-        도는 타겟 배치는 isolate_failures=True 로 유저 단위 격리를 쓴다.
+        도는 타겟 배치는 isolate_failures=True 로 유저 단위 격리를 쓰고
+        실패 수를 돌려받아 run 이 끝에서 실패시킨다.
         """
         if self.isolate_failures:
-            await super().process_users(users, session)
-            return
+            return await super().process_users(users, session)
         for user in users:
             await self.process_user(user, session)
+        return 0
 
     async def run(self) -> None:
         """타겟 유저 스크래핑 작업 실행"""
@@ -539,6 +547,10 @@ class ScraperTargetUser(Scraper):
             connector=aiohttp.TCPConnector(limit=30),
             timeout=VELOG_HTTP_TIMEOUT,
         ) as session:
-            await self.process_users(users, session)
+            failed = await self.process_users(users, session)
 
         logger.info(f"Finished target user scraping ({self.user_pk_list}).")
+        # 격리 모드에서는 모두 처리한 뒤에 실패를 알려 exit 1 을 유지한다
+        # (조용히 0 으로 끝나면 배치 실패 신호를 잃는다).
+        if self.isolate_failures and failed > 0:
+            raise TargetBatchFailure(f"{failed} user(s) failed")
