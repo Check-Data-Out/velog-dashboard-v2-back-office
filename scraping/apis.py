@@ -8,12 +8,16 @@ from scraping.constants import (
     V3_URL,
     VELOG_POSTS_QUERY,
 )
-from scraping.reporting import SOURCE_VELOG_API, capture_scraper_failure
+from scraping.reporting import (
+    SOURCE_VELOG_API,
+    VelogApiError,
+    capture_scraper_failure,
+)
 
 logger = logging.getLogger("scraping")
 
 
-class VelogFetchError(Exception):
+class VelogFetchError(VelogApiError):
     """페이지 조회 실패 — 잘린 목록으로 진행하지 않도록 호출자에게 전파."""
 
 

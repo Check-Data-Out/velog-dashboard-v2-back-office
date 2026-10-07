@@ -6,21 +6,33 @@ import pytest
 from django.db import OperationalError
 
 from scraping.apis import VelogFetchError
+from scraping.main import TokenUpdateError
 from scraping.reporting import (
     SOURCE_VELOG_API,
+    VelogApiError,
     capture_scraper_failure,
     cause_for,
 )
 
 
-def _fetch_error_from(cause: BaseException) -> VelogFetchError:
+def _chained(exc: Exception, cause: BaseException) -> Exception:
     try:
         raise cause
     except BaseException as e:
         try:
-            raise VelogFetchError("page failed") from e
-        except VelogFetchError as chained:
+            raise exc from e
+        except Exception as chained:
             return chained
+
+
+def _fetch_error_from(cause: BaseException) -> VelogFetchError:
+    err = _chained(VelogFetchError("page failed"), cause)
+    assert isinstance(err, VelogFetchError)
+    return err
+
+
+def test_velog_fetch_error_is_marked_as_velog_api_error():
+    assert issubclass(VelogFetchError, VelogApiError)
 
 
 @pytest.mark.parametrize(
@@ -96,6 +108,22 @@ class TestCaptureScraperFailure:
             fingerprint=["scraper", SOURCE_VELOG_API, "connection"],
             tags={"user_id": "7", "scraper.cause": "connection"},
         )
+
+    @patch("scraping.reporting.time.monotonic")
+    @patch("sentry_sdk.capture_exception")
+    def test_non_velog_error_with_network_like_cause_keeps_default_grouping(
+        self, mock_capture, mock_monotonic
+    ):
+        """TokenUpdateError from KeyError(쿠키 키 누락)는 velog-api/malformed 로
+        오분류돼 600s 억제되면 안 된다 — VelogApiError 가 아니면 체인 무시."""
+        mock_monotonic.return_value = 1000.0
+        exc = _chained(TokenUpdateError("tokens"), KeyError("access_token"))
+
+        capture_scraper_failure(exc, user_id=7)
+        capture_scraper_failure(exc, user_id=7)
+
+        assert mock_capture.call_count == 2
+        mock_capture.assert_called_with(exc, tags={"user_id": "7"})
 
     @patch("sentry_sdk.capture_exception")
     def test_without_source_uses_default_grouping_and_no_dedupe(

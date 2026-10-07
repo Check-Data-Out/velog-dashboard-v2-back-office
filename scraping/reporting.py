@@ -18,6 +18,14 @@ from utils.utils import get_local_now
 SOURCE_VELOG_API = "velog-api"
 REPORT_WINDOW_SEC = 600
 
+
+class VelogApiError(Exception):
+    """velog API 호출 실패 — ``__cause__`` 의 네트워크 원인으로 분류 대상.
+
+    apis.py 의 VelogFetchError 가 상속한다(여기서 import 하면 순환).
+    """
+
+
 _last_reported_at: dict[str, float] = {}
 _suppressed: dict[str, int] = {}
 _suppressed_since: dict[str, str] = {}
@@ -69,8 +77,10 @@ def capture_scraper_failure(
     Args:
         exc: 보고할 예외(최종 실패 1건 — 재시도 중간 단계에서는 호출 금지).
         source: ``SOURCE_VELOG_API`` 이면 cause 분류 + fingerprint + 윈도
-            dedupe. None 이면 ``exc.__cause__`` 가 velog 네트워크 예외일 때만
-            (VelogFetchError 체인) 같은 처리, 아니면 기본 그룹핑.
+            dedupe. None 이면 ``exc`` 가 ``VelogApiError`` 이고 ``__cause__``
+            가 분류될 때만 같은 처리(그 외 예외의 체인은 보지 않는다 —
+            TokenUpdateError from KeyError 를 malformed 로 오분류하지 않기 위해),
+            아니면 기본 그룹핑.
         **tags: Sentry tag. 값이 None 인 항목은 생략한다.
     """
     tag_values: dict[str, str] = {
@@ -79,7 +89,11 @@ def capture_scraper_failure(
     cause: str | None = None
     if source == SOURCE_VELOG_API:
         cause = cause_for(exc)
-    elif source is None and exc.__cause__ is not None:
+    elif (
+        source is None
+        and isinstance(exc, VelogApiError)
+        and exc.__cause__ is not None
+    ):
         cause = cause_for(exc.__cause__)
     if cause is None:
         sentry_sdk.capture_exception(exc, tags=tag_values)
