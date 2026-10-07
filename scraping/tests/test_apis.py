@@ -59,10 +59,14 @@ class TestFetchVelogPosts:
     @pytest.mark.asyncio
     @patch("scraping.apis.capture_scraper_failure")
     @patch("scraping.apis.logger")
-    async def test_network_failure_is_warning_and_reported_once(
+    async def test_network_failure_is_warning_and_not_reported_here(
         self, mock_logger, mock_capture
     ):
-        """네트워크 실패는 warning 로그 + 보고 헬퍼 1회(source=velog-api)."""
+        """네트워크 실패는 warning + VelogFetchError 전파만.
+
+        보고는 최종 지점(consumer 재시도 소진 / 배치 유저 단위)에서 1회 —
+        여기서도 보내면 같은 실패가 2건이 된다.
+        """
         exc = aiohttp.ServerTimeoutError("slow")
         session = MagicMock()
         session.post = MagicMock(side_effect=exc)
@@ -73,9 +77,7 @@ class TestFetchVelogPosts:
         assert exc_info.value.__cause__ is exc
         mock_logger.warning.assert_called_once()
         mock_logger.error.assert_not_called()
-        mock_capture.assert_called_once_with(
-            exc, source=SOURCE_VELOG_API, username="tester"
-        )
+        mock_capture.assert_not_called()
 
 
 class TestFetchVelogUserChk:
@@ -114,9 +116,8 @@ class TestFetchAllVelogPosts:
         page2_error = aiohttp.ServerTimeoutError("slow")
         session.post = MagicMock(side_effect=[page1_cm, page2_error])
 
-        with patch("scraping.apis.capture_scraper_failure"):
-            with pytest.raises(VelogFetchError) as exc_info:
-                await fetch_all_velog_posts(session, "tester", "at", "rt")
+        with pytest.raises(VelogFetchError) as exc_info:
+            await fetch_all_velog_posts(session, "tester", "at", "rt")
 
         assert exc_info.value.__cause__ is page2_error
 

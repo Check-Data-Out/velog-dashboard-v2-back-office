@@ -5,11 +5,22 @@ import aiohttp
 import pytest
 from django.db import OperationalError
 
+from scraping.apis import VelogFetchError
 from scraping.reporting import (
     SOURCE_VELOG_API,
     capture_scraper_failure,
     cause_for,
 )
+
+
+def _fetch_error_from(cause: BaseException) -> VelogFetchError:
+    try:
+        raise cause
+    except BaseException as e:
+        try:
+            raise VelogFetchError("page failed") from e
+        except VelogFetchError as chained:
+            return chained
 
 
 @pytest.mark.parametrize(
@@ -65,6 +76,25 @@ class TestCaptureScraperFailure:
             exc,
             fingerprint=["scraper", SOURCE_VELOG_API, "ssl"],
             tags={"scraper.cause": "ssl", "username": "u1"},
+        )
+
+    @patch("scraping.reporting.time.monotonic")
+    @patch("sentry_sdk.capture_exception")
+    def test_chained_velog_error_without_source_uses_cause_grouping(
+        self, mock_capture, mock_monotonic
+    ):
+        """최종 지점(consumer/배치)은 source 없이 호출하지만 __cause__ 가
+        velog 네트워크 예외면 같은 fingerprint·윈도로 묶인다."""
+        mock_monotonic.return_value = 1000.0
+        exc = _fetch_error_from(aiohttp.ServerDisconnectedError())
+
+        capture_scraper_failure(exc, user_id=7)
+        capture_scraper_failure(exc, user_id=7)  # 윈도 안 → 억제
+
+        mock_capture.assert_called_once_with(
+            exc,
+            fingerprint=["scraper", SOURCE_VELOG_API, "connection"],
+            tags={"user_id": "7", "scraper.cause": "connection"},
         )
 
     @patch("sentry_sdk.capture_exception")

@@ -90,8 +90,9 @@ async def fetch_velog_posts(
             posts: list[dict[str, Any]] = data["data"]["posts"]
             return posts
     except Exception as e:
+        # 보고는 최종 지점(consumer 재시도 소진 / 배치 유저 단위)에서 1회.
+        # 원인은 __cause__ 로 전달돼 거기서 velog-api 원인별로 묶인다.
         logger.warning(f"Failed to fetch posts: {e} (username: {username})")
-        capture_scraper_failure(e, source=SOURCE_VELOG_API, username=username)
         raise VelogFetchError(
             f"Failed to fetch posts (username: {username}, cursor: {cursor!r})"
         ) from e

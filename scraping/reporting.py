@@ -69,13 +69,18 @@ def capture_scraper_failure(
     Args:
         exc: 보고할 예외(최종 실패 1건 — 재시도 중간 단계에서는 호출 금지).
         source: ``SOURCE_VELOG_API`` 이면 cause 분류 + fingerprint + 윈도
-            dedupe. None 이면 기본 그룹핑.
+            dedupe. None 이면 ``exc.__cause__`` 가 velog 네트워크 예외일 때만
+            (VelogFetchError 체인) 같은 처리, 아니면 기본 그룹핑.
         **tags: Sentry tag. 값이 None 인 항목은 생략한다.
     """
     tag_values: dict[str, str] = {
         key: str(value) for key, value in tags.items() if value is not None
     }
-    cause = cause_for(exc) if source == SOURCE_VELOG_API else None
+    cause: str | None = None
+    if source == SOURCE_VELOG_API:
+        cause = cause_for(exc)
+    elif source is None and exc.__cause__ is not None:
+        cause = cause_for(exc.__cause__)
     if cause is None:
         sentry_sdk.capture_exception(exc, tags=tag_values)
         return
