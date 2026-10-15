@@ -10,9 +10,6 @@ class ConsumerConfig:
 
     PROCESS_NAME = "stats-refresh-consumer"
     LOG_LEVEL = env("CONSUMER_LOG_LEVEL", default="INFO")
-    GRACEFUL_SHUTDOWN_TIMEOUT = env.int(
-        "CONSUMER_GRACEFUL_SHUTDOWN_TIMEOUT", default=30
-    )
     # 연속 에러 허용치 — 초과 시 하드 종료. Redis 블립에 과민 반응하지 않도록 30 기본.
     MAX_CONSECUTIVE_ERRORS = env.int(
         "CONSUMER_MAX_CONSECUTIVE_ERRORS", default=30

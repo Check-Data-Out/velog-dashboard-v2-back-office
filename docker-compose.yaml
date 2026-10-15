@@ -18,6 +18,8 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: backoffice.settings.consumer
     restart: unless-stopped
+    # SIGTERM 후 처리 중 메시지를 끝낼 시간. 초과 시 SIGKILL → reclaimer 가 회수.
+    stop_grace_period: 45s
     volumes:
       - ./consumer-logs:/app/consumer-logs
       - ./consumer-logs:/app/logs

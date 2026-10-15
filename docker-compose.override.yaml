@@ -28,5 +28,7 @@ services:
       # 로컬에서는 docker 내부 db 컨테이너에 연결
       POSTGRES_HOST: db
       SENTRY_ENVIRONMENT: local
+      # 로컬 컨테이너의 이벤트가 운영 프로젝트로 섞이지 않도록 DSN 을 비운다
+      SENTRY_DSN: ""
     depends_on:
       - db

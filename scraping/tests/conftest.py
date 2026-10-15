@@ -6,7 +6,20 @@ from asgiref.sync import sync_to_async
 from django.db import connections
 
 from scraping.main import Scraper
+from scraping.reporting import reset_report_window
 from users.models import User
+
+
+@pytest.fixture(autouse=True)
+def _reset_report_window():
+    """보고 헬퍼의 윈도/억제 상태가 테스트 간에 누수되지 않도록.
+
+    윈도 상태는 source=velog-api 호출(scraping/apis.py)만 바꾸고 consumer 는
+    source 없이 호출하므로 scraping 테스트 패키지에만 둔다.
+    """
+    reset_report_window()
+    yield
+    reset_report_window()
 
 
 @pytest_asyncio.fixture(autouse=True)

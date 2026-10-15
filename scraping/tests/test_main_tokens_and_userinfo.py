@@ -3,8 +3,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from asgiref.sync import sync_to_async
+from django.db import OperationalError
 
-from scraping.main import ScraperTargetUser
+from scraping.constants import VELOG_HTTP_TIMEOUT
+from scraping.main import (
+    ScraperTargetUser,
+    TargetBatchFailure,
+    TokenUpdateError,
+    UserInfoUpdateError,
+)
 from users.models import User
 
 MISSING_VIEWS = object()
@@ -110,35 +117,9 @@ class TestScraperTokenAndUserInfoAndProcessing:
                 user, mock_encryption, new_tokens
             )
 
-        assert result is False
-        mock_asave.assert_not_called()
-
-    @patch("scraping.main.AESEncryption")
-    @pytest.mark.asyncio
-    async def test_update_old_tokens_expired_failure(
-        self, mock_aes, scraper, user
-    ):
-        """토큰이 만료되었을 때 업데이트 실패 테스트"""
-        mock_encryption = mock_aes.return_value
-        mock_encryption.decrypt.side_effect = (
-            lambda token: f"decrypted-{token}"
-        )
-        mock_encryption.encrypt.side_effect = (
-            lambda token: f"encrypted-{token}"
-        )
-
-        # 이미 복호화된 형태의 토큰 (변경 없음)
-        new_tokens = {
-            "access_token": "decrypted-encrypted-access-token",
-            "refresh_token": "decrypted-encrypted-refresh-token",
-        }
-
-        with patch.object(user, "asave", new_callable=AsyncMock) as mock_asave:
-            result = await scraper.update_old_tokens(
-                user, mock_encryption, new_tokens
-            )
-
-        assert result is False
+        # 변경 없음 = 성공. False 면 process_user 가 TokenUpdateError 로
+        # 실패시켜 멀쩡한 유저가 DLQ 로 간다.
+        assert result is True
         mock_asave.assert_not_called()
 
     @patch("scraping.main.AESEncryption")
@@ -160,6 +141,42 @@ class TestScraperTokenAndUserInfoAndProcessing:
 
         assert result is False
         mock_asave.assert_not_called()
+
+    @patch("sentry_sdk.capture_exception")
+    @patch("scraping.main.logger")
+    @patch("scraping.main.AESEncryption")
+    @pytest.mark.asyncio
+    async def test_update_old_tokens_db_error_raises_token_update_error(
+        self,
+        mock_aes,
+        mock_logger,
+        mock_capture,
+        scraper,
+        user,
+        mock_new_tokens,
+    ):
+        """DB 실패는 capture 없이 warning 만 남기고 전용 예외로 원인 체인 전파."""
+        mock_encryption = mock_aes.return_value
+        mock_encryption.decrypt.side_effect = (
+            lambda token: f"decrypted-{token}"
+        )
+        mock_encryption.encrypt.side_effect = (
+            lambda token: f"encrypted-{token}"
+        )
+        db_error = OperationalError("connection lost")
+
+        with patch.object(
+            user, "asave", new_callable=AsyncMock, side_effect=db_error
+        ):
+            with pytest.raises(TokenUpdateError) as exc_info:
+                await scraper.update_old_tokens(
+                    user, mock_encryption, mock_new_tokens
+                )
+
+        assert exc_info.value.__cause__ is db_error
+        mock_capture.assert_not_called()
+        mock_logger.warning.assert_called_once()
+        mock_logger.error.assert_not_called()
 
     @pytest.mark.parametrize(
         "views, expected",
@@ -230,10 +247,77 @@ class TestScraperTokenAndUserInfoAndProcessing:
             with pytest.raises(ValueError):
                 await scraper.process_users([user], AsyncMock())
 
+    @patch("scraping.main.capture_scraper_failure")
+    @patch("scraping.main.logger")
+    @pytest.mark.asyncio
+    async def test_target_batch_isolates_failing_user_when_requested(
+        self, mock_logger, mock_capture, user
+    ):
+        """타겟 배치(isolate_failures=True)는 한 유저 실패에도 다음 유저를 처리.
+
+        consumer 경로(기본값 False)는 예외를 그대로 전파해 재시도/DLQ 를 판정한다.
+        """
+        scraper = ScraperTargetUser(
+            user_pk_list=[user.pk, 999], isolate_failures=True
+        )
+        other = MagicMock(spec=User)
+        other.velog_uuid = "other-uuid"
+        other.id = 999
+
+        with patch.object(
+            scraper,
+            "process_user",
+            new_callable=AsyncMock,
+            side_effect=[ValueError("boom"), None],
+        ) as mock_process:
+            await scraper.process_users([user, other], AsyncMock())
+
+        assert mock_process.call_count == 2
+        mock_capture.assert_called_once()
+
+    @patch("scraping.main.capture_scraper_failure")
+    @patch("scraping.main.logger")
+    @pytest.mark.asyncio
+    async def test_target_batch_run_fails_at_end_when_any_user_failed(
+        self, mock_logger, mock_capture, user
+    ):
+        """격리해도 실패가 있으면 run 이 끝에서 예외 → 프로세스 exit 1 유지.
+
+        조용히 0 으로 끝나면 배치 실패 신호를 잃는다.
+        """
+        scraper = ScraperTargetUser(
+            user_pk_list=[user.pk, 999], isolate_failures=True
+        )
+        other = MagicMock(spec=User)
+        other.velog_uuid = "other-uuid"
+        other.id = 999
+
+        async def two_users(*args, **kwargs):
+            for u in [user, other]:
+                yield u
+
+        with (
+            patch("users.models.User.objects.filter") as mock_filter,
+            patch("aiohttp.ClientSession") as mock_session,
+            patch.object(
+                scraper,
+                "process_user",
+                new_callable=AsyncMock,
+                side_effect=[ValueError("boom"), None],
+            ) as mock_process,
+        ):
+            mock_filter.return_value = two_users()
+            mock_session.return_value.__aenter__.return_value = MagicMock()
+            with pytest.raises(TargetBatchFailure):
+                await scraper.run()
+
+        assert mock_process.call_count == 2
+
+    @patch("scraping.main.capture_scraper_failure")
     @patch("scraping.main.logger")
     @pytest.mark.asyncio
     async def test_process_users_isolates_failing_user(
-        self, mock_logger, scraper, user
+        self, mock_logger, mock_capture, scraper, user
     ):
         """한 유저가 터져도 나머지 유저는 계속 처리하는지.
 
@@ -252,7 +336,10 @@ class TestScraperTokenAndUserInfoAndProcessing:
             await scraper.process_users([user, other], AsyncMock())
 
         assert mock_process.call_count == 2
-        assert mock_logger.error.called
+        assert mock_logger.warning.called
+        assert not mock_logger.error.called
+        mock_capture.assert_called_once()
+        assert mock_capture.call_args.kwargs == {"user_id": user.id}
 
     @patch("scraping.main.logger")
     @pytest.mark.asyncio
@@ -418,7 +505,7 @@ class TestScraperTokenAndUserInfoAndProcessing:
             new_callable=AsyncMock,
             return_value=False,
         ):
-            with pytest.raises(Exception, match="Failed to update tokens"):
+            with pytest.raises(TokenUpdateError):
                 await scraper.process_user(user, AsyncMock())
 
     @patch("scraping.main.fetch_velog_user_chk")
@@ -455,7 +542,7 @@ class TestScraperTokenAndUserInfoAndProcessing:
                 return_value=False,
             ),
         ):
-            with pytest.raises(Exception, match="Failed to update user_info"):
+            with pytest.raises(UserInfoUpdateError):
                 await scraper.process_user(user, AsyncMock())
 
     @patch("scraping.main.logger")
@@ -492,6 +579,7 @@ class TestScraperTokenAndUserInfoAndProcessing:
         # 로그 및 메서드 호출 확인
         assert mock_logger.info.call_count >= 2  # 시작과 종료 로그
         mock_process.assert_called_once_with(test_user, mock_session_instance)
+        assert mock_session.call_args.kwargs["timeout"] is VELOG_HTTP_TIMEOUT
 
     @pytest.mark.asyncio
     @pytest.mark.django_db
@@ -528,6 +616,7 @@ class TestScraperTokenAndUserInfoAndProcessing:
 
         # process_user 호출 확인
         mock_process.assert_called_once()
+        assert mock_session.call_args.kwargs["timeout"] is VELOG_HTTP_TIMEOUT
 
     @patch("scraping.main.AESEncryption")
     @pytest.mark.asyncio
@@ -614,12 +703,11 @@ class TestScraperTokenAndUserInfoAndProcessing:
         }
 
         # asave에서 예외 발생하도록 모킹
+        db_error = OperationalError("DB Error")
         with patch.object(
-            user,
-            "asave",
-            new_callable=AsyncMock,
-            side_effect=Exception("DB Error"),
+            user, "asave", new_callable=AsyncMock, side_effect=db_error
         ):
-            result = await scraper.update_old_user_info(user, user_data)
+            with pytest.raises(UserInfoUpdateError) as exc_info:
+                await scraper.update_old_user_info(user, user_data)
 
-        assert result is False
+        assert exc_info.value.__cause__ is db_error

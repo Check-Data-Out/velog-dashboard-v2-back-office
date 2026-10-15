@@ -11,10 +11,24 @@ from django.db import transaction
 from modules.token_encryption.aes_encryption import AESEncryption
 from posts.models import Post, PostDailyStatistics
 from scraping.apis import fetch_all_velog_posts, fetch_velog_user_chk
+from scraping.constants import VELOG_HTTP_TIMEOUT
+from scraping.reporting import capture_scraper_failure
 from users.models import User
 from utils.utils import get_local_now
 
 logger = logging.getLogger("scraping")
+
+
+class TokenUpdateError(Exception):
+    """토큰 갱신(DB 저장) 실패 — 원인은 ``__cause__`` 에 체인."""
+
+
+class UserInfoUpdateError(Exception):
+    """유저 정보 갱신(DB 저장) 실패 — 원인은 ``__cause__`` 에 체인."""
+
+
+class TargetBatchFailure(Exception):
+    """타겟 배치에서 유저 단위 실패가 1건 이상 — 모두 처리한 뒤 exit 1 용."""
 
 
 class Scraper:
@@ -53,18 +67,24 @@ class Scraper:
             if new_user_cookies["refresh_token"] != current_refresh_token:
                 update_fields.append("refresh_token")
 
-            # 변경된 필드가 있을 때만 저장
+            # 변경된 필드가 있을 때만 저장. 변경 없음도 성공 — False 를 돌려주면
+            # process_user 가 TokenUpdateError 로 실패시켜 유저가 DLQ 로 간다.
             if update_fields:
                 await user.asave(update_fields=update_fields)
                 logger.info(f"Updated tokens for user {user.velog_uuid}")
-                return True
+            return True
         except Exception as e:
-            logger.error(
+            # 상위(process_user → consumer 재시도)가 최종 1회만 보고하므로
+            # 여기서는 capture 하지 않고 원인을 체인해 전파한다 — 재시도마다
+            # 보고하면 최종 실패 1건이 여러 이벤트로 불어난다.
+            logger.warning(
                 f"Failed to update tokens: {e}"
-                f"(user velog uuid: {user.velog_uuid})"
+                f"(user velog uuid: {user.velog_uuid})",
+                exc_info=e,
             )
-            sentry_sdk.capture_exception(e)
-        return False
+            raise TokenUpdateError(
+                f"Failed to update tokens (user velog uuid: {user.velog_uuid})"
+            ) from e
 
     async def update_old_user_info(
         self, user: User, user_data: dict[str, Any]
@@ -109,13 +129,15 @@ class Scraper:
             return True
 
         except Exception as e:
-            logger.error(
+            logger.warning(
                 "Failed to update user info: %s (user velog uuid: %s)",
                 e,
                 user.velog_uuid,
+                exc_info=e,
             )
-            sentry_sdk.capture_exception(e)
-        return False
+            raise UserInfoUpdateError(
+                f"Failed to update user_info (user velog uuid: {user.velog_uuid})"
+            ) from e
 
     async def bulk_upsert_posts(
         self,
@@ -132,7 +154,7 @@ class Scraper:
                 await asyncio.sleep(0.2)
             return True
         except Exception as e:
-            logger.error(
+            logger.warning(
                 f"Failed to bulk upsert posts. {e}"
                 f" (user velog uuid: {user.velog_uuid})"
             )
@@ -310,7 +332,7 @@ class Scraper:
         except Post.DoesNotExist:
             return False
         except Exception as e:
-            logger.error(
+            logger.warning(
                 f"Failed to update daily statistics for post {post['id']}: {str(e)}"
             )
             sentry_sdk.capture_exception(e)
@@ -353,7 +375,9 @@ class Scraper:
                 new_user_cookies,
             )
             if not user_token_result:
-                raise Exception("Failed to update tokens, Check the logs")
+                raise TokenUpdateError(
+                    "Failed to update tokens, Check the logs"
+                )
             origin_access_token = new_user_cookies["access_token"]
             origin_refresh_token = new_user_cookies["refresh_token"]
 
@@ -364,7 +388,9 @@ class Scraper:
             user_data["data"]["currentUser"],
         )
         if not user_info_result:
-            raise Exception("Failed to update user_info, Check the logs")
+            raise UserInfoUpdateError(
+                "Failed to update user_info, Check the logs"
+            )
 
         # ========================================================== #
         # STEP2: 게시물 전체 목록을 가져와서 upsert 와 상태 동기화 (비활성, 활성)
@@ -424,23 +450,26 @@ class Scraper:
 
     async def process_users(
         self, users: list[User], session: aiohttp.ClientSession
-    ) -> None:
-        """유저 목록을 순회하며 처리한다.
+    ) -> int:
+        """유저 목록을 순회하며 처리하고 실패한 유저 수를 돌려준다.
 
         한 유저의 예외가 프로세스를 죽이면 그 그룹의 남은 유저가 통째로
         누락되므로 유저 단위로 격리한다. 유저가 한 명뿐인 온디맨드
         경로는 격리 이득이 없고 실패 신호만 잃으므로
         ScraperTargetUser 가 이 동작을 재정의한다.
         """
+        failed = 0
         for user in users:
             try:
                 await self.process_user(user, session)
             except Exception as e:
-                logger.error(
+                failed += 1
+                logger.warning(
                     f"Failed to process user: {e} "
                     f"(user velog uuid: {user.velog_uuid})"
                 )
-                sentry_sdk.capture_exception(e)
+                capture_scraper_failure(e, user_id=user.id)
+        return failed
 
     async def run(self) -> None:
         """스크래핑 작업 실행"""
@@ -463,6 +492,7 @@ class Scraper:
         async with aiohttp.ClientSession(
             connector=connector,
             cookie_jar=cookie_jar,
+            timeout=VELOG_HTTP_TIMEOUT,
         ) as session:
             await self.process_users(users, session)
 
@@ -472,20 +502,34 @@ class Scraper:
 
 
 class ScraperTargetUser(Scraper):
-    def __init__(self, user_pk_list: list[int]) -> None:
+    def __init__(
+        self, user_pk_list: list[int], isolate_failures: bool = False
+    ) -> None:
+        """
+        Args:
+            user_pk_list: 처리할 유저 pk 목록
+            isolate_failures: True 면 유저 단위로 실패를 격리(타겟 배치).
+                기본 False 는 consumer 경로 — 예외를 그대로 전파한다.
+        """
         self.env = environ.Env()
         self.user_pk_list = user_pk_list
+        self.isolate_failures = isolate_failures
 
     async def process_users(
         self, users: list[User], session: aiohttp.ClientSession
-    ) -> None:
-        """예외를 그대로 전파한다.
+    ) -> int:
+        """기본은 예외를 그대로 전파한다(반환 0).
 
         컨슈머(consumer/message_handler.py)가 예외 발생 여부로 재시도와
-        DLQ 이동을 판정하므로, 삼키면 실패가 성공으로 보고된다.
+        DLQ 이동을 판정하므로, 삼키면 실패가 성공으로 보고된다. 여러 유저를
+        도는 타겟 배치는 isolate_failures=True 로 유저 단위 격리를 쓰고
+        실패 수를 돌려받아 run 이 끝에서 실패시킨다.
         """
+        if self.isolate_failures:
+            return await super().process_users(users, session)
         for user in users:
             await self.process_user(user, session)
+        return 0
 
     async def run(self) -> None:
         """타겟 유저 스크래핑 작업 실행"""
@@ -500,8 +544,13 @@ class ScraperTargetUser(Scraper):
             async for user in User.objects.filter(id__in=self.user_pk_list)
         ]
         async with aiohttp.ClientSession(
-            connector=aiohttp.TCPConnector(limit=30)
+            connector=aiohttp.TCPConnector(limit=30),
+            timeout=VELOG_HTTP_TIMEOUT,
         ) as session:
-            await self.process_users(users, session)
+            failed = await self.process_users(users, session)
 
         logger.info(f"Finished target user scraping ({self.user_pk_list}).")
+        # 격리 모드에서는 모두 처리한 뒤에 실패를 알려 exit 1 을 유지한다
+        # (조용히 0 으로 끝나면 배치 실패 신호를 잃는다).
+        if self.isolate_failures and failed > 0:
+            raise TargetBatchFailure(f"{failed} user(s) failed")

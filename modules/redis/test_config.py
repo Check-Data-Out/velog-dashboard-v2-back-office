@@ -39,3 +39,11 @@ def test_invalid_redis_integer_env_still_raises_value_error() -> None:
             importlib.reload(redis_config)
 
     importlib.reload(redis_config)
+
+
+def test_socket_timeout_exceeds_blocking_timeout() -> None:
+    """BLMOVE 가 BLOCKING_TIMEOUT 만큼 대기하는 동안 socket_timeout 이 먼저
+    끊으면 정상 대기가 TimeoutError 로 보이므로 항상 더 커야 한다."""
+    assert redis_config.RedisConfig.SOCKET_TIMEOUT > (
+        redis_config.RedisConfig.BLOCKING_TIMEOUT
+    )

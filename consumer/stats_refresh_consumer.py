@@ -9,6 +9,7 @@ import sentry_sdk
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 from tenacity import (
+    RetryCallState,
     RetryError,
     before_sleep_log,
     retry,
@@ -17,6 +18,7 @@ from tenacity import (
     wait_exponential,
     wait_random,
 )
+from tenacity.stop import stop_base
 
 # Django setup must be imported first
 import consumer.setup_django  # noqa: F401
@@ -35,6 +37,27 @@ from ops_tracking.services import RequestLifecycleService
 from utils.utils import get_local_now
 
 logger = logging.getLogger("consumer")
+
+
+class _StopWhenShutdown(stop_base):
+    """재연결 재시도 중 종료 요청(shutdown Event)이 오면 즉시 멈춘다.
+
+    tenacity 내장 ``stop_when_event_set`` 과 같은 뜻이지만, shutdown Event 는
+    ``reset_shutdown_event()`` 로 교체되는 지연 생성 싱글톤이라 데코레이터
+    평가 시점이 아니라 **호출 시점**에 ``get_shutdown_event()`` 로 찾아야 한다.
+    """
+
+    def __call__(self, retry_state: RetryCallState) -> bool:
+        return get_shutdown_event().is_set()
+
+
+def _interruptible_sleep(seconds: float) -> None:
+    """tenacity 대기를 time.sleep 대신 Event.wait 로 — 종료 신호에 즉시 깨어남.
+
+    내장 ``sleep_using_event`` 와 동등하나 위와 같은 이유로 Event 를 호출
+    시점에 조회한다.
+    """
+    get_shutdown_event().wait(seconds)
 
 
 class StatsRefreshConsumer:
@@ -60,6 +83,8 @@ class StatsRefreshConsumer:
         self.message_processor = MessageProcessor(config=self.redis_config)
         self.running = False
         self.processing_message = False
+        self._closed = False
+        self._shutdown_signum: int | None = None
         self._reclaimer_thread: threading.Thread | None = None
         self._lifecycle = None  # 지연 import
 
@@ -84,18 +109,31 @@ class StatsRefreshConsumer:
     def _handle_shutdown_signal(self, signum: int, frame) -> None:
         """Handle shutdown signals.
 
-        Args:
-            signum: Signal number
-            frame: Current stack frame
+        비동기 시그널 핸들러에서는 logging 을 호출하지 않는다(재진입 안전하지
+        않음). 시그널 이름은 shutdown() 로그에 남긴다.
         """
-        signal_name = "SIGTERM" if signum == signal.SIGTERM else "SIGINT"
-        logger.info(
-            f"Received {signal_name} signal, initiating graceful shutdown..."
-        )
-        self.shutdown()
+        self._shutdown_signum = signum
+        self.request_shutdown()
+
+    def request_shutdown(self) -> None:
+        """루프에 종료를 요청한다 — 플래그와 Event 만 건드린다.
+
+        시그널 핸들러는 BLMOVE 대기 중인 main thread 를 가로채 실행되므로
+        여기서 Redis 를 닫으면 'I/O operation on closed file' 이 난다.
+        실제 정리(close)는 _consume_loop 반환 뒤 start() 가 shutdown() 으로.
+        """
+        self.running = False
+        # Event.set() 은 Condition lock 을 잡는다. main thread 가 Event.wait 안에서
+        # 그 lock 을 쥔 채 시그널을 받으면 핸들러의 set() 이 데드락이므로
+        # set 은 별도 스레드에 넘긴다 (핸들러 자체는 플래그만 동기 변경).
+        threading.Thread(target=get_shutdown_event().set, daemon=True).start()
 
     def start(self) -> None:
         """Start the consumer process."""
+        if get_shutdown_event().is_set():
+            logger.info("Shutdown already requested before start; skipping.")
+            return
+
         logger.info(f"Starting {self.consumer_config.PROCESS_NAME}...")
 
         try:
@@ -120,12 +158,17 @@ class StatsRefreshConsumer:
                 f"{self.redis_config.QUEUE_STATS_REFRESH}"
             )
 
-            # Main loop
-            self._consume_loop()
+            # Main loop — 예외로 빠져나와도 Redis close/reclaimer join 은 보장
+            try:
+                self._consume_loop()
+            finally:
+                self.shutdown()
 
         except Exception as e:
-            logger.error(f"Fatal error in consumer: {e}")
-            sentry_sdk.capture_exception(e)
+            # 치명 종료는 critical(exc_info) 1건 — logging 통합이 이벤트를 만든다
+            with sentry_sdk.new_scope() as scope:
+                scope.fingerprint = ["consumer", "fatal-start", "{{ type }}"]
+                logger.critical(f"Fatal error in consumer: {e}", exc_info=e)
             sys.exit(1)
 
     def _start_reclaimer(self) -> None:
@@ -142,7 +185,7 @@ class StatsRefreshConsumer:
             if result["reclaimed"] or result["dlq"]:
                 logger.warning(f"Cold-start reclaim: {result}")
         except Exception as e:
-            logger.error(f"Cold-start reclaim failed: {e}")
+            logger.warning(f"Cold-start reclaim failed: {e}")
             sentry_sdk.capture_exception(e)
 
         self._reclaimer_thread = threading.Thread(
@@ -156,20 +199,26 @@ class StatsRefreshConsumer:
         return self._lifecycle
 
     @retry(
-        stop=stop_after_attempt(30),
+        stop=stop_after_attempt(30) | _StopWhenShutdown(),
         wait=wait_exponential(multiplier=1, min=1, max=60) + wait_random(0, 2),
         retry=retry_if_exception_type(
             (RedisConnectionError, RedisTimeoutError)
         ),
+        sleep=_interruptible_sleep,
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
     def _reconnect_with_backoff(self) -> None:
         """Redis 연결을 backoff 재시도. tenacity 로 최대 30회.
 
+        종료 요청이 오면 연결을 더 시도하지 않고 stop 조건(shutdown Event)이
+        참이 돼 RetryError 로 빠져나온다 (tenacity 는 reraise=False 기본).
+
         주입된 redis_client 가 있고 실제 RedisQueueClient 인 경우 동일 config 로
         재인스턴스화. mock/fake 주입 시엔 singleton 경로로 fallback — mock 이
         config 인자를 요구하지 않아 ``TypeError`` 로 튀는 문제 방어.
         """
+        if not self.running:
+            raise RedisConnectionError("shutdown requested")
         injected = self._injected_redis_client
         reconnected = False
         if injected is not None and hasattr(injected, "config"):
@@ -228,8 +277,8 @@ class StatsRefreshConsumer:
                 enriched["processingStartedAt"] = get_local_now().isoformat()
                 # processingStartedAt 을 Redis processing 큐에도 반영해야
                 # reclaimer 가 enqueuedAt 으로 fallback 하지 않는다.
-                # CAS(LINDEX 0 == raw_str 일 때만 LSET) 로 reclaimer 가 head 를 LREM
-                # 한 경우에도 엉뚱한 메시지를 오염시키지 않는다.
+                # CAS(WATCH 후 LINDEX 0 == raw_str 일 때만 MULTI/LSET) 로
+                # reclaimer 가 head 를 LREM 한 경우에도 엉뚱한 메시지를 오염시키지 않는다.
                 new_raw = json.dumps(enriched)
                 if self.redis_client.replace_processing_head(raw_str, new_raw):
                     raw_str = new_raw
@@ -241,6 +290,8 @@ class StatsRefreshConsumer:
                 break
 
             except (RedisConnectionError, RedisTimeoutError) as e:
+                if not self.running:
+                    break
                 consecutive_errors += 1
                 logger.warning(
                     f"Redis transient error (consecutive: {consecutive_errors}): {e}"
@@ -249,30 +300,47 @@ class StatsRefreshConsumer:
                     self._reconnect_with_backoff()
                     consecutive_errors = 0
                 except RetryError:
-                    logger.critical(
-                        "Redis reconnect backoff exhausted. Shutting down."
-                    )
-                    sentry_sdk.capture_exception(e)
+                    if not self.running:
+                        # 정상 종료 중 Redis 장애 — 이벤트 없이 루프 탈출
+                        break
+                    with sentry_sdk.new_scope() as scope:
+                        scope.fingerprint = [
+                            "consumer",
+                            "redis-unavailable",
+                            "{{ type }}",  # ConnectionError vs TimeoutError 구분
+                        ]
+                        logger.critical(
+                            "Redis reconnect backoff exhausted. Shutting down.",
+                            exc_info=e,
+                        )
                     self.shutdown()
                     sys.exit(1)
 
             except Exception as e:
                 consecutive_errors += 1
-                logger.error(
+                # 반복 중 로그는 warning — 매 반복이 이벤트가 되지 않도록 하고,
+                # 한계 도달 시에만 critical 1건을 낸다.
+                logger.warning(
                     f"Error in consume loop (consecutive: {consecutive_errors}): {e}"
                 )
 
                 if consecutive_errors >= max_consecutive_errors:
-                    logger.critical(
-                        f"Too many consecutive errors ({consecutive_errors}). "
-                        f"Shutting down consumer."
-                    )
-                    sentry_sdk.capture_exception(e)
+                    with sentry_sdk.new_scope() as scope:
+                        scope.fingerprint = [
+                            "consumer",
+                            "consecutive-errors",
+                            "{{ type }}",
+                        ]
+                        logger.critical(
+                            f"Too many consecutive errors ({consecutive_errors}). "
+                            f"Shutting down consumer.",
+                            exc_info=e,
+                        )
                     self.shutdown()
                     sys.exit(1)
 
-                # Backoff before retrying (max 32s)
-                time.sleep(2 ** min(consecutive_errors, 5))
+                # Backoff before retrying (max 32s) — 종료 신호에 즉시 깨어남
+                get_shutdown_event().wait(2 ** min(consecutive_errors, 5))
 
     def _process_message(
         self, message: dict, raw_str: str | None = None
@@ -326,7 +394,7 @@ class StatsRefreshConsumer:
                     original_raw,
                 )
             except Exception as e:
-                logger.error(f"terminal drop: processing LREM failed: {e}")
+                logger.warning(f"terminal drop: processing LREM failed: {e}")
             self.processing_message = False
             return
 
@@ -353,7 +421,8 @@ class StatsRefreshConsumer:
                     error="process_with_retry returned False",
                     retry_count=retry_cnt,
                 )
-                logger.error(
+                # 이벤트는 process_with_retry 가 이미 1건 보냈으므로 여기서는 warning
+                logger.warning(
                     f"Message processing failed after all retries. Stats: {self._get_stats_summary()}"
                 )
 
@@ -368,7 +437,7 @@ class StatsRefreshConsumer:
 
         except Exception as e:
             self.stats["failed"] += 1
-            logger.error(f"Unexpected error processing message: {e}")
+            logger.warning(f"Unexpected error processing message: {e}")
             sentry_sdk.capture_exception(e)
             try:
                 assert self.redis_client is not None
@@ -423,30 +492,26 @@ class StatsRefreshConsumer:
         )
 
     def shutdown(self) -> None:
-        """Gracefully shutdown the consumer."""
-        if not self.running:
+        """루프 종료 뒤 자원 정리 (멱등).
+
+        시그널 핸들러가 먼저 running=False 를 세우므로 running 으로 가드하지
+        않고 _closed 로 가드한다. reclaimer 는 shutdown Event 로 깨워 join.
+        """
+        if self._closed:
             return
+        self._closed = True
 
-        logger.info("Shutting down consumer...")
+        signal_name = (
+            signal.Signals(self._shutdown_signum).name
+            if self._shutdown_signum is not None
+            else None
+        )
+        logger.info(f"Shutting down consumer... (signal={signal_name})")
         self.running = False
+        get_shutdown_event().set()
 
-        # Wait for current message processing to complete
-        if self.processing_message:
-            logger.info("Waiting for current message to finish processing...")
-            timeout = self.consumer_config.GRACEFUL_SHUTDOWN_TIMEOUT
-            start_time = time.time()
-
-            while (
-                self.processing_message
-                and (time.time() - start_time) < timeout
-            ):
-                time.sleep(0.5)
-
-            if self.processing_message:
-                logger.warning(
-                    "Graceful shutdown timeout reached. "
-                    "Current message may not complete."
-                )
+        if self._reclaimer_thread is not None:
+            self._reclaimer_thread.join(timeout=5)
 
         # Close Redis connection
         if self.redis_client:
@@ -469,8 +534,9 @@ def main() -> None:
     try:
         consumer.start()
     except Exception as e:
-        logger.critical(f"Consumer crashed: {e}")
-        sentry_sdk.capture_exception(e)
+        with sentry_sdk.new_scope() as scope:
+            scope.fingerprint = ["consumer", "crashed", "{{ type }}"]
+            logger.critical(f"Consumer crashed: {e}", exc_info=e)
         sys.exit(1)
 
 
