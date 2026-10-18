@@ -561,10 +561,7 @@ class ScraperTargetUser(Scraper):
             user
             async for user in User.objects.filter(id__in=self.user_pk_list)
         ]
-        async with aiohttp.ClientSession(
-            connector=aiohttp.TCPConnector(limit=30),
-            timeout=VELOG_HTTP_TIMEOUT,
-        ) as session:
+        async with self._new_session() as session:
             failed = await self.process_users(users, session)
 
         logger.info(f"Finished target user scraping ({self.user_pk_list}).")

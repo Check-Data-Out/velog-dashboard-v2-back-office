@@ -659,6 +659,9 @@ class TestScraperTokenAndUserInfoAndProcessing:
         # process_user 호출 확인
         mock_process.assert_called_once()
         assert mock_session.call_args.kwargs["timeout"] is VELOG_HTTP_TIMEOUT
+        assert isinstance(
+            mock_session.call_args.kwargs["cookie_jar"], aiohttp.DummyCookieJar
+        )
 
     @patch("scraping.main.AESEncryption")
     @pytest.mark.asyncio
