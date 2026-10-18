@@ -439,7 +439,7 @@ class Scraper:
         failed = len(fetched_posts) - succeeded
         stats_summary = (
             f"succeeded={succeeded} failed={failed} "
-            f"(user velog uuid: {user.velog_uuid}, email: {user.email})"
+            f"(user velog uuid: {user.velog_uuid}, user id: {user.id})"
         )
         if failed and not succeeded:
             logger.error(f"Failed to update stats. {stats_summary}")

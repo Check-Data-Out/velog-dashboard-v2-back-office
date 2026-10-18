@@ -386,6 +386,7 @@ class TestScraperTokenAndUserInfoAndProcessing:
         """전량 성공이면 기존 성공 로그가 그대로 남는지.
 
         실패 방향만 검증하면 성공 시에도 경고만 찍는 반대 회귀를 놓친다.
+        요약 로그는 공개 Actions 로그에 남으므로 이메일 대신 user id 를 남긴다.
         """
         await run_process_user(scraper, user, mock_user_data, mock_posts_data)
 
@@ -393,6 +394,9 @@ class TestScraperTokenAndUserInfoAndProcessing:
             "Succeeded to update stats" in str(c)
             for c in mock_logger.info.call_args_list
         )
+        logged = str(mock_logger.mock_calls)
+        assert user.email not in logged
+        assert f"user id: {user.id})" in logged
 
     @pytest.mark.asyncio
     async def test_process_user_writes_stats_for_every_post(
