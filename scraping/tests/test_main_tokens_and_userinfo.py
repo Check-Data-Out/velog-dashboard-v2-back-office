@@ -19,7 +19,7 @@ MISSING_VIEWS = object()
 
 
 async def run_process_user(scraper, user, mock_user_data, posts, written=True):
-    """process_user 를 실행하고 토큰·사용자 정보·통계 갱신 mock 을 이름별 dict 로 반환.
+    """process_user 를 실행하고 패치한 쓰기 메서드 mock 을 이름별 dict 로 반환.
 
     written 으로 DB 쓰기 성공 여부를 흉내낼 수 있다.
     """
@@ -40,10 +40,12 @@ async def run_process_user(scraper, user, mock_user_data, posts, written=True):
             new_callable=AsyncMock,
             return_value=True,
         ) as mock_update_user_info,
-        patch.object(scraper, "bulk_upsert_posts", new_callable=AsyncMock),
+        patch.object(
+            scraper, "bulk_upsert_posts", new_callable=AsyncMock
+        ) as mock_bulk_upsert,
         patch.object(
             scraper, "sync_post_active_status", new_callable=AsyncMock
-        ),
+        ) as mock_sync_status,
         patch.object(
             scraper,
             "update_daily_statistics",
@@ -68,6 +70,8 @@ async def run_process_user(scraper, user, mock_user_data, posts, written=True):
     return {
         "update_old_tokens": mock_update_tokens,
         "update_old_user_info": mock_update_user_info,
+        "bulk_upsert_posts": mock_bulk_upsert,
+        "sync_post_active_status": mock_sync_status,
         "update_daily_statistics": mock_update_stats,
     }
 
@@ -424,10 +428,10 @@ class TestScraperTokenAndUserInfoAndProcessing:
         for mock in mocks.values():
             mock.assert_not_called()
         assert mock_logger.warning.call_count == 1
-        warning = str(mock_logger.warning.call_args)
-        assert f"user id: {user.id})" in warning
+        assert f"user id: {user.id})" in str(mock_logger.warning.call_args)
+        logged = str(mock_logger.mock_calls)
         assert not any(
-            value in warning for value in (user.email, other_account_id)
+            value in logged for value in (user.email, other_account_id)
         )
 
     @pytest.mark.asyncio
