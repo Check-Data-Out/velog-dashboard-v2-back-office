@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import uuid
 from typing import Any
 
 import aiohttp
@@ -368,6 +369,18 @@ class Scraper:
             )
             return
 
+        # 토큰이 가리키는 velog 계정이 이 행이 아니면 아무것도 쓰지 않는다. 그대로
+        # 처리하면 그 계정의 토큰·정보가 이 행에 저장되고, 같은 게시글을 두 행이
+        # 함께 갱신해 일별 통계가 중복된다.
+        if (
+            uuid.UUID(user_data["data"]["currentUser"]["id"])
+            != user.velog_uuid
+        ):
+            logger.warning(
+                f"Skipped user because tokens belong to another velog account. (user id: {user.id})"
+            )
+            return
+
         if new_user_cookies:
             user_token_result = await self.update_old_tokens(
                 user,
@@ -439,7 +452,7 @@ class Scraper:
         failed = len(fetched_posts) - succeeded
         stats_summary = (
             f"succeeded={succeeded} failed={failed} "
-            f"(user velog uuid: {user.velog_uuid}, email: {user.email})"
+            f"(user velog uuid: {user.velog_uuid}, user id: {user.id})"
         )
         if failed and not succeeded:
             logger.error(f"Failed to update stats. {stats_summary}")
@@ -471,6 +484,19 @@ class Scraper:
                 capture_scraper_failure(e, user_id=user.id)
         return failed
 
+    def _new_session(self) -> aiohttp.ClientSession:
+        """velog API 호출용 HTTP 세션.
+
+        토큰은 사용자마다 cookie 헤더로 직접 보낸다. 쿠키 저장소가 응답 쿠키를 담아
+        두면 다음 사용자 요청의 같은 이름 쿠키를 덮어쓰므로 저장을 끈다
+        ([25.06.13] 핫픽스).
+        """
+        return aiohttp.ClientSession(
+            connector=aiohttp.TCPConnector(limit=30),
+            cookie_jar=aiohttp.DummyCookieJar(),
+            timeout=VELOG_HTTP_TIMEOUT,
+        )
+
     async def run(self) -> None:
         """스크래핑 작업 실행"""
         logger.info(
@@ -479,21 +505,13 @@ class Scraper:
             f"{get_local_now().isoformat()}"
         )
 
-        # [25.06.13] 핫픽스: 쿠키 자동 저장 강제 비활성화
-        connector = aiohttp.TCPConnector(limit=30)
-        cookie_jar = aiohttp.DummyCookieJar()  # 쿠키 저장 비활성화
-
         users = [
             user
             async for user in User.objects.filter(
                 group_id__in=self.group_range
             )
         ]
-        async with aiohttp.ClientSession(
-            connector=connector,
-            cookie_jar=cookie_jar,
-            timeout=VELOG_HTTP_TIMEOUT,
-        ) as session:
+        async with self._new_session() as session:
             await self.process_users(users, session)
 
         logger.info(
@@ -543,10 +561,7 @@ class ScraperTargetUser(Scraper):
             user
             async for user in User.objects.filter(id__in=self.user_pk_list)
         ]
-        async with aiohttp.ClientSession(
-            connector=aiohttp.TCPConnector(limit=30),
-            timeout=VELOG_HTTP_TIMEOUT,
-        ) as session:
+        async with self._new_session() as session:
             failed = await self.process_users(users, session)
 
         logger.info(f"Finished target user scraping ({self.user_pk_list}).")

@@ -88,3 +88,10 @@ class PostDailyStatistics(TimeStampedModel):
     class Meta:
         verbose_name = "게시글 일별 통계"
         verbose_name_plural = "게시글 일별 통계 목록"
+        constraints = [
+            # get_or_create 는 DB 가 유일성을 강제할 때만 경합에 안전하다.
+            # 운영 테이블에는 0008 마이그레이션이 무중단으로 만든다.
+            models.UniqueConstraint(
+                fields=["post", "date"], name="posts_pds_post_date_uniq"
+            ),
+        ]

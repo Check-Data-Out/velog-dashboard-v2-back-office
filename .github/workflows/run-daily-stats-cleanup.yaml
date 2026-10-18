@@ -106,7 +106,8 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
   # cleanup 성공 여부와 무관하게 매일 운영 DB 불변식을 검사한다.
-  # timescaledb 확장 또는 test_* DB 가 다시 생기면 실패 → Slack 알림.
+  # timescaledb 확장 또는 test_* DB 가 다시 생기거나, 일별 통계 유니크 제약이
+  # 없으면 실패 → Slack 알림.
   db-invariants:
     runs-on: ubuntu-latest
     timeout-minutes: 15

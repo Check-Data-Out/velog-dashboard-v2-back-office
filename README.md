@@ -191,7 +191,7 @@ poetry run pre-commit run --all-files
 
 운영 DB 는 Supabase 기반 PostgreSQL 17 (`posts_postdailystatistics` 는 일반 테이블). **Session Mode (포트 5432) 또는 Direct Connection 사용 필수** — Transaction Mode(6543)에서는 `SET LOCAL` / `transaction.atomic` 이 보장되지 않는다. 운영 DB role 은 `run-daily-aggre-set*.yaml` 의 `POSTGRES_USER` 와 동일 (이미 매일 stats INSERT/UPDATE/DELETE 권한 보유).
 
-같은 workflow 의 `db-invariants` job 이 매일 `manage.py check_db_invariants` 로 운영 DB 에 `timescaledb` 확장이나 `test_*` DB 가 없는지 검사하고, 위반 시 Slack 으로 알린다. Supabase 의 TimescaleDB(Apache 빌드)는 기본 job 이 라이선스 오류로 초당 1회 실패하며 로그를 무한히 쌓아 디스크를 키운다.
+같은 workflow 의 `db-invariants` job 이 매일 `manage.py check_db_invariants` 로 운영 DB 에 `timescaledb` 확장이나 `test_*` DB 가 없는지, 일별 통계 유니크 제약(`posts_pds_post_date_uniq`, 아래 절)이 있는지 검사하고, 위반 시 Slack 으로 알린다. Supabase 의 TimescaleDB(Apache 빌드)는 기본 job 이 라이선스 오류로 초당 1회 실패하며 로그를 무한히 쌓아 디스크를 키운다.
 
 ```bash
 # 로컬 dry-run
@@ -199,6 +199,45 @@ poetry run python manage.py cleanup_old_stats --dry-run
 # 운영 수동 실행 (workflow_dispatch)
 gh workflow run "Daily Stats Cleanup" -f retention_months=6 -f dry_run=true
 ```
+
+### 일별 통계 (post_id, date) 중복 정리
+
+`posts` 0008 마이그레이션은 `posts_postdailystatistics` 에 `(post_id, date)` 유니크 제약 `posts_pds_post_date_uniq` 를 무중단으로 추가한다. `CREATE UNIQUE INDEX CONCURRENTLY` 로 인덱스를 만든 뒤 같은 이름으로 `ADD CONSTRAINT … UNIQUE USING INDEX` 승격한다. 세션의 `statement_timeout`·`lock_timeout`(PostgreSQL 17 이상은 `transaction_timeout` 도)을 직접 조정하므로 Session Mode(5432) 또는 Direct Connection 에서 실행한다.
+
+같은 (post_id, date) 행이 이미 있으면 인덱스를 만들기 전에 중복 그룹 수를 알리며 실패한다. 아래 순서로 정리한 뒤 다시 `migrate` 한다. `--fake` 로 건너뛰면 제약 없이 적용 기록만 남으므로 쓰지 않는다. 같은 그룹의 행은 값이 같아서 그룹마다 `min(id)` 한 행만 남겨도 정보가 사라지지 않는다.
+
+```sql
+-- 1) 개수 확인 (extra = 지울 행 수)
+SELECT count(*) AS pairs, sum(c - 1) AS extra
+FROM (SELECT post_id, date, count(*) AS c FROM posts_postdailystatistics
+      GROUP BY 1, 2 HAVING count(*) > 1) s;
+
+-- 2) 지울 행 백업 (psql)
+\copy (WITH d AS (SELECT post_id, date, min(id) AS keep_id FROM posts_postdailystatistics GROUP BY post_id, date HAVING count(*) > 1) SELECT s.* FROM posts_postdailystatistics s JOIN d ON s.post_id = d.post_id AND s.date = d.date AND s.id <> d.keep_id) TO 'pds_dup_rows.csv' CSV HEADER
+
+-- 3) 정리. 두 곳의 0 을 1) 의 extra 로 바꾼다. 지운 행 수가 다르면 예외로 전부 롤백된다.
+SET statement_timeout = '15min';
+DO $$
+DECLARE n bigint;
+BEGIN
+  WITH d AS (
+    SELECT post_id, date, min(id) AS keep_id
+    FROM posts_postdailystatistics
+    GROUP BY post_id, date
+    HAVING count(*) > 1
+  )
+  DELETE FROM posts_postdailystatistics s
+  USING d
+  WHERE s.post_id = d.post_id AND s.date = d.date AND s.id <> d.keep_id;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  IF n <> 0 THEN
+    RAISE EXCEPTION 'deleted % rows, expected %', n, 0;
+  END IF;
+  RAISE NOTICE 'deleted % rows', n;
+END $$;
+```
+
+인덱스 생성이 중간에 끊겨 INVALID 인덱스가 남아도 다시 `migrate` 하면 지우고 새로 만든다. 승격이 `lock_timeout`(3초)에 걸려 실패하면 유효한 인덱스가 남고, 다시 `migrate` 할 때 승격만 한다.
 
 ---
 

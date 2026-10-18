@@ -89,5 +89,9 @@ jobs:
       - name: Run Django system check
         run: poetry run python manage.py check
 
+      # 모델 Meta 와 손으로 쓴 마이그레이션 state 가 어긋나면 실패시킨다
+      - name: Check migrations are up to date
+        run: poetry run python manage.py makemigrations --check --dry-run
+
       - name: Run tests
         run: poetry run pytest -v --full-trace --showlocals --tb=long --capture=no

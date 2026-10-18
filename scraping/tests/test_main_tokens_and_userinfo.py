@@ -1,6 +1,7 @@
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import pytest
 from asgiref.sync import sync_to_async
 from django.db import OperationalError
@@ -17,10 +18,13 @@ from users.models import User
 MISSING_VIEWS = object()
 
 
-async def run_process_user(scraper, user, mock_user_data, posts, written=True):
-    """process_user 를 실행하고 update_daily_statistics mock 을 반환.
+async def run_process_user(
+    scraper, user, mock_user_data, posts, written=True, cookies_rotated=True
+):
+    """process_user 를 실행하고 패치한 쓰기 메서드 mock 을 이름별 dict 로 반환.
 
-    written 으로 DB 쓰기 성공 여부를 흉내낼 수 있다.
+    written 으로 DB 쓰기 성공 여부를, cookies_rotated 로 velog 응답이 새 토큰
+    쿠키를 줬는지를 흉내낼 수 있다.
     """
     with (
         patch("scraping.main.AESEncryption") as mock_aes,
@@ -32,17 +36,19 @@ async def run_process_user(scraper, user, mock_user_data, posts, written=True):
             "update_old_tokens",
             new_callable=AsyncMock,
             return_value=True,
-        ),
+        ) as mock_update_tokens,
         patch.object(
             scraper,
             "update_old_user_info",
             new_callable=AsyncMock,
             return_value=True,
-        ),
-        patch.object(scraper, "bulk_upsert_posts", new_callable=AsyncMock),
+        ) as mock_update_user_info,
+        patch.object(
+            scraper, "bulk_upsert_posts", new_callable=AsyncMock
+        ) as mock_bulk_upsert,
         patch.object(
             scraper, "sync_post_active_status", new_callable=AsyncMock
-        ),
+        ) as mock_sync_status,
         patch.object(
             scraper,
             "update_daily_statistics",
@@ -53,18 +59,23 @@ async def run_process_user(scraper, user, mock_user_data, posts, written=True):
         encryption = mock_aes.return_value
         encryption.decrypt.side_effect = lambda token: f"decrypted-{token}"
         encryption.encrypt.side_effect = lambda token: f"encrypted-{token}"
-        mock_chk.return_value = (
-            {
-                "access_token": "new-token",
-                "refresh_token": "new-refresh-token",
-            },
-            mock_user_data,
+        new_cookies = (
+            {"access_token": "new-token", "refresh_token": "new-refresh-token"}
+            if cookies_rotated
+            else {}
         )
+        mock_chk.return_value = (new_cookies, mock_user_data)
         mock_posts.return_value = posts
 
         await scraper.process_user(user, AsyncMock())
 
-    return mock_update_stats
+    return {
+        "update_old_tokens": mock_update_tokens,
+        "update_old_user_info": mock_update_user_info,
+        "bulk_upsert_posts": mock_bulk_upsert,
+        "sync_post_active_status": mock_sync_status,
+        "update_daily_statistics": mock_update_stats,
+    }
 
 
 class TestScraperTokenAndUserInfoAndProcessing:
@@ -203,11 +214,12 @@ class TestScraperTokenAndUserInfoAndProcessing:
         else:
             post["views"] = views
 
-        mock_update_stats = await run_process_user(
-            scraper, user, mock_user_data, [post]
-        )
+        mocks = await run_process_user(scraper, user, mock_user_data, [post])
 
-        written = [call.args[1] for call in mock_update_stats.call_args_list]
+        written = [
+            call.args[1]
+            for call in mocks["update_daily_statistics"].call_args_list
+        ]
         assert written == expected
 
     @patch("scraping.main.logger")
@@ -386,6 +398,7 @@ class TestScraperTokenAndUserInfoAndProcessing:
         """전량 성공이면 기존 성공 로그가 그대로 남는지.
 
         실패 방향만 검증하면 성공 시에도 경고만 찍는 반대 회귀를 놓친다.
+        요약 로그는 공개 Actions 로그에 남으므로 이메일 대신 user id 를 남긴다.
         """
         await run_process_user(scraper, user, mock_user_data, mock_posts_data)
 
@@ -393,17 +406,63 @@ class TestScraperTokenAndUserInfoAndProcessing:
             "Succeeded to update stats" in str(c)
             for c in mock_logger.info.call_args_list
         )
+        logged = str(mock_logger.mock_calls)
+        assert user.email not in logged
+        assert f"user id: {user.id})" in logged
+
+    @pytest.mark.parametrize(
+        "cookies_rotated", [True, False], ids=["새쿠키있음", "새쿠키없음"]
+    )
+    @patch("scraping.main.logger")
+    @pytest.mark.asyncio
+    async def test_process_user_skips_row_whose_tokens_belong_to_other_account(
+        self,
+        mock_logger,
+        cookies_rotated,
+        scraper,
+        user,
+        mock_user_data,
+        mock_posts_data,
+    ):
+        """토큰이 가리키는 velog 계정이 행과 다르면 아무것도 쓰지 않는지.
+
+        그대로 처리하면 그 계정의 토큰·사용자 정보가 이 행에 저장되고, 같은
+        게시글을 두 행이 함께 갱신해 일별 통계가 중복된다. 새 토큰 쿠키가 없는
+        응답도 사용자 정보·통계는 쓰므로 두 경우를 모두 본다.
+        """
+        other_account_id = str(uuid.uuid4())
+        mock_user_data["data"]["currentUser"]["id"] = other_account_id
+
+        mocks = await run_process_user(
+            scraper,
+            user,
+            mock_user_data,
+            mock_posts_data,
+            cookies_rotated=cookies_rotated,
+        )
+
+        for mock in mocks.values():
+            mock.assert_not_called()
+        assert mock_logger.warning.call_count == 1
+        assert f"user id: {user.id})" in str(mock_logger.warning.call_args)
+        logged = str(mock_logger.mock_calls)
+        assert not any(
+            value in logged for value in (user.email, other_account_id)
+        )
 
     @pytest.mark.asyncio
     async def test_process_user_writes_stats_for_every_post(
         self, scraper, user, mock_user_data, mock_posts_data
     ):
         """여러 포스트가 각자의 views 로 순서대로 저장되는지"""
-        mock_update_stats = await run_process_user(
+        mocks = await run_process_user(
             scraper, user, mock_user_data, mock_posts_data
         )
 
-        written = [call.args[1] for call in mock_update_stats.call_args_list]
+        written = [
+            call.args[1]
+            for call in mocks["update_daily_statistics"].call_args_list
+        ]
         assert written == [150, 320]
 
     @patch("scraping.main.fetch_velog_user_chk")
@@ -580,6 +639,9 @@ class TestScraperTokenAndUserInfoAndProcessing:
         assert mock_logger.info.call_count >= 2  # 시작과 종료 로그
         mock_process.assert_called_once_with(test_user, mock_session_instance)
         assert mock_session.call_args.kwargs["timeout"] is VELOG_HTTP_TIMEOUT
+        assert isinstance(
+            mock_session.call_args.kwargs["cookie_jar"], aiohttp.DummyCookieJar
+        )
 
     @pytest.mark.asyncio
     @pytest.mark.django_db
@@ -617,6 +679,9 @@ class TestScraperTokenAndUserInfoAndProcessing:
         # process_user 호출 확인
         mock_process.assert_called_once()
         assert mock_session.call_args.kwargs["timeout"] is VELOG_HTTP_TIMEOUT
+        assert isinstance(
+            mock_session.call_args.kwargs["cookie_jar"], aiohttp.DummyCookieJar
+        )
 
     @patch("scraping.main.AESEncryption")
     @pytest.mark.asyncio
