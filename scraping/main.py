@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import uuid
 from typing import Any
 
 import aiohttp
@@ -365,6 +366,18 @@ class Scraper:
         ):
             logger.warning(
                 f"Failed to fetch user data because of wrong tokens. (user velog uuid: {user.velog_uuid})"
+            )
+            return
+
+        # 토큰이 가리키는 velog 계정이 이 행이 아니면 아무것도 쓰지 않는다. 그대로
+        # 처리하면 그 계정의 토큰·정보가 이 행에 저장되고, 같은 게시글을 두 행이
+        # 함께 갱신해 일별 통계가 중복된다.
+        if (
+            uuid.UUID(user_data["data"]["currentUser"]["id"])
+            != user.velog_uuid
+        ):
+            logger.warning(
+                f"Skipped user because tokens belong to another velog account. (user id: {user.id})"
             )
             return
 

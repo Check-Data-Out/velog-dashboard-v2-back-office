@@ -403,6 +403,32 @@ class TestScraperTokenAndUserInfoAndProcessing:
         assert user.email not in logged
         assert f"user id: {user.id})" in logged
 
+    @patch("scraping.main.logger")
+    @pytest.mark.asyncio
+    async def test_process_user_skips_row_whose_tokens_belong_to_other_account(
+        self, mock_logger, scraper, user, mock_user_data, mock_posts_data
+    ):
+        """토큰이 가리키는 velog 계정이 행과 다르면 아무것도 쓰지 않는지.
+
+        그대로 처리하면 그 계정의 토큰·사용자 정보가 이 행에 저장되고, 같은
+        게시글을 두 행이 함께 갱신해 일별 통계가 중복된다.
+        """
+        other_account_id = str(uuid.uuid4())
+        mock_user_data["data"]["currentUser"]["id"] = other_account_id
+
+        mocks = await run_process_user(
+            scraper, user, mock_user_data, mock_posts_data
+        )
+
+        for mock in mocks.values():
+            mock.assert_not_called()
+        assert mock_logger.warning.call_count == 1
+        warning = str(mock_logger.warning.call_args)
+        assert f"user id: {user.id})" in warning
+        assert not any(
+            value in warning for value in (user.email, other_account_id)
+        )
+
     @pytest.mark.asyncio
     async def test_process_user_writes_stats_for_every_post(
         self, scraper, user, mock_user_data, mock_posts_data
