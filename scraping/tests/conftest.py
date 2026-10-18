@@ -54,12 +54,16 @@ def user(db):
 
 
 @pytest.fixture
-def mock_user_data():
-    """테스트용 user_data 구조"""
+def mock_user_data(user):
+    """테스트용 user_data 구조.
+
+    currentUser.id 는 테스트 사용자의 velog_uuid 를 가리킨다. 운영처럼 응답 id 는
+    문자열, DB 의 velog_uuid 는 UUID 객체로 둔다.
+    """
     return {
         "data": {
             "currentUser": {
-                "id": "user-123",
+                "id": str(user.velog_uuid),
                 "email": "test@example.com",
                 "username": "testuser",
                 "profile": {"thumbnail": "https://example.com/thumbnail.jpg"},
