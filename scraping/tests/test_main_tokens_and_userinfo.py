@@ -1,6 +1,7 @@
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import pytest
 from asgiref.sync import sync_to_async
 from django.db import OperationalError
@@ -618,6 +619,9 @@ class TestScraperTokenAndUserInfoAndProcessing:
         assert mock_logger.info.call_count >= 2  # 시작과 종료 로그
         mock_process.assert_called_once_with(test_user, mock_session_instance)
         assert mock_session.call_args.kwargs["timeout"] is VELOG_HTTP_TIMEOUT
+        assert isinstance(
+            mock_session.call_args.kwargs["cookie_jar"], aiohttp.DummyCookieJar
+        )
 
     @pytest.mark.asyncio
     @pytest.mark.django_db
