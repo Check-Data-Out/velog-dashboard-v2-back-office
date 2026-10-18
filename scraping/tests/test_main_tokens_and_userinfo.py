@@ -18,7 +18,7 @@ MISSING_VIEWS = object()
 
 
 async def run_process_user(scraper, user, mock_user_data, posts, written=True):
-    """process_user 를 실행하고 update_daily_statistics mock 을 반환.
+    """process_user 를 실행하고 토큰·사용자 정보·통계 갱신 mock 을 이름별 dict 로 반환.
 
     written 으로 DB 쓰기 성공 여부를 흉내낼 수 있다.
     """
@@ -32,13 +32,13 @@ async def run_process_user(scraper, user, mock_user_data, posts, written=True):
             "update_old_tokens",
             new_callable=AsyncMock,
             return_value=True,
-        ),
+        ) as mock_update_tokens,
         patch.object(
             scraper,
             "update_old_user_info",
             new_callable=AsyncMock,
             return_value=True,
-        ),
+        ) as mock_update_user_info,
         patch.object(scraper, "bulk_upsert_posts", new_callable=AsyncMock),
         patch.object(
             scraper, "sync_post_active_status", new_callable=AsyncMock
@@ -64,7 +64,11 @@ async def run_process_user(scraper, user, mock_user_data, posts, written=True):
 
         await scraper.process_user(user, AsyncMock())
 
-    return mock_update_stats
+    return {
+        "update_old_tokens": mock_update_tokens,
+        "update_old_user_info": mock_update_user_info,
+        "update_daily_statistics": mock_update_stats,
+    }
 
 
 class TestScraperTokenAndUserInfoAndProcessing:
@@ -203,11 +207,12 @@ class TestScraperTokenAndUserInfoAndProcessing:
         else:
             post["views"] = views
 
-        mock_update_stats = await run_process_user(
-            scraper, user, mock_user_data, [post]
-        )
+        mocks = await run_process_user(scraper, user, mock_user_data, [post])
 
-        written = [call.args[1] for call in mock_update_stats.call_args_list]
+        written = [
+            call.args[1]
+            for call in mocks["update_daily_statistics"].call_args_list
+        ]
         assert written == expected
 
     @patch("scraping.main.logger")
@@ -403,11 +408,14 @@ class TestScraperTokenAndUserInfoAndProcessing:
         self, scraper, user, mock_user_data, mock_posts_data
     ):
         """여러 포스트가 각자의 views 로 순서대로 저장되는지"""
-        mock_update_stats = await run_process_user(
+        mocks = await run_process_user(
             scraper, user, mock_user_data, mock_posts_data
         )
 
-        written = [call.args[1] for call in mock_update_stats.call_args_list]
+        written = [
+            call.args[1]
+            for call in mocks["update_daily_statistics"].call_args_list
+        ]
         assert written == [150, 320]
 
     @patch("scraping.main.fetch_velog_user_chk")
