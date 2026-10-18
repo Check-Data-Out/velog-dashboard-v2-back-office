@@ -18,10 +18,13 @@ from users.models import User
 MISSING_VIEWS = object()
 
 
-async def run_process_user(scraper, user, mock_user_data, posts, written=True):
+async def run_process_user(
+    scraper, user, mock_user_data, posts, written=True, cookies_rotated=True
+):
     """process_user 를 실행하고 패치한 쓰기 메서드 mock 을 이름별 dict 로 반환.
 
-    written 으로 DB 쓰기 성공 여부를 흉내낼 수 있다.
+    written 으로 DB 쓰기 성공 여부를, cookies_rotated 로 velog 응답이 새 토큰
+    쿠키를 줬는지를 흉내낼 수 있다.
     """
     with (
         patch("scraping.main.AESEncryption") as mock_aes,
@@ -56,13 +59,12 @@ async def run_process_user(scraper, user, mock_user_data, posts, written=True):
         encryption = mock_aes.return_value
         encryption.decrypt.side_effect = lambda token: f"decrypted-{token}"
         encryption.encrypt.side_effect = lambda token: f"encrypted-{token}"
-        mock_chk.return_value = (
-            {
-                "access_token": "new-token",
-                "refresh_token": "new-refresh-token",
-            },
-            mock_user_data,
+        new_cookies = (
+            {"access_token": "new-token", "refresh_token": "new-refresh-token"}
+            if cookies_rotated
+            else {}
         )
+        mock_chk.return_value = (new_cookies, mock_user_data)
         mock_posts.return_value = posts
 
         await scraper.process_user(user, AsyncMock())
@@ -408,21 +410,35 @@ class TestScraperTokenAndUserInfoAndProcessing:
         assert user.email not in logged
         assert f"user id: {user.id})" in logged
 
+    @pytest.mark.parametrize(
+        "cookies_rotated", [True, False], ids=["새쿠키있음", "새쿠키없음"]
+    )
     @patch("scraping.main.logger")
     @pytest.mark.asyncio
     async def test_process_user_skips_row_whose_tokens_belong_to_other_account(
-        self, mock_logger, scraper, user, mock_user_data, mock_posts_data
+        self,
+        mock_logger,
+        cookies_rotated,
+        scraper,
+        user,
+        mock_user_data,
+        mock_posts_data,
     ):
         """토큰이 가리키는 velog 계정이 행과 다르면 아무것도 쓰지 않는지.
 
         그대로 처리하면 그 계정의 토큰·사용자 정보가 이 행에 저장되고, 같은
-        게시글을 두 행이 함께 갱신해 일별 통계가 중복된다.
+        게시글을 두 행이 함께 갱신해 일별 통계가 중복된다. 새 토큰 쿠키가 없는
+        응답도 사용자 정보·통계는 쓰므로 두 경우를 모두 본다.
         """
         other_account_id = str(uuid.uuid4())
         mock_user_data["data"]["currentUser"]["id"] = other_account_id
 
         mocks = await run_process_user(
-            scraper, user, mock_user_data, mock_posts_data
+            scraper,
+            user,
+            mock_user_data,
+            mock_posts_data,
+            cookies_rotated=cookies_rotated,
         )
 
         for mock in mocks.values():
