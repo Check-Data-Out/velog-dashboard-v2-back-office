@@ -202,7 +202,7 @@ gh workflow run "Daily Stats Cleanup" -f retention_months=6 -f dry_run=true
 
 ### 일별 통계 (post_id, date) 중복 정리
 
-`posts` 0008 마이그레이션은 `posts_postdailystatistics` 에 `(post_id, date)` 유니크 제약 `posts_pds_post_date_uniq` 를 무중단으로 추가한다. `CREATE UNIQUE INDEX CONCURRENTLY` 로 인덱스를 만든 뒤 같은 이름으로 `ADD CONSTRAINT … UNIQUE USING INDEX` 승격한다. 세션의 `statement_timeout`·`lock_timeout` 을 직접 조정하므로 Session Mode(5432) 또는 Direct Connection 에서 실행한다.
+`posts` 0008 마이그레이션은 `posts_postdailystatistics` 에 `(post_id, date)` 유니크 제약 `posts_pds_post_date_uniq` 를 무중단으로 추가한다. `CREATE UNIQUE INDEX CONCURRENTLY` 로 인덱스를 만든 뒤 같은 이름으로 `ADD CONSTRAINT … UNIQUE USING INDEX` 승격한다. 세션의 `statement_timeout`·`lock_timeout`(PostgreSQL 17 이상은 `transaction_timeout` 도)을 직접 조정하므로 Session Mode(5432) 또는 Direct Connection 에서 실행한다.
 
 같은 (post_id, date) 행이 이미 있으면 인덱스를 만들기 전에 중복 그룹 수를 알리며 실패한다. 아래 순서로 정리한 뒤 다시 `migrate` 한다. `--fake` 로 건너뛰면 제약 없이 적용 기록만 남으므로 쓰지 않는다. 같은 그룹의 행은 값이 같아서 그룹마다 `min(id)` 한 행만 남겨도 정보가 사라지지 않는다.
 
