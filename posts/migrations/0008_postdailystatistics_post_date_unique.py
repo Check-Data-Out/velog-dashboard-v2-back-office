@@ -16,8 +16,8 @@ DUPLICATE_GROUPS_SQL = (
     f"  SELECT 1 FROM {TABLE_NAME} GROUP BY post_id, date HAVING count(*) > 1"
     ") AS duplicated;"
 )
-# 이 테이블의 인덱스만 본다. 다른 테이블에 같은 이름 인덱스가 있으면 건드리지 않고,
-# 뒤의 CREATE INDEX 가 이름 충돌로 멈춘다.
+# 이 테이블의 인덱스만 본다. 다른 테이블에 같은 이름 인덱스가 있으면 건드리지 않는다
+# (적용 때는 뒤의 CREATE INDEX 가 이름 충돌로 멈춘다).
 INDEX_VALID_SQL = (
     "SELECT indisvalid FROM pg_index"
     " WHERE indexrelid = to_regclass(%s)"
@@ -122,11 +122,12 @@ def drop_constraint(apps, schema_editor):
         schema_editor.execute(
             f"ALTER TABLE {TABLE_NAME} DROP CONSTRAINT IF EXISTS {CONSTRAINT_NAME};"
         )
-        # 승격 전에 끊겨 인덱스만 남은 상태를 정리한다.
-        schema_editor.execute("SET lock_timeout = 0;")
-        schema_editor.execute(
-            f"DROP INDEX CONCURRENTLY IF EXISTS {CONSTRAINT_NAME};"
-        )
+        # 승격 전에 끊겨 이 테이블에 인덱스만 남은 상태를 정리한다.
+        if _fetch_one(schema_editor, INDEX_VALID_SQL, [CONSTRAINT_NAME]):
+            schema_editor.execute("SET lock_timeout = 0;")
+            schema_editor.execute(
+                f"DROP INDEX CONCURRENTLY IF EXISTS {CONSTRAINT_NAME};"
+            )
     finally:
         for name in timeouts:
             schema_editor.execute(f"RESET {name};")
