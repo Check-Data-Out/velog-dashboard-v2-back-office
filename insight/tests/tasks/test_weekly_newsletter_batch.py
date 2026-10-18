@@ -238,6 +238,10 @@ class TestWeeklyNewsletterBatch:
 
         assert len(success_ids) == 0
         assert newsletter_batch.ses_client.send_email.call_count == 3
+        # 실패 로그는 공개 Actions 로그에 남으므로 수신자 주소를 담지 않는다
+        assert sample_newsletters[0].email_message.to[0] not in str(
+            mock_logger.mock_calls
+        )
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     @pytest.mark.django_db

@@ -367,7 +367,7 @@ class WeeklyNewsletterBatch:
                     failed_count += 1
                     error_message = str(e)
                     logger.error(
-                        f"Failed to send newsletter to (id: {newsletter.user_id} email: {newsletter.email_message.to[0]}) "
+                        f"Failed to send newsletter to (id: {newsletter.user_id}) "
                         f"(attempt {failed_count}/{self.max_retry_count}): {e}"
                     )
                     # 재시도 전 대기
