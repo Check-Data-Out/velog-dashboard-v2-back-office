@@ -19,6 +19,7 @@ def test_daily_set_ranges_partition_all_groups():
         defaults = re.findall(r"default: '(\d+)'", text)
         fallbacks = re.findall(r"\|\| '(\d+)'", text)
         assert defaults == fallbacks, path.name
+        assert len(fallbacks) == 2, path.name
 
         low, high = (int(value) for value in fallbacks)
         groups.extend(range(low, high + 1))
