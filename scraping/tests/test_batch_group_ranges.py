@@ -8,9 +8,9 @@ WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 def test_daily_set_ranges_partition_all_groups():
     """세트 배치들이 그룹 1~1000 을 겹침·빈틈 없이 나눠 맡는지.
 
-    상한 1000 은 가입 때 그룹을 고르는 generate_random_group_id(utils/utils.py)의
-    범위다. 두 세트가 같은 그룹을 맡으면 같은 게시글을 거의 동시에 처리해 일별 통계
-    행이 중복된다. 스케줄 실행은 cron 대체값(`|| 'N'`)을 쓰므로 그 값으로 구간을
+    상한 1000 은 가입 때 그룹을 고르는 범위다(API 의 generateRandomGroupId, 모델
+    기본값 generate_random_group_id). 두 세트가 같은 그룹을 맡으면 같은 게시글을
+    거의 동시에 처리해 일별 통계 행이 중복된다. 스케줄 실행은 cron 대체값(`|| 'N'`)을 쓰므로 그 값으로 구간을
     펼치고, 수동 실행 기본값(`default: 'N'`)과도 같은지 본다.
     """
     groups = []
