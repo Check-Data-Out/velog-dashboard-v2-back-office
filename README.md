@@ -191,7 +191,7 @@ poetry run pre-commit run --all-files
 
 운영 DB 는 Supabase 기반 PostgreSQL 17 (`posts_postdailystatistics` 는 일반 테이블). **Session Mode (포트 5432) 또는 Direct Connection 사용 필수** — Transaction Mode(6543)에서는 `SET LOCAL` / `transaction.atomic` 이 보장되지 않는다. 운영 DB role 은 `run-daily-aggre-set*.yaml` 의 `POSTGRES_USER` 와 동일 (이미 매일 stats INSERT/UPDATE/DELETE 권한 보유).
 
-같은 workflow 의 `db-invariants` job 이 매일 `manage.py check_db_invariants` 로 운영 DB 에 `timescaledb` 확장이나 `test_*` DB 가 없는지 검사하고, 위반 시 Slack 으로 알린다. Supabase 의 TimescaleDB(Apache 빌드)는 기본 job 이 라이선스 오류로 초당 1회 실패하며 로그를 무한히 쌓아 디스크를 키운다.
+같은 workflow 의 `db-invariants` job 이 매일 `manage.py check_db_invariants` 로 운영 DB 에 `timescaledb` 확장이나 `test_*` DB 가 없는지, 일별 통계 유니크 제약(`posts_pds_post_date_uniq`, 아래 절)이 있는지 검사하고, 위반 시 Slack 으로 알린다. Supabase 의 TimescaleDB(Apache 빌드)는 기본 job 이 라이선스 오류로 초당 1회 실패하며 로그를 무한히 쌓아 디스크를 키운다.
 
 ```bash
 # 로컬 dry-run
