@@ -16,8 +16,12 @@ DUPLICATE_GROUPS_SQL = (
     f"  SELECT 1 FROM {TABLE_NAME} GROUP BY post_id, date HAVING count(*) > 1"
     ") AS duplicated;"
 )
+# 이 테이블의 인덱스만 본다. 다른 테이블에 같은 이름 인덱스가 있으면 건드리지 않고,
+# 뒤의 CREATE INDEX 가 이름 충돌로 멈춘다.
 INDEX_VALID_SQL = (
-    "SELECT indisvalid FROM pg_index WHERE indexrelid = to_regclass(%s);"
+    "SELECT indisvalid FROM pg_index"
+    " WHERE indexrelid = to_regclass(%s)"
+    f"  AND indrelid = '{TABLE_NAME}'::regclass;"
 )
 # 그룹마다 min(id) 한 행만 남긴다(같은 그룹의 행은 값이 같아 정보 손실이 없다).
 DEDUPE_SQL = (
