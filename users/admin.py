@@ -91,7 +91,8 @@ class UserAdmin(admin.ModelAdmin):
         return obj.post_count
 
     @admin.action(
-        description="선택된 사용자 비활성화(모든 기기 로그아웃, 다시 로그인하면 복귀)"
+        description="선택된 사용자 비활성화(모든 기기 로그아웃, 다시 로그인하면 복귀)",
+        permissions=["change"],
     )
     def make_inactive(self, request: HttpRequest, queryset: QuerySet[User]):
         updated = queryset.update(
