@@ -1,7 +1,7 @@
 import logging
 
 from django.contrib import admin, messages
-from django.db.models import Count, Prefetch, QuerySet
+from django.db.models import Count, F, Prefetch, QuerySet
 from django.http import HttpRequest
 from django.urls import reverse
 from django.utils.html import format_html
@@ -35,6 +35,7 @@ class UserAdmin(admin.ModelAdmin):
 
     empty_value_display = "-"
     ordering = ["-created_at"]
+    readonly_fields = ["session_version"]
 
     actions = ["make_inactive", "update_stats", "make_unsubscribed"]
 
@@ -89,9 +90,14 @@ class UserAdmin(admin.ModelAdmin):
     def post_count(self, obj: User):
         return obj.post_count
 
-    @admin.action(description="선택된 사용자를 비활성화")
+    @admin.action(
+        description="선택된 사용자 비활성화(모든 기기 로그아웃, 다시 로그인하면 복귀)",
+        permissions=["change"],
+    )
     def make_inactive(self, request: HttpRequest, queryset: QuerySet[User]):
-        updated = queryset.update(is_active=False)
+        updated = queryset.update(
+            is_active=False, session_version=F("session_version") + 1
+        )
         logger.info(
             f"{request.user} 가 {updated} 명 사용자를 비활성화 했습니다."
         )

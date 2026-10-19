@@ -1,6 +1,11 @@
+import uuid
 from unittest.mock import patch
 
 import pytest
+from django.contrib.auth.models import Permission
+from django.contrib.auth.models import User as DjangoUser
+from django.http import HttpRequest
+from django.urls import reverse
 
 from users.models import User
 
@@ -61,5 +66,50 @@ class TestUserAdmin:
 
         # 로깅 확인
         mock_logger.assert_called_once()
+
+    @patch("users.admin.logger.info")
+    def test_make_inactive_bumps_session_version(
+        self, mock_logger, user_admin, user, request_with_messages
+    ):
+        other = User.objects.create(
+            velog_uuid=uuid.uuid4(),
+            access_token="other-access-token",
+            refresh_token="other-refresh-token",
+            group_id=2,
+        )
+
+        user_admin.make_inactive(
+            request_with_messages, User.objects.filter(pk=user.pk)
+        )
+
+        user.refresh_from_db()
+        other.refresh_from_db()
+        assert user.session_version == 1
+        # 선택하지 않은 사용자의 세션은 그대로 둔다
+        assert other.session_version == 0
+
+    def test_make_inactive_requires_change_permission(self, user_admin, db):
+        viewer = DjangoUser.objects.create_user(
+            username="viewer", password="viewerpassword", is_staff=True
+        )
+        viewer.user_permissions.add(
+            Permission.objects.get(
+                codename="view_user", content_type__app_label="users"
+            )
+        )
+        request = HttpRequest()
+        request.user = viewer
+
+        assert "make_inactive" not in user_admin.get_actions(request)
+
+    def test_change_page_has_no_session_version_input(
+        self, client_logged_in, user
+    ):
+        response = client_logged_in.get(
+            reverse("admin:users_user_change", args=[user.pk])
+        )
+
+        assert response.status_code == 200
+        assert 'name="session_version"' not in response.content.decode()
 
     # update_stats 동기 경로 테스트는 users/tests/test_admin_update_stats.py 로 이전됨.

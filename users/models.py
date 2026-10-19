@@ -50,6 +50,9 @@ class User(TimeStampedModel):
     newsletter_subscribed = models.BooleanField(
         default=True, null=False, verbose_name="뉴스레터 구독 여부"
     )
+    session_version = models.PositiveIntegerField(
+        default=0, db_default=0, verbose_name="세션 버전"
+    )
 
     def __str__(self) -> str:
         return f"{self.velog_uuid}"
