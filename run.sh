@@ -25,10 +25,13 @@ gunicorn --workers 2 --bind 0.0.0.0:8000 --log-level=info \
     --max-requests-jitter=100 --pid "$PID_FILE" \
     backoffice.wsgi:application --daemon
 
-if ! curl -fsS -o /dev/null -H "Host: ${HEALTH_HOST}" \
-    --retry 10 --retry-delay 2 --retry-all-errors "$HEALTH_URL"; then
+# 응답한 것이 새로 띄운 마스터인지도 본다 (남은 옛 워커가 대신 응답하는 경우를 거른다)
+if ! curl -fsS -o /dev/null -H "Host: ${HEALTH_HOST}" --connect-timeout 2 --max-time 5 \
+    --retry 10 --retry-delay 2 --retry-all-errors "$HEALTH_URL" \
+    || ! kill -0 "$(cat "$PID_FILE" 2>/dev/null)" 2>/dev/null; then
     echo "헬스체크 실패: ${HEALTH_URL}" >&2
     tail -n 20 ./gunicorn-error.log >&2 || true
+    echo "기존 gunicorn 은 이미 종료됐습니다. 직전 커밋($(git rev-parse --short 'HEAD@{1}' 2>/dev/null || echo '?'))으로 되돌린 뒤 ./run.sh 를 다시 실행하세요." >&2
     exit 1
 fi
 
