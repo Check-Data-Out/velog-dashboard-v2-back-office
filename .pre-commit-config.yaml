@@ -12,3 +12,15 @@ repos:
         files: "(scraping|modules)"
         args: [--strict, --ignore-missing-imports, --pretty]
         exclude: "(tests/|test_|migrations/|conftest)"
+  # lock 정합성 검사와 requirements.txt 생성 (운영 웹은 run.sh 에서 requirements.txt 로 설치한다)
+  # 이 레포는 Poetry 1.8 이므로 rev 를 1.8 계열로 고정한다. autoupdate 는 Poetry 2 용으로 올려 버리니 손으로 관리한다.
+  - repo: https://github.com/python-poetry/poetry
+    rev: 1.8.4
+    hooks:
+      - id: poetry-check
+        args: ["--lock"]
+  - repo: https://github.com/python-poetry/poetry-plugin-export
+    rev: 1.8.0
+    hooks:
+      - id: poetry-export
+        args: ["-f", "requirements.txt", "--without-hashes", "-o", "requirements.txt"]
