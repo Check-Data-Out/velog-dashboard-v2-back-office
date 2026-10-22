@@ -222,11 +222,19 @@ class QRLoginTokenAdmin(admin.ModelAdmin):
         "is_used",
         "ip_address",
         "user_agent",
+        "used_at",
+        "used_ip",
     )
     list_filter = ("is_used", "expires_at")
     search_fields = ("token", "ip_address")
     ordering = ("-id",)
-    readonly_fields = ("token", "created_at")
+    readonly_fields = (
+        "token",
+        "created_at",
+        "used_at",
+        "used_ip",
+        "used_user_agent",
+    )
     actions = ["make_used", "make_unused"]
 
     @admin.display(description="사용자")
