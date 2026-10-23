@@ -8,6 +8,10 @@ import base64
 import hashlib
 import hmac
 
+UNSUBSCRIBE_ENDPOINT = (
+    "https://velog-dashboard.kro.kr/api/user/newsletter-unsubscribe"
+)
+
 
 def sign_unsubscribe(secret: str, uid: int) -> str:
     """사용자 id 의 수신거부 서명을 만든다.
@@ -25,3 +29,18 @@ def sign_unsubscribe(secret: str, uid: int) -> str:
         hashlib.sha256,
     ).digest()
     return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+
+
+def build_unsubscribe_url(secret: str, uid: int) -> str:
+    """사용자 id 의 서명된 수신거부 URL 을 만든다.
+
+    Args:
+        secret: 수신거부 서명 키
+        uid: 사용자 id
+
+    Returns:
+        uid 와 서명을 쿼리로 담은 수신거부 URL
+    """
+    return (
+        f"{UNSUBSCRIBE_ENDPOINT}?uid={uid}&sig={sign_unsubscribe(secret, uid)}"
+    )

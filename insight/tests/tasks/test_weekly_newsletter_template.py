@@ -1,8 +1,10 @@
+from html import unescape
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from insight.models import WeeklyUserTrendInsight
+from modules.mail.unsubscribe import sign_unsubscribe
 from utils.utils import from_dict
 
 
@@ -188,7 +190,11 @@ class TestWeeklyNewsletterTemplate:
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     def test_get_newsletter_html_success(
-        self, mock_logger, newsletter_batch, user_values
+        self,
+        mock_logger,
+        newsletter_batch,
+        user_values,
+        newsletter_unsubscribe_secret,
     ):
         """정상 사용자 뉴스레터 HTML 렌더링 테스트"""
         is_expired_token_user = False
@@ -209,14 +215,21 @@ class TestWeeklyNewsletterTemplate:
         assert "대시보드 보러가기" in newsletter_html
         assert "Weekly Report" in newsletter_html
         assert "Velog Dashboard" in newsletter_html
-        assert (
-            "user/newsletter-unsubscribe?email=" + user_values["email"]
-            in newsletter_html
+        unsubscribe_url = (
+            "https://velog-dashboard.kro.kr/api/user/newsletter-unsubscribe"
+            f"?uid={user_values['id']}"
+            f"&sig={sign_unsubscribe(newsletter_unsubscribe_secret, user_values['id'])}"
         )
+        assert unsubscribe_url in unescape(newsletter_html)
+        assert "email=" not in newsletter_html
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     def test_get_newsletter_html_expired_token_user(
-        self, mock_logger, newsletter_batch, user_values
+        self,
+        mock_logger,
+        newsletter_batch,
+        user_values,
+        newsletter_unsubscribe_secret,
     ):
         """토큰 만료 사용자 뉴스레터 HTML 렌더링 테스트"""
         is_expired_token_user = True
@@ -240,10 +253,13 @@ class TestWeeklyNewsletterTemplate:
         assert user_weekly_trend_html not in newsletter_html
         assert "대시보드 보러가기" in newsletter_html
         assert "활동 리포트" in newsletter_html
-        assert (
-            "user/newsletter-unsubscribe?email=" + user_values["email"]
-            in newsletter_html
+        unsubscribe_url = (
+            "https://velog-dashboard.kro.kr/api/user/newsletter-unsubscribe"
+            f"?uid={user_values['id']}"
+            f"&sig={sign_unsubscribe(newsletter_unsubscribe_secret, user_values['id'])}"
         )
+        assert unsubscribe_url in unescape(newsletter_html)
+        assert "email=" not in newsletter_html
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     def test_get_newsletter_html_exception(

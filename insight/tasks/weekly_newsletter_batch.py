@@ -30,6 +30,7 @@ from insight.models import (
 from insight.schemas import Newsletter, NewsletterContext
 from modules.mail.schemas import AWSSESCredentials, EmailMessage
 from modules.mail.ses.client import SESClient
+from modules.mail.unsubscribe import build_unsubscribe_url
 from noti.models import NotiMailLog
 from users.models import User
 from utils.utils import (
@@ -251,7 +252,9 @@ class WeeklyNewsletterBatch:
                         is_expired_token_user=is_expired_token_user,
                         weekly_trend_html=weekly_trend_html,
                         user_weekly_trend_html=user_weekly_trend_html,
-                        unsubscribe_url=f"https://velog-dashboard.kro.kr/api/user/newsletter-unsubscribe?email={user['email']}",
+                        unsubscribe_url=build_unsubscribe_url(
+                            settings.NEWSLETTER_UNSUBSCRIBE_SECRET, user["id"]
+                        ),
                     )
                 ),
             )
