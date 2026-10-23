@@ -457,6 +457,15 @@ class WeeklyNewsletterBatch:
         total_failed = 0
 
         try:
+            # 서명 없는 수신거부 링크로 발송하지 않도록 키가 없으면 배치 종료
+            if not settings.NEWSLETTER_UNSUBSCRIBE_SECRET:
+                logger.error(
+                    "NEWSLETTER_UNSUBSCRIBE_SECRET is empty, batch stopped"
+                )
+                raise Exception(
+                    "NEWSLETTER_UNSUBSCRIBE_SECRET is empty, batch stopped"
+                )
+
             # ========================================================== #
             # STEP1: 토큰이 유효성 체크 및 업데이트. 이후 사용자 정보 업데이트
             # ========================================================== #

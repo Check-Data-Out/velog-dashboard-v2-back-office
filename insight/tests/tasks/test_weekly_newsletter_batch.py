@@ -358,6 +358,28 @@ class TestWeeklyNewsletterBatch:
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     @pytest.mark.django_db
+    def test_run_empty_unsubscribe_secret_failure(
+        self, mock_logger, newsletter_batch, settings
+    ):
+        """수신거부 서명 키가 비어 있으면 발송 전에 실패한다"""
+        settings.NEWSLETTER_UNSUBSCRIBE_SECRET = ""
+
+        with (
+            patch.object(
+                newsletter_batch, "_get_target_user_chunks"
+            ) as mock_get_chunks,
+            patch.object(newsletter_batch, "_send_newsletters") as mock_send,
+        ):
+            with pytest.raises(
+                Exception, match="NEWSLETTER_UNSUBSCRIBE_SECRET"
+            ):
+                newsletter_batch.run()
+
+            mock_get_chunks.assert_not_called()
+            mock_send.assert_not_called()
+
+    @patch("insight.tasks.weekly_newsletter_batch.logger")
+    @pytest.mark.django_db
     def test_run_no_weekly_trend_data_failure(
         self, mock_logger, newsletter_batch, user
     ):
