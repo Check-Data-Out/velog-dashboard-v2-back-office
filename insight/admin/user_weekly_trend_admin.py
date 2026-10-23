@@ -1,5 +1,6 @@
 from html import escape
 
+from django.conf import settings
 from django.contrib import admin
 from django.http import HttpRequest
 from django.template.loader import render_to_string
@@ -7,13 +8,17 @@ from django.urls import reverse
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
-from insight.admin.base_admin import BaseTrendAdminMixin
+from insight.admin.base_admin import (
+    UNSUBSCRIBE_PREVIEW_TEXT,
+    BaseTrendAdminMixin,
+)
 from insight.models import (
     UserWeeklyTrend,
     WeeklyTrend,
     WeeklyTrendInsight,
     WeeklyUserTrendInsight,
 )
+from modules.mail.unsubscribe import build_unsubscribe_url
 from utils.utils import from_dict
 
 
@@ -139,6 +144,13 @@ class UserWeeklyTrendAdmin(admin.ModelAdmin, BaseTrendAdminMixin):
                 },
             )
 
+            # 서명 키와 사용자가 있을 때만 실제 수신거부 링크를 만든다
+            unsubscribe_url = UNSUBSCRIBE_PREVIEW_TEXT
+            if obj.user and settings.NEWSLETTER_UNSUBSCRIBE_SECRET:
+                unsubscribe_url = build_unsubscribe_url(
+                    settings.NEWSLETTER_UNSUBSCRIBE_SECRET, obj.user.id
+                )
+
             # 최종 뉴스레터 렌더링
             final_html = render_to_string(
                 "insights/index.html",
@@ -152,8 +164,7 @@ class UserWeeklyTrendAdmin(admin.ModelAdmin, BaseTrendAdminMixin):
                     "is_expired_token_user": False,
                     "weekly_trend_html": weekly_trend_html,
                     "user_weekly_trend_html": user_weekly_trend_html,
-                    "unsubscribe_url": "https://velog-dashboard.kro.kr/api/user/newsletter-unsubscribe?email="
-                    + (obj.user.email if obj.user else "N/A"),
+                    "unsubscribe_url": unsubscribe_url,
                 },
             )
 
