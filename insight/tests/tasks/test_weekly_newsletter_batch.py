@@ -397,13 +397,18 @@ class TestWeeklyNewsletterBatch:
             ):
                 newsletter_batch.run()
 
+    @pytest.mark.parametrize(
+        "secret",
+        ["", "x" * 31],
+        ids=["empty", "shorter_than_32_bytes"],
+    )
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     @pytest.mark.django_db
-    def test_run_empty_unsubscribe_secret_failure(
-        self, mock_logger, newsletter_batch, settings
+    def test_run_invalid_unsubscribe_secret_failure(
+        self, mock_logger, newsletter_batch, settings, secret
     ):
-        """수신거부 서명 키가 비어 있으면 발송 전에 실패한다"""
-        settings.NEWSLETTER_UNSUBSCRIBE_SECRET = ""
+        """수신거부 서명 키가 비었거나 32바이트보다 짧으면 발송 전에 실패한다 (API 기동 조건과 같음)"""
+        settings.NEWSLETTER_UNSUBSCRIBE_SECRET = secret
 
         with (
             patch.object(

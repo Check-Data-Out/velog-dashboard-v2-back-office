@@ -468,13 +468,15 @@ class WeeklyNewsletterBatch:
         total_failed = 0
 
         try:
-            # 서명 없는 수신거부 링크로 발송하지 않도록 키가 없으면 배치 종료
-            if not settings.NEWSLETTER_UNSUBSCRIBE_SECRET:
+            # API 가 검증하지 못할 수신거부 링크로 발송하지 않도록
+            # 키가 없거나 API 기동 조건(32바이트 이상)보다 짧으면 배치 종료
+            secret = settings.NEWSLETTER_UNSUBSCRIBE_SECRET
+            if not secret or len(secret.encode()) < 32:
                 logger.error(
-                    "NEWSLETTER_UNSUBSCRIBE_SECRET is empty, batch stopped"
+                    "NEWSLETTER_UNSUBSCRIBE_SECRET must be at least 32 bytes, batch stopped"
                 )
                 raise Exception(
-                    "NEWSLETTER_UNSUBSCRIBE_SECRET is empty, batch stopped"
+                    "NEWSLETTER_UNSUBSCRIBE_SECRET must be at least 32 bytes, batch stopped"
                 )
 
             # ========================================================== #
