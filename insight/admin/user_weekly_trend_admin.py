@@ -1,6 +1,5 @@
 from html import escape
 
-from django.conf import settings
 from django.contrib import admin
 from django.http import HttpRequest
 from django.template.loader import render_to_string
@@ -18,7 +17,6 @@ from insight.models import (
     WeeklyTrendInsight,
     WeeklyUserTrendInsight,
 )
-from modules.mail.unsubscribe import build_unsubscribe_url
 from utils.utils import from_dict
 
 
@@ -144,16 +142,6 @@ class UserWeeklyTrendAdmin(admin.ModelAdmin, BaseTrendAdminMixin):
                 },
             )
 
-            # 서명 키와 사용자가 있을 때만 실제 수신거부 링크를 만들고,
-            # 그 외에는 빈 링크 옆에 안내 문구를 보여 준다
-            unsubscribe_url = "#"
-            unsubscribe_notice = UNSUBSCRIBE_PREVIEW_TEXT
-            if obj.user and settings.NEWSLETTER_UNSUBSCRIBE_SECRET:
-                unsubscribe_url = build_unsubscribe_url(
-                    settings.NEWSLETTER_UNSUBSCRIBE_SECRET, obj.user.id
-                )
-                unsubscribe_notice = ""
-
             # 최종 뉴스레터 렌더링
             final_html = render_to_string(
                 "insights/index.html",
@@ -167,8 +155,9 @@ class UserWeeklyTrendAdmin(admin.ModelAdmin, BaseTrendAdminMixin):
                     "is_expired_token_user": False,
                     "weekly_trend_html": weekly_trend_html,
                     "user_weekly_trend_html": user_weekly_trend_html,
-                    "unsubscribe_url": unsubscribe_url,
-                    "unsubscribe_notice": unsubscribe_notice,
+                    # 운영자가 미리보기에서 눌러도 실제로 수신거부되지 않도록 빈 링크로 둔다
+                    "unsubscribe_url": "#",
+                    "unsubscribe_notice": UNSUBSCRIBE_PREVIEW_TEXT,
                 },
             )
 

@@ -241,16 +241,14 @@ class TestUserWeeklyTrendAdmin:
                 )
                 assert "<iframe" in result
 
-    def test_render_full_preview_without_unsubscribe_secret(
+    def test_render_full_preview_uses_empty_unsubscribe_link(
         self,
-        settings,
         weekly_trend_admin,
         user_weekly_trend_admin,
         weekly_trend,
         user_weekly_trend,
     ):
-        """서명 키가 없거나 user 가 없는 미리보기는 빈 링크(#) 옆에 안내 문구를 보여 준다"""
-        settings.NEWSLETTER_UNSUBSCRIBE_SECRET = ""
+        """미리보기는 서명 키가 있어도 빈 링크(#) 옆에 안내 문구를 보여 준다"""
         notice = "미리보기에서는 수신거부 링크가 생성되지 않습니다"
 
         results = [
