@@ -318,6 +318,9 @@ class WeeklyNewsletterBatch:
                         user_weekly_trend_html=user_weekly_trend_html,
                     )
                     text_body = strip_html_tags(html_body)
+                    unsubscribe_url = build_unsubscribe_url(
+                        settings.NEWSLETTER_UNSUBSCRIBE_SECRET, user["id"]
+                    )
 
                     # 뉴스레터 객체 생성
                     newsletter = Newsletter(
@@ -328,6 +331,14 @@ class WeeklyNewsletterBatch:
                             subject=f"벨로그 대시보드 주간 뉴스레터 #{self.weekly_info['newsletter_id']}",
                             text_body=text_body,
                             html_body=html_body,
+                            # RFC 8058 원클릭 수신거부
+                            headers=[
+                                ("List-Unsubscribe", f"<{unsubscribe_url}>"),
+                                (
+                                    "List-Unsubscribe-Post",
+                                    "List-Unsubscribe=One-Click",
+                                ),
+                            ],
                         ),
                     )
                     newsletters.append(newsletter)

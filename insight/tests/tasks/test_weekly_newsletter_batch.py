@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from insight.models import UserWeeklyTrend, WeeklyTrend
+from modules.mail.unsubscribe import build_unsubscribe_url
 from noti.models import NotiMailLog
 from users.models import User
 from utils.utils import get_local_now
@@ -206,6 +207,46 @@ class TestWeeklyNewsletterBatch:
                 "벨로그 대시보드 주간 뉴스레터"
                 in newsletters[0].email_message.subject
             )
+
+    @patch("insight.tasks.weekly_newsletter_batch.logger")
+    def test_build_newsletters_sets_one_click_unsubscribe_headers(
+        self,
+        mock_logger,
+        newsletter_batch,
+        user,
+        newsletter_unsubscribe_secret,
+    ):
+        """사용자별 서명 수신거부 URL 을 원클릭 수신거부 헤더에 넣는다"""
+        user_chunk = [
+            {"id": user.id, "email": user.email, "username": user.username}
+        ]
+
+        with (
+            patch.object(
+                newsletter_batch, "_get_users_weekly_trend_chunk"
+            ) as mock_get_trends,
+            patch.object(
+                newsletter_batch, "_get_user_weekly_trend_html"
+            ) as mock_get_html,
+            patch(
+                "insight.tasks.weekly_newsletter_batch.render_to_string"
+            ) as mock_render,
+        ):
+            mock_get_trends.return_value = {user.id: MagicMock()}
+            mock_get_html.return_value = "<div>User Trend HTML</div>"
+            mock_render.return_value = "<div>Final Newsletter HTML</div>"
+
+            newsletters = newsletter_batch._build_newsletters(
+                user_chunk, "<div>Weekly Trend HTML</div>"
+            )
+
+        unsubscribe_url = build_unsubscribe_url(
+            newsletter_unsubscribe_secret, user.id
+        )
+        assert newsletters[0].email_message.headers == [
+            ("List-Unsubscribe", f"<{unsubscribe_url}>"),
+            ("List-Unsubscribe-Post", "List-Unsubscribe=One-Click"),
+        ]
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     def test_send_newsletters_success(
