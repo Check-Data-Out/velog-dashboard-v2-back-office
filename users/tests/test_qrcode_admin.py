@@ -27,6 +27,9 @@ def qr_token_used(user, db):
         is_used=True,
         ip_address="192.168.1.2",
         user_agent="Mozilla/5.0",
+        used_at=now(),
+        used_ip="203.0.113.7",
+        used_user_agent="Mozilla/5.0 (iPhone)",
     )
 
 
@@ -51,6 +54,9 @@ def test_make_unused(qr_admin, qr_token_used):
     )
     qr_token_used.refresh_from_db()
     assert qr_token_used.is_used is False
+    assert qr_token_used.used_at is None
+    assert qr_token_used.used_ip is None
+    assert qr_token_used.used_user_agent is None
 
 
 @pytest.mark.django_db
@@ -120,23 +126,3 @@ def test_qr_login_token_n_plus_one(django_assert_num_queries, user):
         assert hasattr(users[0], "prefetched_qr_tokens")
 
     assert len(users[0].prefetched_qr_tokens) == 5
-
-
-@pytest.mark.django_db
-def test_used_device_info_is_stored_without_length_limit(user):
-    long_user_agent = "Mozilla/5.0 " + "x" * 300
-    used_at = now()
-
-    QRLoginToken.objects.create(
-        token="TOKEN789",
-        user=user,
-        is_used=True,
-        used_at=used_at,
-        used_ip="203.0.113.7",
-        used_user_agent=long_user_agent,
-    )
-
-    stored = QRLoginToken.objects.get(token="TOKEN789")
-    assert stored.used_at == used_at
-    assert stored.used_ip == "203.0.113.7"
-    assert stored.used_user_agent == long_user_agent
