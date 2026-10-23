@@ -48,10 +48,7 @@ class SESClient(MailClient):
             초기화된 SESClient 인스턴스
 
         Raises:
-            AuthenticationError: AWS 인증 정보가 유효하지 않은 경우
-            LimitExceededException: AWS API 호출 제한을 초과한 경우
-            ValidationError: 입력이 유효하지 않은 경우
-            ConnectionError: AWS 서비스 연결에 실패한 경우
+            ConnectionError: 클라이언트 생성에 실패한 경우
         """
         if cls._instance is None:
             try:
@@ -72,34 +69,19 @@ class SESClient(MailClient):
             credentials: AWS 인증 정보 (AWSSESCredentials)
 
         Returns:
-            초기화된 boto3 SES 클라이언트
+            초기화된 boto3 SES v2 클라이언트
 
         Raises:
-            AuthenticationError: AWS 인증 정보가 유효하지 않은 경우
-            LimitExceededException: AWS API 호출 제한을 초과한 경우
-            ValidationError: 입력이 유효하지 않은 경우
-            ConnectionError: AWS 서비스 연결에 실패한 경우
+            ConnectionError: 클라이언트 생성에 실패한 경우
         """
         try:
-            client = boto3.client(
-                service_name="ses",
+            # 인증·발송 가능 여부는 첫 send_email 오류로 판단한다
+            return boto3.client(
+                service_name="sesv2",
                 aws_access_key_id=credentials.aws_access_key_id,
                 aws_secret_access_key=credentials.aws_secret_access_key,
                 region_name=credentials.aws_region_name,
             )
-            # API 키 검증을 위한 간단한 호출
-            client.get_account_sending_enabled()
-            return client
-        except ClientError as e:
-            # 공통 에러 처리
-            cls._handle_aws_common_errors(e)
-            # 그 외 ClientError 처리
-            logger.error(
-                f"예상하지 못한 AWS SES 클라이언트 초기화 오류: {str(e)}"
-            )
-            raise UnexpectedClientError(
-                f"예상하지 못한 AWS SES 클라이언트 초기화 오류: {str(e)}"
-            ) from e
         except Exception as e:
             logger.error(f"AWS SES 클라이언트 초기화 실패: {str(e)}")
             raise ConnectionError(
@@ -132,14 +114,22 @@ class SESClient(MailClient):
 
         try:
             email_args = {
-                "Source": message.from_email,
+                "FromEmailAddress": message.from_email,
                 "Destination": {
                     "ToAddresses": message.to,
                 },
-                "Message": {
-                    "Subject": {"Data": message.subject, "Charset": "UTF-8"},
-                    "Body": {
-                        "Text": {"Data": message.text_body, "Charset": "UTF-8"}
+                "Content": {
+                    "Simple": {
+                        "Subject": {
+                            "Data": message.subject,
+                            "Charset": "UTF-8",
+                        },
+                        "Body": {
+                            "Text": {
+                                "Data": message.text_body,
+                                "Charset": "UTF-8",
+                            }
+                        },
                     },
                 },
             }
@@ -152,7 +142,7 @@ class SESClient(MailClient):
 
             # HTML 본문 추가
             if message.html_body:
-                email_args["Message"]["Body"]["Html"] = {
+                email_args["Content"]["Simple"]["Body"]["Html"] = {
                     "Data": message.html_body,
                     "Charset": "UTF-8",
                 }
