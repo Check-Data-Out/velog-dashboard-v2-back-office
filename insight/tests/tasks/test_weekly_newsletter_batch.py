@@ -4,7 +4,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from insight.models import UserWeeklyTrend, WeeklyTrend
-from modules.mail.unsubscribe import build_unsubscribe_url
+from modules.mail.unsubscribe import (
+    build_legacy_unsubscribe_url,
+    build_unsubscribe_url,
+)
 from noti.models import NotiMailLog
 from users.models import User
 from utils.utils import get_local_now
@@ -406,27 +409,44 @@ class TestWeeklyNewsletterBatch:
         ["", "x" * 31],
         ids=["empty", "shorter_than_32_bytes"],
     )
+    @patch("insight.tasks.weekly_newsletter_batch.render_to_string")
     @patch("insight.tasks.weekly_newsletter_batch.logger")
-    @pytest.mark.django_db
-    def test_run_invalid_unsubscribe_secret_failure(
-        self, mock_logger, newsletter_batch, settings, secret
+    def test_build_newsletters_without_usable_secret_uses_legacy_email_link(
+        self,
+        mock_logger,
+        mock_render,
+        newsletter_batch,
+        user,
+        settings,
+        secret,
     ):
-        """수신거부 서명 키가 비었거나 32바이트보다 짧으면 발송 전에 실패한다 (API 기동 조건과 같음)"""
+        """서명 키가 비었거나 32바이트보다 짧아도 발송을 멈추지 않고 기존 email 링크로 보내며 원클릭 헤더는 붙이지 않는다"""
         settings.NEWSLETTER_UNSUBSCRIBE_SECRET = secret
+        mock_render.return_value = "<div>Final Newsletter HTML</div>"
+        user_chunk = [
+            {"id": user.id, "email": user.email, "username": user.username}
+        ]
 
         with (
             patch.object(
-                newsletter_batch, "_get_target_user_chunks"
-            ) as mock_get_chunks,
-            patch.object(newsletter_batch, "_send_newsletters") as mock_send,
+                newsletter_batch,
+                "_get_users_weekly_trend_chunk",
+                return_value={user.id: MagicMock()},
+            ),
+            patch.object(
+                newsletter_batch,
+                "_get_user_weekly_trend_html",
+                return_value="<div>User Trend HTML</div>",
+            ),
         ):
-            with pytest.raises(
-                Exception, match="NEWSLETTER_UNSUBSCRIBE_SECRET"
-            ):
-                newsletter_batch.run()
+            newsletters = newsletter_batch._build_newsletters(
+                user_chunk, "<div>Weekly Trend HTML</div>"
+            )
 
-            mock_get_chunks.assert_not_called()
-            mock_send.assert_not_called()
+        assert newsletters[0].email_message.headers is None
+        assert mock_render.call_args.args[1][
+            "unsubscribe_url"
+        ] == build_legacy_unsubscribe_url(user.email)
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     @pytest.mark.django_db

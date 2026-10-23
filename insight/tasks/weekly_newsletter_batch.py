@@ -30,7 +30,11 @@ from insight.models import (
 from insight.schemas import Newsletter, NewsletterContext
 from modules.mail.schemas import AWSSESCredentials, EmailMessage
 from modules.mail.ses.client import SESClient
-from modules.mail.unsubscribe import build_unsubscribe_url
+from modules.mail.unsubscribe import (
+    build_legacy_unsubscribe_url,
+    build_unsubscribe_url,
+    is_usable_secret,
+)
 from noti.models import NotiMailLog
 from users.models import User
 from utils.utils import (
@@ -309,10 +313,26 @@ class WeeklyNewsletterBatch:
                             )
                         )
 
-                    # 본문 링크와 원클릭 헤더가 같은 서명 URL 을 쓴다
-                    unsubscribe_url = build_unsubscribe_url(
-                        settings.NEWSLETTER_UNSUBSCRIBE_SECRET, user["id"]
-                    )
+                    secret = settings.NEWSLETTER_UNSUBSCRIBE_SECRET
+                    if is_usable_secret(secret):
+                        # 본문 링크와 원클릭 헤더(RFC 8058)가 같은 서명 URL 을 쓴다
+                        unsubscribe_url = build_unsubscribe_url(
+                            secret, user["id"]
+                        )
+                        headers = [
+                            ("List-Unsubscribe", f"<{unsubscribe_url}>"),
+                            (
+                                "List-Unsubscribe-Post",
+                                "List-Unsubscribe=One-Click",
+                            ),
+                        ]
+                    else:
+                        # 서명 키가 없으면 기존 email 링크로 보낸다.
+                        # 이 링크는 GET 으로 바로 수신거부되므로 원클릭 헤더는 붙이지 않는다
+                        unsubscribe_url = build_legacy_unsubscribe_url(
+                            user["email"]
+                        )
+                        headers = None
 
                     # 최종 뉴스레터 렌더링
                     html_body = self._get_newsletter_html(
@@ -333,14 +353,7 @@ class WeeklyNewsletterBatch:
                             subject=f"벨로그 대시보드 주간 뉴스레터 #{self.weekly_info['newsletter_id']}",
                             text_body=text_body,
                             html_body=html_body,
-                            # RFC 8058 원클릭 수신거부
-                            headers=[
-                                ("List-Unsubscribe", f"<{unsubscribe_url}>"),
-                                (
-                                    "List-Unsubscribe-Post",
-                                    "List-Unsubscribe=One-Click",
-                                ),
-                            ],
+                            headers=headers,
                         ),
                     )
                     newsletters.append(newsletter)
@@ -470,15 +483,11 @@ class WeeklyNewsletterBatch:
         total_failed = 0
 
         try:
-            # API 가 검증하지 못할 수신거부 링크로 발송하지 않도록
-            # 키가 없거나 API 기동 조건(32바이트 이상)보다 짧으면 배치 종료
-            secret = settings.NEWSLETTER_UNSUBSCRIBE_SECRET
-            if not secret or len(secret.encode()) < 32:
-                logger.error(
-                    "NEWSLETTER_UNSUBSCRIBE_SECRET must be at least 32 bytes, batch stopped"
-                )
-                raise Exception(
-                    "NEWSLETTER_UNSUBSCRIBE_SECRET must be at least 32 bytes, batch stopped"
+            # 서명 키가 없어도 발송은 멈추지 않고 기존 email 수신거부 링크로 보낸다
+            if not is_usable_secret(settings.NEWSLETTER_UNSUBSCRIBE_SECRET):
+                logger.warning(
+                    "NEWSLETTER_UNSUBSCRIBE_SECRET is missing or shorter than 32 bytes, "
+                    "sending with legacy email unsubscribe links"
                 )
 
             # ========================================================== #
