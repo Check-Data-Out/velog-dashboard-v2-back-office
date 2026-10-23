@@ -14,6 +14,8 @@ if [[ -f "$PID_FILE" ]]; then
     # pid 파일이 오래돼 다른 프로세스를 가리키면 쓰지 않는다
     if ! ps -p "$pid" -o args= 2>/dev/null | grep -qF "$APP"; then
         pid=""
+        # 남겨 두면 그 pid 를 다른 프로세스가 쓰는 동안 새 gunicorn 이 "Already running" 으로 뜨지 않는다
+        rm -f "$PID_FILE"
     fi
 fi
 if [[ -z "$pid" ]]; then
@@ -42,8 +44,14 @@ kill -KILL "$pid" 2>/dev/null || true
 if [[ -n "$children" ]]; then
     kill -KILL $children 2>/dev/null || true
 fi
+# kill -0 에 pid 를 여러 개 주면 하나만 없어도 실패하므로 하나씩 본다
 for _ in $(seq 1 5); do
-    if ! kill -0 "$pid" $children 2>/dev/null; then
+    alive=""
+    for p in $pid $children; do
+        kill -0 "$p" 2>/dev/null && alive="$alive $p"
+    done
+    if [[ -z "$alive" ]]; then
+        rm -f "$PID_FILE"
         exit 0
     fi
     sleep 1

@@ -19,6 +19,18 @@ python manage.py migrate
 
 bash ./run-kill.sh
 
+# 옛 프로세스가 :8000 을 아직 잡고 있으면 새 gunicorn 이 bind 를 재시도하는 동안 옛 서버가 헬스체크에 응답해
+# 성공으로 오판하므로, 포트가 빌 때까지 기다리고 끝내 비지 않으면 띄우지 않는다
+port_in_use() { ss -ltn 'sport = :8000' | grep -q LISTEN; }
+for _ in $(seq 1 10); do
+    port_in_use || break
+    sleep 1
+done
+if port_in_use; then
+    echo "8000 포트를 아직 다른 프로세스가 쓰고 있어 gunicorn 을 띄우지 않습니다: ss -ltnp 'sport = :8000' 로 확인하세요" >&2
+    exit 1
+fi
+
 gunicorn --workers 2 --bind 0.0.0.0:8000 --log-level=info \
     --log-file=./gunicorn.log --access-logfile=./gunicorn-access.log \
     --error-logfile=./gunicorn-error.log --max-requests=1200 \
