@@ -31,7 +31,8 @@ if ! curl -fsS -o /dev/null -H "Host: ${HEALTH_HOST}" --connect-timeout 2 --max-
     || ! kill -0 "$(cat "$PID_FILE" 2>/dev/null)" 2>/dev/null; then
     echo "헬스체크 실패: ${HEALTH_URL}" >&2
     tail -n 20 ./gunicorn-error.log >&2 || true
-    echo "기존 gunicorn 은 이미 종료됐습니다. 직전 커밋($(git rev-parse --short 'HEAD@{1}' 2>/dev/null || echo '?'))으로 되돌린 뒤 ./run.sh 를 다시 실행하세요." >&2
+    echo "기존 gunicorn 은 이미 종료됐습니다. 아래 최근 커밋 중 직전에 배포한 커밋으로 되돌린 뒤 ./run.sh 를 다시 실행하세요." >&2
+    git log -3 --oneline >&2 || true
     exit 1
 fi
 
