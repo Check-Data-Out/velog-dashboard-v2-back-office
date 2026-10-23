@@ -239,6 +239,7 @@ class WeeklyNewsletterBatch:
         is_expired_token_user: bool,
         weekly_trend_html: str,
         user_weekly_trend_html: str | None,
+        unsubscribe_url: str,
     ) -> str:
         """최종 뉴스레터 렌더링"""
         try:
@@ -252,9 +253,7 @@ class WeeklyNewsletterBatch:
                         is_expired_token_user=is_expired_token_user,
                         weekly_trend_html=weekly_trend_html,
                         user_weekly_trend_html=user_weekly_trend_html,
-                        unsubscribe_url=build_unsubscribe_url(
-                            settings.NEWSLETTER_UNSUBSCRIBE_SECRET, user["id"]
-                        ),
+                        unsubscribe_url=unsubscribe_url,
                     )
                 ),
             )
@@ -310,17 +309,20 @@ class WeeklyNewsletterBatch:
                             )
                         )
 
+                    # 본문 링크와 원클릭 헤더가 같은 서명 URL 을 쓴다
+                    unsubscribe_url = build_unsubscribe_url(
+                        settings.NEWSLETTER_UNSUBSCRIBE_SECRET, user["id"]
+                    )
+
                     # 최종 뉴스레터 렌더링
                     html_body = self._get_newsletter_html(
                         user=user,
                         is_expired_token_user=is_expired_token_user,
                         weekly_trend_html=weekly_trend_html,
                         user_weekly_trend_html=user_weekly_trend_html,
+                        unsubscribe_url=unsubscribe_url,
                     )
                     text_body = strip_html_tags(html_body)
-                    unsubscribe_url = build_unsubscribe_url(
-                        settings.NEWSLETTER_UNSUBSCRIBE_SECRET, user["id"]
-                    )
 
                     # 뉴스레터 객체 생성
                     newsletter = Newsletter(

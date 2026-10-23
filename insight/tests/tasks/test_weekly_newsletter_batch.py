@@ -247,6 +247,10 @@ class TestWeeklyNewsletterBatch:
             ("List-Unsubscribe", f"<{unsubscribe_url}>"),
             ("List-Unsubscribe-Post", "List-Unsubscribe=One-Click"),
         ]
+        # 본문 링크도 헤더와 같은 서명 URL 을 쓴다
+        assert (
+            mock_render.call_args.args[1]["unsubscribe_url"] == unsubscribe_url
+        )
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     def test_send_newsletters_success(

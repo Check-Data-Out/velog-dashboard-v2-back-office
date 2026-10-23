@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from insight.models import WeeklyUserTrendInsight
-from modules.mail.unsubscribe import sign_unsubscribe
+from modules.mail.unsubscribe import build_unsubscribe_url, sign_unsubscribe
 from utils.utils import from_dict
 
 
@@ -206,6 +206,9 @@ class TestWeeklyNewsletterTemplate:
             is_expired_token_user,
             weekly_trend_html,
             user_weekly_trend_html,
+            build_unsubscribe_url(
+                newsletter_unsubscribe_secret, user_values["id"]
+            ),
         )
 
         # 템플릿 렌더링 검증
@@ -241,6 +244,9 @@ class TestWeeklyNewsletterTemplate:
             is_expired_token_user,
             weekly_trend_html,
             user_weekly_trend_html,
+            build_unsubscribe_url(
+                newsletter_unsubscribe_secret, user_values["id"]
+            ),
         )
 
         # 템플릿 렌더링 검증
@@ -277,4 +283,5 @@ class TestWeeklyNewsletterTemplate:
                     False,
                     "test-weekly-trend-html",
                     "test-user-weekly-trend-html",
+                    "https://example.com/unsubscribe",
                 )
