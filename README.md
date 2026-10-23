@@ -11,7 +11,7 @@ Velog-Dashboard v2의 데이터, 스크래핑, 백오피스용 레포지토리�
 
 - `pyenv` 와 `poetry` 가 설치되었다고 가정하고 진행합니다.
 - `poetry` 대신 `venv` 로 대체해서 사용가능합니다. (`requirements.txt` 활용)
-- 참고로 `poetry` 기반으로 `poetry export -f requirements.txt --without-hashes -o requirements.txt` 통해 배포 require를 만들어야 합니다.
+- 운영 웹은 `requirements.txt` 로 설치합니다. 이 파일은 `poetry.lock` 이 바뀌면 pre-commit 의 `poetry-export` 훅이 다시 만듭니다(`pre-commit install` 필요). CI 도 lock 과 일치하는지 검사합니다.
 
 ```bash
 # 프로젝트 Clone 및 이동
