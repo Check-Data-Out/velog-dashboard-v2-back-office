@@ -18,6 +18,7 @@ class EmailMessage:
     cc: list[str] | None = None
     bcc: list[str] | None = None
     attachments: list[EmailAttachment] | None = None
+    headers: list[tuple[str, str]] | None = None
 
 
 @dataclass

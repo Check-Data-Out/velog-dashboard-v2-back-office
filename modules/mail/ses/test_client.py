@@ -80,3 +80,47 @@ def test_initialize_client_creates_sesv2_without_account_check(
 
     assert client is sesv2_client
     assert mock_boto3_client.call_args.kwargs["service_name"] == "sesv2"
+
+
+def test_send_email_puts_headers_into_simple_content(
+    sesv2_client: BaseClient, stubber: Stubber
+) -> None:
+    """메시지 헤더를 SES v2 Content.Simple.Headers 로 보낸다."""
+    unsubscribe_url = "https://example.com/unsubscribe?uid=1&sig=abc"
+    stubber.add_response(
+        "send_email",
+        {"MessageId": "message-id"},
+        {
+            "FromEmailAddress": "from@example.com",
+            "Destination": {"ToAddresses": ["to@example.com"]},
+            "Content": {
+                "Simple": {
+                    "Subject": {"Data": "제목", "Charset": "UTF-8"},
+                    "Body": {"Text": {"Data": "본문", "Charset": "UTF-8"}},
+                    "Headers": [
+                        {
+                            "Name": "List-Unsubscribe",
+                            "Value": f"<{unsubscribe_url}>",
+                        },
+                        {
+                            "Name": "List-Unsubscribe-Post",
+                            "Value": "List-Unsubscribe=One-Click",
+                        },
+                    ],
+                }
+            },
+        },
+    )
+
+    SESClient(sesv2_client).send_email(
+        EmailMessage(
+            to=["to@example.com"],
+            from_email="from@example.com",
+            subject="제목",
+            text_body="본문",
+            headers=[
+                ("List-Unsubscribe", f"<{unsubscribe_url}>"),
+                ("List-Unsubscribe-Post", "List-Unsubscribe=One-Click"),
+            ],
+        )
+    )

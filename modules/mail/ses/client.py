@@ -147,6 +147,13 @@ class SESClient(MailClient):
                     "Charset": "UTF-8",
                 }
 
+            # 커스텀 헤더 추가 (예: List-Unsubscribe)
+            if message.headers:
+                email_args["Content"]["Simple"]["Headers"] = [
+                    {"Name": name, "Value": value}
+                    for name, value in message.headers
+                ]
+
             response = self._client.send_email(**email_args)
             return response["MessageId"]
 
