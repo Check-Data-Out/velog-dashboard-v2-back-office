@@ -4,7 +4,10 @@ from django.contrib import admin
 from django.template.loader import render_to_string
 from django.utils.safestring import mark_safe
 
-from insight.admin.base_admin import BaseTrendAdminMixin
+from insight.admin.base_admin import (
+    UNSUBSCRIBE_PREVIEW_TEXT,
+    BaseTrendAdminMixin,
+)
 from insight.models import (
     REVIEW_APPROVED,
     REVIEW_NEEDS,
@@ -112,6 +115,8 @@ class WeeklyTrendAdmin(admin.ModelAdmin, BaseTrendAdminMixin):
                     "is_expired_token_user": False,
                     "weekly_trend_html": weekly_trend_html,
                     "user_weekly_trend_html": None,
+                    "unsubscribe_url": "#",
+                    "unsubscribe_notice": UNSUBSCRIBE_PREVIEW_TEXT,
                 },
             )
 

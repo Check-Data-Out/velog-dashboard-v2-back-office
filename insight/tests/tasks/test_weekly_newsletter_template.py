@@ -1,8 +1,10 @@
+from html import unescape
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from insight.models import WeeklyUserTrendInsight
+from modules.mail.unsubscribe import build_unsubscribe_url, sign_unsubscribe
 from utils.utils import from_dict
 
 
@@ -25,6 +27,12 @@ def newsletter_batch(mock_setup_django, mock_ses_client):
         chunk_size=100,
         max_retry_count=3,
     )
+
+
+@pytest.fixture
+def user_values(user):
+    """운영 배치처럼 .values("id", "email", "username") 형태의 사용자"""
+    return {"id": user.id, "email": user.email, "username": user.username}
 
 
 class TestWeeklyNewsletterTemplate:
@@ -182,7 +190,11 @@ class TestWeeklyNewsletterTemplate:
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     def test_get_newsletter_html_success(
-        self, mock_logger, newsletter_batch, user
+        self,
+        mock_logger,
+        newsletter_batch,
+        user_values,
+        newsletter_unsubscribe_secret,
     ):
         """정상 사용자 뉴스레터 HTML 렌더링 테스트"""
         is_expired_token_user = False
@@ -190,10 +202,13 @@ class TestWeeklyNewsletterTemplate:
         user_weekly_trend_html = "test-user-weekly-trend-html"
 
         newsletter_html = newsletter_batch._get_newsletter_html(
-            user,
+            user_values,
             is_expired_token_user,
             weekly_trend_html,
             user_weekly_trend_html,
+            build_unsubscribe_url(
+                newsletter_unsubscribe_secret, user_values["id"]
+            ),
         )
 
         # 템플릿 렌더링 검증
@@ -203,14 +218,22 @@ class TestWeeklyNewsletterTemplate:
         assert "대시보드 보러가기" in newsletter_html
         assert "Weekly Report" in newsletter_html
         assert "Velog Dashboard" in newsletter_html
-        assert (
-            "user/newsletter-unsubscribe?email=" + user.email
-            in newsletter_html
+        unsubscribe_url = (
+            "https://velog-dashboard.kro.kr/api/user/newsletter-unsubscribe"
+            f"?uid={user_values['id']}"
+            f"&sig={sign_unsubscribe(newsletter_unsubscribe_secret, user_values['id'])}"
         )
+        assert unsubscribe_url in unescape(newsletter_html)
+        assert "email=" not in newsletter_html
+        assert "미리보기에서는" not in newsletter_html
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     def test_get_newsletter_html_expired_token_user(
-        self, mock_logger, newsletter_batch, user
+        self,
+        mock_logger,
+        newsletter_batch,
+        user_values,
+        newsletter_unsubscribe_secret,
     ):
         """토큰 만료 사용자 뉴스레터 HTML 렌더링 테스트"""
         is_expired_token_user = True
@@ -218,10 +241,13 @@ class TestWeeklyNewsletterTemplate:
         user_weekly_trend_html = "test-user-weekly-trend-html"
 
         newsletter_html = newsletter_batch._get_newsletter_html(
-            user,
+            user_values,
             is_expired_token_user,
             weekly_trend_html,
             user_weekly_trend_html,
+            build_unsubscribe_url(
+                newsletter_unsubscribe_secret, user_values["id"]
+            ),
         )
 
         # 템플릿 렌더링 검증
@@ -234,10 +260,14 @@ class TestWeeklyNewsletterTemplate:
         assert user_weekly_trend_html not in newsletter_html
         assert "대시보드 보러가기" in newsletter_html
         assert "활동 리포트" in newsletter_html
-        assert (
-            "user/newsletter-unsubscribe?email=" + user.email
-            in newsletter_html
+        unsubscribe_url = (
+            "https://velog-dashboard.kro.kr/api/user/newsletter-unsubscribe"
+            f"?uid={user_values['id']}"
+            f"&sig={sign_unsubscribe(newsletter_unsubscribe_secret, user_values['id'])}"
         )
+        assert unsubscribe_url in unescape(newsletter_html)
+        assert "email=" not in newsletter_html
+        assert "미리보기에서는" not in newsletter_html
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     def test_get_newsletter_html_exception(
@@ -255,4 +285,5 @@ class TestWeeklyNewsletterTemplate:
                     False,
                     "test-weekly-trend-html",
                     "test-user-weekly-trend-html",
+                    "https://example.com/unsubscribe",
                 )

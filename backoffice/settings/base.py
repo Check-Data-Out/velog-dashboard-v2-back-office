@@ -40,6 +40,10 @@ AWS_REGION = env("AWS_REGION", default="ap-northeast-2")
 DEFAULT_FROM_EMAIL = env(
     "DEFAULT_FROM_EMAIL", default="no-reply@velog-dashboard.kro.kr"
 )
+# 뉴스레터 수신거부 링크 서명 키. API 서버와 같은 값을 쓴다
+NEWSLETTER_UNSUBSCRIBE_SECRET = env(
+    "NEWSLETTER_UNSUBSCRIBE_SECRET", default=""
+)
 
 SENTRY_DSN = env("SENTRY_DSN", default="").strip()
 SENTRY_ENVIRONMENT = env("SENTRY_ENVIRONMENT", default="local").strip()
