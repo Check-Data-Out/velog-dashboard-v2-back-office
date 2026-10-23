@@ -27,6 +27,12 @@ def newsletter_batch(mock_setup_django, mock_ses_client):
     )
 
 
+@pytest.fixture
+def user_values(user):
+    """운영 배치처럼 .values("id", "email", "username") 형태의 사용자"""
+    return {"id": user.id, "email": user.email, "username": user.username}
+
+
 class TestWeeklyNewsletterTemplate:
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     @pytest.mark.django_db
@@ -182,7 +188,7 @@ class TestWeeklyNewsletterTemplate:
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     def test_get_newsletter_html_success(
-        self, mock_logger, newsletter_batch, user
+        self, mock_logger, newsletter_batch, user_values
     ):
         """정상 사용자 뉴스레터 HTML 렌더링 테스트"""
         is_expired_token_user = False
@@ -190,7 +196,7 @@ class TestWeeklyNewsletterTemplate:
         user_weekly_trend_html = "test-user-weekly-trend-html"
 
         newsletter_html = newsletter_batch._get_newsletter_html(
-            user,
+            user_values,
             is_expired_token_user,
             weekly_trend_html,
             user_weekly_trend_html,
@@ -204,13 +210,13 @@ class TestWeeklyNewsletterTemplate:
         assert "Weekly Report" in newsletter_html
         assert "Velog Dashboard" in newsletter_html
         assert (
-            "user/newsletter-unsubscribe?email=" + user.email
+            "user/newsletter-unsubscribe?email=" + user_values["email"]
             in newsletter_html
         )
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     def test_get_newsletter_html_expired_token_user(
-        self, mock_logger, newsletter_batch, user
+        self, mock_logger, newsletter_batch, user_values
     ):
         """토큰 만료 사용자 뉴스레터 HTML 렌더링 테스트"""
         is_expired_token_user = True
@@ -218,7 +224,7 @@ class TestWeeklyNewsletterTemplate:
         user_weekly_trend_html = "test-user-weekly-trend-html"
 
         newsletter_html = newsletter_batch._get_newsletter_html(
-            user,
+            user_values,
             is_expired_token_user,
             weekly_trend_html,
             user_weekly_trend_html,
@@ -235,7 +241,7 @@ class TestWeeklyNewsletterTemplate:
         assert "대시보드 보러가기" in newsletter_html
         assert "활동 리포트" in newsletter_html
         assert (
-            "user/newsletter-unsubscribe?email=" + user.email
+            "user/newsletter-unsubscribe?email=" + user_values["email"]
             in newsletter_html
         )
 

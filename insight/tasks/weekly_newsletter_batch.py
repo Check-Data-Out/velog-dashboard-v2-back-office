@@ -251,6 +251,7 @@ class WeeklyNewsletterBatch:
                         is_expired_token_user=is_expired_token_user,
                         weekly_trend_html=weekly_trend_html,
                         user_weekly_trend_html=user_weekly_trend_html,
+                        unsubscribe_url=f"https://velog-dashboard.kro.kr/api/user/newsletter-unsubscribe?email={user['email']}",
                     )
                 ),
             )

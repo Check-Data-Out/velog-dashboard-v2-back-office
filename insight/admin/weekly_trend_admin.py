@@ -112,6 +112,7 @@ class WeeklyTrendAdmin(admin.ModelAdmin, BaseTrendAdminMixin):
                     "is_expired_token_user": False,
                     "weekly_trend_html": weekly_trend_html,
                     "user_weekly_trend_html": None,
+                    "unsubscribe_url": "https://velog-dashboard.kro.kr/api/user/newsletter-unsubscribe?email=",
                 },
             )
 

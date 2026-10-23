@@ -12,6 +12,7 @@ class NewsletterContext:
     is_expired_token_user: bool
     weekly_trend_html: str
     user_weekly_trend_html: str | None = None
+    unsubscribe_url: str = ""
 
 
 @dataclass
