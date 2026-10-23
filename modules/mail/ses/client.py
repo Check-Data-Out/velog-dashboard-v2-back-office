@@ -8,6 +8,7 @@ from modules.mail.base_client import MailClient
 from modules.mail.constants import (
     AWS_AUTH_ERROR_CODES,
     AWS_LIMIT_ERROR_CODES,
+    AWS_SEND_REJECTED_ERROR_MESSAGES,
     AWS_SERVICE_ERROR_CODES,
     AWS_VALUE_ERROR_CODES,
 )
@@ -162,16 +163,10 @@ class SESClient(MailClient):
             self._handle_aws_common_errors(e)
             # 특정 에러 처리
             error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "MessageRejected":
-                logger.error(f"이메일이 거부되었습니다. {str(e)}")
-                raise SendError(f"이메일이 거부되었습니다. {str(e)}") from e
-            if error_code == "AccountSendingPausedException":
-                logger.error(
-                    f"계정의 이메일 발송이 일시 중지되었습니다. {str(e)}"
-                )
-                raise SendError(
-                    f"계정의 이메일 발송이 일시 중지되었습니다. {str(e)}"
-                ) from e
+            if error_code in AWS_SEND_REJECTED_ERROR_MESSAGES:
+                reason = AWS_SEND_REJECTED_ERROR_MESSAGES[error_code]
+                logger.error(f"{reason} {str(e)}")
+                raise SendError(f"{reason} {str(e)}") from e
             # 그 외 ClientError 처리
             logger.error(f"예상하지 못한 이메일 발송 오류: {str(e)}")
             raise UnexpectedClientError(
