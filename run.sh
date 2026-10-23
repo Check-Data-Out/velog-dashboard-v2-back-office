@@ -32,7 +32,7 @@ if port_in_use; then
 fi
 
 gunicorn --workers 2 --bind 0.0.0.0:8000 --log-level=info \
-    --log-file=./gunicorn.log --access-logfile=./gunicorn-access.log \
+    --access-logfile=./gunicorn-access.log \
     --error-logfile=./gunicorn-error.log --max-requests=1200 \
     --max-requests-jitter=100 --pid "$PID_FILE" \
     backoffice.wsgi:application --daemon
