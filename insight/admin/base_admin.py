@@ -11,7 +11,7 @@ from django.utils.safestring import mark_safe
 from insight.models import UserWeeklyTrend, WeeklyTrend
 from utils.utils import get_local_now
 
-# 미리보기에는 실제 사용자의 서명 링크를 만들 수 없을 때 링크 자리에 넣는 문구
+# 미리보기에서 실제 사용자의 서명 링크를 만들 수 없을 때 빈 링크(#) 옆에 보여 주는 문구
 UNSUBSCRIBE_PREVIEW_TEXT = "미리보기에서는 수신거부 링크가 생성되지 않습니다"
 
 

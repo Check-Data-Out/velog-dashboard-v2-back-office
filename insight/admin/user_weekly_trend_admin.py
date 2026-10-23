@@ -144,12 +144,15 @@ class UserWeeklyTrendAdmin(admin.ModelAdmin, BaseTrendAdminMixin):
                 },
             )
 
-            # 서명 키와 사용자가 있을 때만 실제 수신거부 링크를 만든다
-            unsubscribe_url = UNSUBSCRIBE_PREVIEW_TEXT
+            # 서명 키와 사용자가 있을 때만 실제 수신거부 링크를 만들고,
+            # 그 외에는 빈 링크 옆에 안내 문구를 보여 준다
+            unsubscribe_url = "#"
+            unsubscribe_notice = UNSUBSCRIBE_PREVIEW_TEXT
             if obj.user and settings.NEWSLETTER_UNSUBSCRIBE_SECRET:
                 unsubscribe_url = build_unsubscribe_url(
                     settings.NEWSLETTER_UNSUBSCRIBE_SECRET, obj.user.id
                 )
+                unsubscribe_notice = ""
 
             # 최종 뉴스레터 렌더링
             final_html = render_to_string(
@@ -165,6 +168,7 @@ class UserWeeklyTrendAdmin(admin.ModelAdmin, BaseTrendAdminMixin):
                     "weekly_trend_html": weekly_trend_html,
                     "user_weekly_trend_html": user_weekly_trend_html,
                     "unsubscribe_url": unsubscribe_url,
+                    "unsubscribe_notice": unsubscribe_notice,
                 },
             )
 

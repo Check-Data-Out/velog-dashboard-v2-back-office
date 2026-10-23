@@ -225,6 +225,7 @@ class TestWeeklyNewsletterTemplate:
         )
         assert unsubscribe_url in unescape(newsletter_html)
         assert "email=" not in newsletter_html
+        assert "미리보기에서는" not in newsletter_html
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     def test_get_newsletter_html_expired_token_user(
@@ -266,6 +267,7 @@ class TestWeeklyNewsletterTemplate:
         )
         assert unsubscribe_url in unescape(newsletter_html)
         assert "email=" not in newsletter_html
+        assert "미리보기에서는" not in newsletter_html
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     def test_get_newsletter_html_exception(
