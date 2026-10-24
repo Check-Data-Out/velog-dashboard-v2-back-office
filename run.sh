@@ -9,8 +9,8 @@ readonly HEALTH_URL=http://127.0.0.1:8000/admin/login/
 # 운영 ALLOWED_HOSTS 에 127.0.0.1 이 없어 Host 를 지정한다
 readonly HEALTH_HOST=admin-vd2.kro.kr
 
-# 포트 확인에 쓰는 ss 가 없으면 기존 gunicorn 을 내리기 전에 멈춘다
-command -v ss >/dev/null || { echo "ss 명령이 없어 8000 포트를 확인할 수 없습니다 (iproute2 설치 필요)" >&2; exit 1; }
+# 포트 확인에 쓰는 ss 가 없거나 실행되지 않으면 기존 gunicorn 을 내리기 전에 멈춘다
+ss -Hltn >/dev/null || { echo "ss 를 실행할 수 없어 8000 포트를 확인할 수 없습니다 (iproute2 설치 필요)" >&2; exit 1; }
 
 # 설치·정적 파일·마이그레이션은 기존 gunicorn 을 띄워 둔 채로 먼저 한다 (실패하면 기존 서비스 유지)
 source ./.venv/bin/activate
@@ -24,7 +24,12 @@ bash ./run-kill.sh
 
 # 옛 프로세스가 :8000 을 아직 잡고 있으면 새 gunicorn 이 bind 를 재시도하는 동안 옛 서버가 헬스체크에 응답해
 # 성공으로 오판하므로, 포트가 빌 때까지 기다리고 끝내 비지 않으면 띄우지 않는다
-port_in_use() { [[ -n "$(ss -Hltn 'sport = :8000')" ]]; }
+# ss 가 실패하면 빈 출력을 '포트 비어 있음'으로 오판하지 않도록 멈춘다
+port_in_use() {
+    local out
+    out="$(ss -Hltn 'sport = :8000')" || { echo "ss 실행 실패로 8000 포트를 확인할 수 없습니다" >&2; exit 1; }
+    [[ -n "$out" ]]
+}
 for _ in $(seq 1 10); do
     port_in_use || break
     sleep 1
