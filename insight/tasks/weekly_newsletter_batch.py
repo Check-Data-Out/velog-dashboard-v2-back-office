@@ -613,7 +613,10 @@ class WeeklyNewsletterBatch:
             logger.error(f"Newsletter batch process failed: {e}")
             try:
                 with open("newsletter_batch_result.txt", "w") as f:
-                    f.write(f"❌ 뉴스레터 발송 실패: {e}")
+                    # 발송 도중 멈춘 경우 이미 받은 사람 수를 함께 남긴다
+                    f.write(
+                        f"❌ 뉴스레터 발송 실패: {e} (성공 {total_processed}명, 실패 {total_failed}명)"
+                    )
             except Exception as e:
                 logger.error(f"Failed to save newsletter batch result: {e}")
 
