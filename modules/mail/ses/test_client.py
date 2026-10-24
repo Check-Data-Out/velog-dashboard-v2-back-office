@@ -6,7 +6,7 @@ import pytest
 from botocore.client import BaseClient
 from botocore.stub import Stubber
 
-from modules.mail.exceptions import SendError
+from modules.mail.exceptions import SendingBlockedError
 from modules.mail.schemas import AWSSESCredentials, EmailMessage
 from modules.mail.ses.client import SESClient
 
@@ -127,17 +127,17 @@ def test_send_email_puts_headers_into_simple_content(
     )
 
 
-def test_send_email_raises_send_error_when_sending_paused(
+def test_send_email_raises_sending_blocked_error_when_sending_paused(
     sesv2_client: BaseClient, stubber: Stubber
 ) -> None:
-    """SES v2 SendingPausedException 은 SendError 로 바꿔 던진다."""
+    """SES v2 SendingPausedException 은 배치가 멈출 수 있게 SendingBlockedError 로 바꿔 던진다."""
     stubber.add_client_error(
         "send_email",
         service_error_code="SendingPausedException",
         http_status_code=400,
     )
 
-    with pytest.raises(SendError, match="일시 중지"):
+    with pytest.raises(SendingBlockedError, match="일시 중지"):
         SESClient(sesv2_client).send_email(
             EmailMessage(
                 to=["to@example.com"],

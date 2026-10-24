@@ -53,3 +53,10 @@ AWS_SEND_REJECTED_ERROR_MESSAGES = {
     "AccountSuspendedException": "계정의 이메일 발송이 정지되었습니다.",
     "MailFromDomainNotVerifiedException": "MAIL FROM 도메인이 검증되지 않았습니다.",
 }
+
+# 위 오류 중 계정·도메인 단위라 받는 사람과 상관없이 계속 실패하는 것. SendingBlockedError 로 변환한다
+AWS_SEND_BLOCKED_ERROR_CODES = {
+    "SendingPausedException",
+    "AccountSuspendedException",
+    "MailFromDomainNotVerifiedException",
+}

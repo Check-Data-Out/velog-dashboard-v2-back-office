@@ -28,6 +28,7 @@ from insight.models import (
     WeeklyUserTrendInsight,
 )
 from insight.schemas import Newsletter, NewsletterContext
+from modules.mail.exceptions import AuthenticationError, SendingBlockedError
 from modules.mail.schemas import AWSSESCredentials, EmailMessage
 from modules.mail.ses.client import SESClient
 from modules.mail.unsubscribe import (
@@ -379,6 +380,8 @@ class WeeklyNewsletterBatch:
         """뉴스레터 발송 (실패시 max_retry_count 만큼 재시도)"""
         success_user_ids = []
         mail_logs = []
+        # 인증 실패·계정 정지는 받는 사람을 바꿔도 계속 실패하므로 남은 발송·재시도를 멈춘다
+        blocked_error = None
 
         # 개별 뉴스레터 발송
         for newsletter in newsletters:
@@ -392,6 +395,14 @@ class WeeklyNewsletterBatch:
                     self.ses_client.send_email(newsletter.email_message)
                     success = True
                     success_user_ids.append(newsletter.user_id)
+
+                except (AuthenticationError, SendingBlockedError) as e:
+                    blocked_error = e
+                    error_message = str(e)
+                    logger.error(
+                        f"Stopped sending newsletters at (id: {newsletter.user_id}): {e}"
+                    )
+                    break
 
                 except Exception as e:
                     failed_count += 1
@@ -419,7 +430,9 @@ class WeeklyNewsletterBatch:
             except Exception as e:
                 # 로그 생성 실패해도 청크는 계속 진행
                 logger.error(f"Failed to create NotiMailLog object: {e}")
-                continue
+
+            if blocked_error:
+                break
 
         # 메일 발송 로그 저장
         if mail_logs:
@@ -432,6 +445,10 @@ class WeeklyNewsletterBatch:
         logger.info(
             f"Successfully sent {len(success_user_ids)} newsletters out of {len(newsletters)}"
         )
+        if blocked_error:
+            # 이미 받은 사람이 다음 실행에서 다시 받지 않도록 결과를 남기고 배치를 멈춘다
+            self._update_user_weekly_trend_results(success_user_ids)
+            raise blocked_error
         return success_user_ids
 
     def _update_weekly_trend_result(self) -> None:
@@ -548,6 +565,9 @@ class WeeklyNewsletterBatch:
                     # 로깅을 위한 발송 결과 카운트
                     total_processed += len(success_user_ids)
                     total_failed += len(newsletters) - len(success_user_ids)
+
+                except (AuthenticationError, SendingBlockedError):
+                    raise
 
                 except Exception as e:
                     # 예외 발생해도 다음 청크 진행

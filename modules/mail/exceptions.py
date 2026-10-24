@@ -28,6 +28,12 @@ class SendError(MailError):
     pass
 
 
+class SendingBlockedError(SendError):
+    """계정·도메인 단위로 발송이 막힌 오류 (받는 사람을 바꿔도 계속 실패)"""
+
+    pass
+
+
 class LimitExceededException(MailError):
     """메일 서비스 할당량 초과 오류"""
 

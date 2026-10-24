@@ -8,6 +8,7 @@ from modules.mail.base_client import MailClient
 from modules.mail.constants import (
     AWS_AUTH_ERROR_CODES,
     AWS_LIMIT_ERROR_CODES,
+    AWS_SEND_BLOCKED_ERROR_CODES,
     AWS_SEND_REJECTED_ERROR_MESSAGES,
     AWS_SERVICE_ERROR_CODES,
     AWS_VALUE_ERROR_CODES,
@@ -18,6 +19,7 @@ from modules.mail.exceptions import (
     ConnectionError,
     LimitExceededException,
     SendError,
+    SendingBlockedError,
     UnexpectedClientError,
     ValidationError,
 )
@@ -166,6 +168,8 @@ class SESClient(MailClient):
             if error_code in AWS_SEND_REJECTED_ERROR_MESSAGES:
                 reason = AWS_SEND_REJECTED_ERROR_MESSAGES[error_code]
                 logger.error(f"{reason} {str(e)}")
+                if error_code in AWS_SEND_BLOCKED_ERROR_CODES:
+                    raise SendingBlockedError(f"{reason} {str(e)}") from e
                 raise SendError(f"{reason} {str(e)}") from e
             # 그 외 ClientError 처리
             logger.error(f"예상하지 못한 이메일 발송 오류: {str(e)}")

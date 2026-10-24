@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from insight.models import UserWeeklyTrend, WeeklyTrend
+from modules.mail.exceptions import AuthenticationError
 from modules.mail.unsubscribe import (
     build_legacy_unsubscribe_url,
     build_unsubscribe_url,
@@ -290,6 +291,28 @@ class TestWeeklyNewsletterBatch:
         logged = str(mock_logger.mock_calls)
         assert sample_newsletters[0].email_message.to[0] not in logged
         assert f"(id: {sample_newsletters[0].user_id})" in logged
+
+    @patch("insight.tasks.weekly_newsletter_batch.NotiMailLog")
+    @patch("insight.tasks.weekly_newsletter_batch.logger")
+    def test_send_newsletters_stops_on_authentication_error(
+        self, mock_logger, mock_mail_log, newsletter_batch, sample_newsletter
+    ):
+        """인증 실패는 재시도·남은 발송 없이 결과를 남기고 배치를 멈춘다"""
+        newsletter_batch.ses_client.send_email.side_effect = (
+            AuthenticationError("AWS 인증 실패")
+        )
+        newsletter_batch._update_user_weekly_trend_results = MagicMock()
+
+        with pytest.raises(AuthenticationError):
+            newsletter_batch._send_newsletters(
+                [sample_newsletter, sample_newsletter]
+            )
+
+        assert newsletter_batch.ses_client.send_email.call_count == 1
+        newsletter_batch._update_user_weekly_trend_results.assert_called_once_with(
+            []
+        )
+        mock_mail_log.objects.bulk_create.assert_called_once()
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     @pytest.mark.django_db
