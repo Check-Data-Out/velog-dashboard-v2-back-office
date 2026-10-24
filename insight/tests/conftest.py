@@ -24,6 +24,15 @@ from modules.mail.schemas import EmailMessage
 from users.models import User
 from utils.utils import get_previous_week_range
 
+TEST_UNSUBSCRIBE_SECRET = "test-newsletter-unsubscribe-secret-0123456789"
+
+
+@pytest.fixture(autouse=True)
+def newsletter_unsubscribe_secret(settings):
+    """뉴스레터 수신거부 서명 키를 테스트 값으로 설정"""
+    settings.NEWSLETTER_UNSUBSCRIBE_SECRET = TEST_UNSUBSCRIBE_SECRET
+    return TEST_UNSUBSCRIBE_SECRET
+
 
 @pytest.fixture
 def mock_setup_django():

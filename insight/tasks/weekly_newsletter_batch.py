@@ -28,8 +28,14 @@ from insight.models import (
     WeeklyUserTrendInsight,
 )
 from insight.schemas import Newsletter, NewsletterContext
+from modules.mail.exceptions import AuthenticationError, SendingBlockedError
 from modules.mail.schemas import AWSSESCredentials, EmailMessage
 from modules.mail.ses.client import SESClient
+from modules.mail.unsubscribe import (
+    build_legacy_unsubscribe_url,
+    build_unsubscribe_url,
+    is_usable_secret,
+)
 from noti.models import NotiMailLog
 from users.models import User
 from utils.utils import (
@@ -238,6 +244,7 @@ class WeeklyNewsletterBatch:
         is_expired_token_user: bool,
         weekly_trend_html: str,
         user_weekly_trend_html: str | None,
+        unsubscribe_url: str,
     ) -> str:
         """최종 뉴스레터 렌더링"""
         try:
@@ -251,6 +258,7 @@ class WeeklyNewsletterBatch:
                         is_expired_token_user=is_expired_token_user,
                         weekly_trend_html=weekly_trend_html,
                         user_weekly_trend_html=user_weekly_trend_html,
+                        unsubscribe_url=unsubscribe_url,
                     )
                 ),
             )
@@ -306,12 +314,34 @@ class WeeklyNewsletterBatch:
                             )
                         )
 
+                    secret = settings.NEWSLETTER_UNSUBSCRIBE_SECRET
+                    if is_usable_secret(secret):
+                        # 본문 링크와 원클릭 헤더(RFC 8058)가 같은 서명 URL 을 쓴다
+                        unsubscribe_url = build_unsubscribe_url(
+                            secret, user["id"]
+                        )
+                        headers = [
+                            ("List-Unsubscribe", f"<{unsubscribe_url}>"),
+                            (
+                                "List-Unsubscribe-Post",
+                                "List-Unsubscribe=One-Click",
+                            ),
+                        ]
+                    else:
+                        # 서명 키가 없으면 기존 email 링크로 보낸다.
+                        # 이 링크는 GET 으로 바로 수신거부되므로 원클릭 헤더는 붙이지 않는다
+                        unsubscribe_url = build_legacy_unsubscribe_url(
+                            user["email"]
+                        )
+                        headers = None
+
                     # 최종 뉴스레터 렌더링
                     html_body = self._get_newsletter_html(
                         user=user,
                         is_expired_token_user=is_expired_token_user,
                         weekly_trend_html=weekly_trend_html,
                         user_weekly_trend_html=user_weekly_trend_html,
+                        unsubscribe_url=unsubscribe_url,
                     )
                     text_body = strip_html_tags(html_body)
 
@@ -324,6 +354,7 @@ class WeeklyNewsletterBatch:
                             subject=f"벨로그 대시보드 주간 뉴스레터 #{self.weekly_info['newsletter_id']}",
                             text_body=text_body,
                             html_body=html_body,
+                            headers=headers,
                         ),
                     )
                     newsletters.append(newsletter)
@@ -349,6 +380,8 @@ class WeeklyNewsletterBatch:
         """뉴스레터 발송 (실패시 max_retry_count 만큼 재시도)"""
         success_user_ids = []
         mail_logs = []
+        # 인증 실패·계정 정지는 받는 사람을 바꿔도 계속 실패하므로 남은 발송·재시도를 멈춘다
+        blocked_error = None
 
         # 개별 뉴스레터 발송
         for newsletter in newsletters:
@@ -362,6 +395,14 @@ class WeeklyNewsletterBatch:
                     self.ses_client.send_email(newsletter.email_message)
                     success = True
                     success_user_ids.append(newsletter.user_id)
+
+                except (AuthenticationError, SendingBlockedError) as e:
+                    blocked_error = e
+                    error_message = str(e)
+                    logger.error(
+                        f"Stopped sending newsletters at (id: {newsletter.user_id}): {e}"
+                    )
+                    break
 
                 except Exception as e:
                     failed_count += 1
@@ -389,7 +430,9 @@ class WeeklyNewsletterBatch:
             except Exception as e:
                 # 로그 생성 실패해도 청크는 계속 진행
                 logger.error(f"Failed to create NotiMailLog object: {e}")
-                continue
+
+            if blocked_error:
+                break
 
         # 메일 발송 로그 저장
         if mail_logs:
@@ -402,6 +445,10 @@ class WeeklyNewsletterBatch:
         logger.info(
             f"Successfully sent {len(success_user_ids)} newsletters out of {len(newsletters)}"
         )
+        if blocked_error:
+            # 이미 받은 사람이 다음 실행에서 다시 받지 않도록 결과를 남기고 배치를 멈춘다
+            self._update_user_weekly_trend_results(success_user_ids)
+            raise blocked_error
         return success_user_ids
 
     def _update_weekly_trend_result(self) -> None:
@@ -453,6 +500,13 @@ class WeeklyNewsletterBatch:
         total_failed = 0
 
         try:
+            # 서명 키가 없어도 발송은 멈추지 않고 기존 email 수신거부 링크로 보낸다
+            if not is_usable_secret(settings.NEWSLETTER_UNSUBSCRIBE_SECRET):
+                logger.warning(
+                    "NEWSLETTER_UNSUBSCRIBE_SECRET is missing or shorter than 32 bytes, "
+                    "sending with legacy email unsubscribe links"
+                )
+
             # ========================================================== #
             # STEP1: 토큰이 유효성 체크 및 업데이트. 이후 사용자 정보 업데이트
             # ========================================================== #
@@ -512,6 +566,9 @@ class WeeklyNewsletterBatch:
                     total_processed += len(success_user_ids)
                     total_failed += len(newsletters) - len(success_user_ids)
 
+                except (AuthenticationError, SendingBlockedError):
+                    raise
+
                 except Exception as e:
                     # 예외 발생해도 다음 청크 진행
                     logger.error(f"Failed to process chunk {chunk_index}: {e}")
@@ -556,7 +613,10 @@ class WeeklyNewsletterBatch:
             logger.error(f"Newsletter batch process failed: {e}")
             try:
                 with open("newsletter_batch_result.txt", "w") as f:
-                    f.write(f"❌ 뉴스레터 발송 실패: {e}")
+                    # 발송 도중 멈춘 경우 이미 받은 사람 수를 함께 남긴다
+                    f.write(
+                        f"❌ 뉴스레터 발송 실패: {e} (성공 {total_processed}명, 실패 {total_failed}명)"
+                    )
             except Exception as e:
                 logger.error(f"Failed to save newsletter batch result: {e}")
 

@@ -27,6 +27,9 @@ def qr_token_used(user, db):
         is_used=True,
         ip_address="192.168.1.2",
         user_agent="Mozilla/5.0",
+        used_at=now(),
+        used_ip="203.0.113.7",
+        used_user_agent="Mozilla/5.0 (iPhone)",
     )
 
 
@@ -51,6 +54,9 @@ def test_make_unused(qr_admin, qr_token_used):
     )
     qr_token_used.refresh_from_db()
     assert qr_token_used.is_used is False
+    assert qr_token_used.used_at is None
+    assert qr_token_used.used_ip is None
+    assert qr_token_used.used_user_agent is None
 
 
 @pytest.mark.django_db
@@ -63,6 +69,8 @@ def test_admin_list_display(qr_admin):
         "is_used",
         "ip_address",
         "user_agent",
+        "used_at",
+        "used_ip",
     )
 
 
@@ -83,7 +91,13 @@ def test_admin_ordering(qr_admin):
 
 @pytest.mark.django_db
 def test_admin_readonly_fields(qr_admin):
-    assert qr_admin.readonly_fields == ("token", "created_at")
+    assert qr_admin.readonly_fields == (
+        "token",
+        "created_at",
+        "used_at",
+        "used_ip",
+        "used_user_agent",
+    )
 
 
 @pytest.mark.django_db

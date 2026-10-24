@@ -1,5 +1,7 @@
 # poetry run pytest insight/tests/test_user_weekly_trend_admin.py -v
+import re
 from datetime import timedelta
+from html import unescape
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -238,6 +240,30 @@ class TestUserWeeklyTrendAdmin:
                     user_weekly_trend
                 )
                 assert "<iframe" in result
+
+    def test_render_full_preview_uses_empty_unsubscribe_link(
+        self,
+        weekly_trend_admin,
+        user_weekly_trend_admin,
+        weekly_trend,
+        user_weekly_trend,
+    ):
+        """미리보기는 서명 키가 있어도 빈 링크(#) 옆에 안내 문구를 보여 준다"""
+        notice = "미리보기에서는 수신거부 링크가 생성되지 않습니다"
+
+        results = [
+            weekly_trend_admin.render_full_preview(weekly_trend),
+            user_weekly_trend_admin.render_full_preview(user_weekly_trend),
+        ]
+
+        for result in results:
+            assert "<iframe" in result
+            preview_html = unescape(result)
+            assert 'href="#"' in preview_html
+            # 속성값이 아니라 화면에 보이는 텍스트로 들어가야 한다
+            assert re.search(rf">[^<]*{notice}[^<]*<", preview_html)
+            assert f'"{notice}"' not in preview_html
+            assert "newsletter-unsubscribe" not in result
 
     def test_render_full_preview_weekly_trend_without_insight(
         self, user_weekly_trend_admin, user_weekly_trend, weekly_trend

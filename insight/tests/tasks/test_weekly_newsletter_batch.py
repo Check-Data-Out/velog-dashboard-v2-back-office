@@ -4,6 +4,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from insight.models import UserWeeklyTrend, WeeklyTrend
+from modules.mail.exceptions import AuthenticationError, SendingBlockedError
+from modules.mail.unsubscribe import (
+    build_legacy_unsubscribe_url,
+    build_unsubscribe_url,
+)
 from noti.models import NotiMailLog
 from users.models import User
 from utils.utils import get_local_now
@@ -208,6 +213,50 @@ class TestWeeklyNewsletterBatch:
             )
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
+    def test_build_newsletters_sets_one_click_unsubscribe_headers(
+        self,
+        mock_logger,
+        newsletter_batch,
+        user,
+        newsletter_unsubscribe_secret,
+    ):
+        """사용자별 서명 수신거부 URL 을 원클릭 수신거부 헤더에 넣는다"""
+        user_chunk = [
+            {"id": user.id, "email": user.email, "username": user.username}
+        ]
+
+        with (
+            patch.object(
+                newsletter_batch, "_get_users_weekly_trend_chunk"
+            ) as mock_get_trends,
+            patch.object(
+                newsletter_batch, "_get_user_weekly_trend_html"
+            ) as mock_get_html,
+            patch(
+                "insight.tasks.weekly_newsletter_batch.render_to_string"
+            ) as mock_render,
+        ):
+            mock_get_trends.return_value = {user.id: MagicMock()}
+            mock_get_html.return_value = "<div>User Trend HTML</div>"
+            mock_render.return_value = "<div>Final Newsletter HTML</div>"
+
+            newsletters = newsletter_batch._build_newsletters(
+                user_chunk, "<div>Weekly Trend HTML</div>"
+            )
+
+        unsubscribe_url = build_unsubscribe_url(
+            newsletter_unsubscribe_secret, user.id
+        )
+        assert newsletters[0].email_message.headers == [
+            ("List-Unsubscribe", f"<{unsubscribe_url}>"),
+            ("List-Unsubscribe-Post", "List-Unsubscribe=One-Click"),
+        ]
+        # 본문 링크도 헤더와 같은 서명 URL 을 쓴다
+        assert (
+            mock_render.call_args.args[1]["unsubscribe_url"] == unsubscribe_url
+        )
+
+    @patch("insight.tasks.weekly_newsletter_batch.logger")
     def test_send_newsletters_success(
         self, mock_logger, newsletter_batch, sample_newsletters
     ):
@@ -242,6 +291,36 @@ class TestWeeklyNewsletterBatch:
         logged = str(mock_logger.mock_calls)
         assert sample_newsletters[0].email_message.to[0] not in logged
         assert f"(id: {sample_newsletters[0].user_id})" in logged
+
+    @pytest.mark.parametrize(
+        "error_cls", [AuthenticationError, SendingBlockedError]
+    )
+    @patch("insight.tasks.weekly_newsletter_batch.NotiMailLog")
+    @patch("insight.tasks.weekly_newsletter_batch.logger")
+    def test_send_newsletters_stops_when_sending_is_blocked(
+        self,
+        mock_logger,
+        mock_mail_log,
+        error_cls,
+        newsletter_batch,
+        sample_newsletter,
+    ):
+        """인증 실패·계정 발송 정지는 재시도·남은 발송 없이 결과를 남기고 배치를 멈춘다"""
+        newsletter_batch.ses_client.send_email.side_effect = error_cls(
+            "blocked"
+        )
+        newsletter_batch._update_user_weekly_trend_results = MagicMock()
+
+        with pytest.raises(error_cls):
+            newsletter_batch._send_newsletters(
+                [sample_newsletter, sample_newsletter]
+            )
+
+        assert newsletter_batch.ses_client.send_email.call_count == 1
+        newsletter_batch._update_user_weekly_trend_results.assert_called_once_with(
+            []
+        )
+        mock_mail_log.objects.bulk_create.assert_called_once()
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     @pytest.mark.django_db
@@ -355,6 +434,50 @@ class TestWeeklyNewsletterBatch:
                 match="No target users found for newsletter, batch stopped",
             ):
                 newsletter_batch.run()
+
+    @pytest.mark.parametrize(
+        "secret",
+        ["", "x" * 31],
+        ids=["empty", "shorter_than_32_bytes"],
+    )
+    @patch("insight.tasks.weekly_newsletter_batch.render_to_string")
+    @patch("insight.tasks.weekly_newsletter_batch.logger")
+    def test_build_newsletters_without_usable_secret_uses_legacy_email_link(
+        self,
+        mock_logger,
+        mock_render,
+        newsletter_batch,
+        user,
+        settings,
+        secret,
+    ):
+        """서명 키가 비었거나 32바이트보다 짧아도 발송을 멈추지 않고 기존 email 링크로 보내며 원클릭 헤더는 붙이지 않는다"""
+        settings.NEWSLETTER_UNSUBSCRIBE_SECRET = secret
+        mock_render.return_value = "<div>Final Newsletter HTML</div>"
+        user_chunk = [
+            {"id": user.id, "email": user.email, "username": user.username}
+        ]
+
+        with (
+            patch.object(
+                newsletter_batch,
+                "_get_users_weekly_trend_chunk",
+                return_value={user.id: MagicMock()},
+            ),
+            patch.object(
+                newsletter_batch,
+                "_get_user_weekly_trend_html",
+                return_value="<div>User Trend HTML</div>",
+            ),
+        ):
+            newsletters = newsletter_batch._build_newsletters(
+                user_chunk, "<div>Weekly Trend HTML</div>"
+            )
+
+        assert newsletters[0].email_message.headers is None
+        assert mock_render.call_args.args[1][
+            "unsubscribe_url"
+        ] == build_legacy_unsubscribe_url(user.email)
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     @pytest.mark.django_db

@@ -23,6 +23,7 @@ SYSTEM_DESIGN.md
 
 ### Django ###
 *.log
+gunicorn.pid
 *.pot
 *.pyc
 __pycache__/

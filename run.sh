@@ -2,10 +2,17 @@
 
 # 운영계에서만 사용할 script
 # chmod +x run.sh
-set -e  # 에러 발생 시 스크립트 중지
-source ./run-kill.sh
+set -euo pipefail
 
-# 가상환경 액티베이션 & 라이브러리 설치
+readonly PID_FILE=./gunicorn.pid
+readonly HEALTH_URL=http://127.0.0.1:8000/admin/login/
+# 운영 ALLOWED_HOSTS 에 127.0.0.1 이 없어 Host 를 지정한다
+readonly HEALTH_HOST=admin-vd2.kro.kr
+
+# 포트 확인에 쓰는 ss 가 없거나 실행되지 않으면 기존 gunicorn 을 내리기 전에 멈춘다
+ss -Hltn >/dev/null || { echo "ss 를 실행할 수 없어 8000 포트를 확인할 수 없습니다 (iproute2 설치 필요)" >&2; exit 1; }
+
+# 설치·정적 파일·마이그레이션은 기존 gunicorn 을 띄워 둔 채로 먼저 한다 (실패하면 기존 서비스 유지)
 source ./.venv/bin/activate
 pip install -r requirements.txt
 
@@ -13,14 +20,40 @@ export DJANGO_SETTINGS_MODULE=backoffice.settings.prod
 python manage.py collectstatic --no-input
 python manage.py migrate
 
-sleep 1
+bash ./run-kill.sh
+
+# 옛 프로세스가 :8000 을 아직 잡고 있으면 새 gunicorn 이 bind 를 재시도하는 동안 옛 서버가 헬스체크에 응답해
+# 성공으로 오판하므로, 포트가 빌 때까지 기다리고 끝내 비지 않으면 띄우지 않는다
+# ss 가 실패하면 빈 출력을 '포트 비어 있음'으로 오판하지 않도록 멈춘다
+port_in_use() {
+    local out
+    out="$(ss -Hltn 'sport = :8000')" || { echo "ss 실행 실패로 8000 포트를 확인할 수 없습니다" >&2; exit 1; }
+    [[ -n "$out" ]]
+}
+for _ in $(seq 1 10); do
+    port_in_use || break
+    sleep 1
+done
+if port_in_use; then
+    echo "8000 포트를 아직 다른 프로세스가 쓰고 있어 gunicorn 을 띄우지 않습니다: ss -ltnp 'sport = :8000' 로 확인하세요" >&2
+    exit 1
+fi
+
 gunicorn --workers 2 --bind 0.0.0.0:8000 --log-level=info \
-    --log-file=./gunicorn.log --access-logfile=./gunicorn-access.log \
+    --access-logfile=./gunicorn-access.log \
     --error-logfile=./gunicorn-error.log --max-requests=1200 \
-    --max-requests-jitter=100 backoffice.wsgi:application --daemon
+    --max-requests-jitter=100 --pid "$PID_FILE" \
+    backoffice.wsgi:application --daemon
 
-sleep 1
+# 응답한 것이 새로 띄운 마스터인지도 본다 (남은 옛 워커가 대신 응답하는 경우를 거른다)
+if ! curl -fsS -o /dev/null -H "Host: ${HEALTH_HOST}" --connect-timeout 2 --max-time 5 \
+    --retry 10 --retry-delay 2 --retry-all-errors "$HEALTH_URL" \
+    || ! kill -0 "$(cat "$PID_FILE" 2>/dev/null)" 2>/dev/null; then
+    echo "헬스체크 실패: ${HEALTH_URL}" >&2
+    tail -n 20 ./gunicorn-error.log >&2 || true
+    echo "기존 gunicorn 은 이미 종료됐습니다. 아래 최근 커밋 중 직전에 배포한 커밋으로 되돌린 뒤 ./run.sh 를 다시 실행하세요." >&2
+    git log -3 --oneline >&2 || true
+    exit 1
+fi
 
-ps -ef | grep gunicorn | grep -v grep
-sleep 1
-tail ./gunicorn-access.log
+echo "gunicorn 기동 완료 (pid $(cat "$PID_FILE"))"

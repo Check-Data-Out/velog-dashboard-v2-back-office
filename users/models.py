@@ -106,6 +106,17 @@ class QRLoginToken(models.Model):  # type: ignore
         blank=True,
         verbose_name="요청한 디바이스 정보",
     )
+    # QR 을 스캔해 로그인한 기기 (로그아웃으로 무효화된 토큰은 비어 있다)
+    used_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="사용 일시"
+    )
+    used_ip = models.CharField(
+        max_length=45, null=True, blank=True, verbose_name="사용한 IP 주소"
+    )
+    # 모바일 인앱 브라우저 UA 는 255자를 넘기도 해서 길이 제한을 두지 않는다
+    used_user_agent = models.TextField(
+        null=True, blank=True, verbose_name="사용한 디바이스 정보"
+    )
 
     class Meta:
         verbose_name = "QR 로그인 토큰"

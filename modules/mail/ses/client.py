@@ -8,6 +8,8 @@ from modules.mail.base_client import MailClient
 from modules.mail.constants import (
     AWS_AUTH_ERROR_CODES,
     AWS_LIMIT_ERROR_CODES,
+    AWS_SEND_BLOCKED_ERROR_CODES,
+    AWS_SEND_REJECTED_ERROR_MESSAGES,
     AWS_SERVICE_ERROR_CODES,
     AWS_VALUE_ERROR_CODES,
 )
@@ -17,6 +19,7 @@ from modules.mail.exceptions import (
     ConnectionError,
     LimitExceededException,
     SendError,
+    SendingBlockedError,
     UnexpectedClientError,
     ValidationError,
 )
@@ -48,10 +51,7 @@ class SESClient(MailClient):
             초기화된 SESClient 인스턴스
 
         Raises:
-            AuthenticationError: AWS 인증 정보가 유효하지 않은 경우
-            LimitExceededException: AWS API 호출 제한을 초과한 경우
-            ValidationError: 입력이 유효하지 않은 경우
-            ConnectionError: AWS 서비스 연결에 실패한 경우
+            ConnectionError: 클라이언트 생성에 실패한 경우
         """
         if cls._instance is None:
             try:
@@ -72,34 +72,19 @@ class SESClient(MailClient):
             credentials: AWS 인증 정보 (AWSSESCredentials)
 
         Returns:
-            초기화된 boto3 SES 클라이언트
+            초기화된 boto3 SES v2 클라이언트
 
         Raises:
-            AuthenticationError: AWS 인증 정보가 유효하지 않은 경우
-            LimitExceededException: AWS API 호출 제한을 초과한 경우
-            ValidationError: 입력이 유효하지 않은 경우
-            ConnectionError: AWS 서비스 연결에 실패한 경우
+            ConnectionError: 클라이언트 생성에 실패한 경우
         """
         try:
-            client = boto3.client(
-                service_name="ses",
+            # 인증·발송 가능 여부는 첫 send_email 오류로 판단한다
+            return boto3.client(
+                service_name="sesv2",
                 aws_access_key_id=credentials.aws_access_key_id,
                 aws_secret_access_key=credentials.aws_secret_access_key,
                 region_name=credentials.aws_region_name,
             )
-            # API 키 검증을 위한 간단한 호출
-            client.get_account_sending_enabled()
-            return client
-        except ClientError as e:
-            # 공통 에러 처리
-            cls._handle_aws_common_errors(e)
-            # 그 외 ClientError 처리
-            logger.error(
-                f"예상하지 못한 AWS SES 클라이언트 초기화 오류: {str(e)}"
-            )
-            raise UnexpectedClientError(
-                f"예상하지 못한 AWS SES 클라이언트 초기화 오류: {str(e)}"
-            ) from e
         except Exception as e:
             logger.error(f"AWS SES 클라이언트 초기화 실패: {str(e)}")
             raise ConnectionError(
@@ -132,14 +117,22 @@ class SESClient(MailClient):
 
         try:
             email_args = {
-                "Source": message.from_email,
+                "FromEmailAddress": message.from_email,
                 "Destination": {
                     "ToAddresses": message.to,
                 },
-                "Message": {
-                    "Subject": {"Data": message.subject, "Charset": "UTF-8"},
-                    "Body": {
-                        "Text": {"Data": message.text_body, "Charset": "UTF-8"}
+                "Content": {
+                    "Simple": {
+                        "Subject": {
+                            "Data": message.subject,
+                            "Charset": "UTF-8",
+                        },
+                        "Body": {
+                            "Text": {
+                                "Data": message.text_body,
+                                "Charset": "UTF-8",
+                            }
+                        },
                     },
                 },
             }
@@ -152,10 +145,17 @@ class SESClient(MailClient):
 
             # HTML 본문 추가
             if message.html_body:
-                email_args["Message"]["Body"]["Html"] = {
+                email_args["Content"]["Simple"]["Body"]["Html"] = {
                     "Data": message.html_body,
                     "Charset": "UTF-8",
                 }
+
+            # 커스텀 헤더 추가 (예: List-Unsubscribe)
+            if message.headers:
+                email_args["Content"]["Simple"]["Headers"] = [
+                    {"Name": name, "Value": value}
+                    for name, value in message.headers
+                ]
 
             response = self._client.send_email(**email_args)
             return response["MessageId"]
@@ -165,16 +165,12 @@ class SESClient(MailClient):
             self._handle_aws_common_errors(e)
             # 특정 에러 처리
             error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "MessageRejected":
-                logger.error(f"이메일이 거부되었습니다. {str(e)}")
-                raise SendError(f"이메일이 거부되었습니다. {str(e)}") from e
-            if error_code == "AccountSendingPausedException":
-                logger.error(
-                    f"계정의 이메일 발송이 일시 중지되었습니다. {str(e)}"
-                )
-                raise SendError(
-                    f"계정의 이메일 발송이 일시 중지되었습니다. {str(e)}"
-                ) from e
+            if error_code in AWS_SEND_REJECTED_ERROR_MESSAGES:
+                reason = AWS_SEND_REJECTED_ERROR_MESSAGES[error_code]
+                logger.error(f"{reason} {str(e)}")
+                if error_code in AWS_SEND_BLOCKED_ERROR_CODES:
+                    raise SendingBlockedError(f"{reason} {str(e)}") from e
+                raise SendError(f"{reason} {str(e)}") from e
             # 그 외 ClientError 처리
             logger.error(f"예상하지 못한 이메일 발송 오류: {str(e)}")
             raise UnexpectedClientError(

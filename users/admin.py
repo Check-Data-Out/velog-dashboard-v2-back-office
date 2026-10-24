@@ -222,11 +222,19 @@ class QRLoginTokenAdmin(admin.ModelAdmin):
         "is_used",
         "ip_address",
         "user_agent",
+        "used_at",
+        "used_ip",
     )
     list_filter = ("is_used", "expires_at")
     search_fields = ("token", "ip_address")
     ordering = ("-id",)
-    readonly_fields = ("token", "created_at")
+    readonly_fields = (
+        "token",
+        "created_at",
+        "used_at",
+        "used_ip",
+        "used_user_agent",
+    )
     actions = ["make_used", "make_unused"]
 
     @admin.display(description="사용자")
@@ -245,5 +253,7 @@ class QRLoginTokenAdmin(admin.ModelAdmin):
 
     @admin.action(description="선택된 QR 로그인 토큰을 미사용 상태로 변경")
     def make_unused(self, request, queryset):
-        """선택한 QR 로그인 토큰을 '미사용' 상태로 변경"""
-        queryset.update(is_used=False)
+        """선택한 QR 로그인 토큰을 '미사용' 상태로 변경 (사용 기록도 함께 비운다)"""
+        queryset.update(
+            is_used=False, used_at=None, used_ip=None, used_user_agent=None
+        )

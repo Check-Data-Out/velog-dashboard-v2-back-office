@@ -7,7 +7,10 @@ from django.urls import reverse
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
-from insight.admin.base_admin import BaseTrendAdminMixin
+from insight.admin.base_admin import (
+    UNSUBSCRIBE_PREVIEW_TEXT,
+    BaseTrendAdminMixin,
+)
 from insight.models import (
     UserWeeklyTrend,
     WeeklyTrend,
@@ -152,6 +155,9 @@ class UserWeeklyTrendAdmin(admin.ModelAdmin, BaseTrendAdminMixin):
                     "is_expired_token_user": False,
                     "weekly_trend_html": weekly_trend_html,
                     "user_weekly_trend_html": user_weekly_trend_html,
+                    # 운영자가 미리보기에서 눌러도 실제로 수신거부되지 않도록 빈 링크로 둔다
+                    "unsubscribe_url": "#",
+                    "unsubscribe_notice": UNSUBSCRIBE_PREVIEW_TEXT,
                 },
             )
 
