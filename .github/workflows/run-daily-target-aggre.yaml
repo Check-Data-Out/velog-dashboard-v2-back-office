@@ -9,16 +9,16 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Python
         id: setup-python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
       - name: Install Poetry
-        uses: abatilo/actions-poetry@v2
+        uses: abatilo/actions-poetry@v4
         with:
           poetry-version: 1.8.4
 
@@ -28,7 +28,7 @@ jobs:
           poetry config virtualenvs.in-project true --local
 
       - name: Define a cache for the virtual environment
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ./.venv
           key: venv-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('poetry.lock') }}
