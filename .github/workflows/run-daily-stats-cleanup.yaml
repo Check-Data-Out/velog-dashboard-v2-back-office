@@ -43,10 +43,12 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ./.venv
-          key: venv-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('poetry.lock') }}
+          key: venv2-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
-        run: poetry install --with dev
+        run: |
+          poetry env use "${{ steps.setup-python.outputs.python-path }}"
+          poetry install --with dev
 
       - name: Create .env.prod file
         run: |
@@ -137,10 +139,12 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ./.venv
-          key: venv-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('poetry.lock') }}
+          key: venv2-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
-        run: poetry install --with dev
+        run: |
+          poetry env use "${{ steps.setup-python.outputs.python-path }}"
+          poetry install --with dev
 
       - name: Create .env.prod file
         run: |
