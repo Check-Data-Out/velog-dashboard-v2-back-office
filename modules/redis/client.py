@@ -97,42 +97,6 @@ class RedisQueueClient:
             logger.warning(f"Failed to connect to Redis: {e}")
             raise
 
-    def pop_message(self, timeout: int = 5) -> dict[str, Any] | None:
-        """Pop a message from the stats refresh queue (blocking).
-
-        Args:
-            timeout: Blocking timeout in seconds
-
-        Returns:
-            Message dict if available, None if timeout
-        """
-        if not self.client:
-            raise RuntimeError("Redis client not connected")
-
-        try:
-            result = self.client.brpop(
-                [self.config.QUEUE_STATS_REFRESH], timeout=timeout
-            )
-            if result:
-                _, message_str = cast(tuple[str, str], result)
-                try:
-                    message: dict[str, Any] = json.loads(message_str)
-                    logger.debug(f"Popped message from queue: {message}")
-                    return message
-                except json.JSONDecodeError as e:
-                    # JSON 디코딩 실패 시 원본 문자열을 DLQ(failed queue)에 저장
-                    # https://ctaverna.github.io/dead-letters/
-                    logger.error(
-                        f"Failed to decode message, moving to failed queue: {e}, "
-                        f"raw_message={message_str!r}"
-                    )
-                    self._push_raw_to_failed(message_str, str(e))
-                    return None
-            return None
-        except RedisError as e:
-            logger.warning(f"Redis error while popping message: {e}")
-            raise
-
     def _push_raw_to_failed(self, raw_message: str, error: str) -> bool:
         """Push raw (unparseable) message to failed queue with error info.
 
@@ -170,44 +134,6 @@ class RedisQueueClient:
                 f"Failed to push malformed message to failed queue: {e}"
             )
             return False
-
-    def push_to_processing(self, message: dict[str, Any]) -> None:
-        """Push message to processing queue.
-
-        Args:
-            message: Message to push
-        """
-        if not self.client:
-            raise RuntimeError("Redis client not connected")
-
-        try:
-            message_str = json.dumps(message)
-            self.client.lpush(
-                self.config.QUEUE_STATS_REFRESH_PROCESSING, message_str
-            )
-            logger.debug(f"Pushed message to processing queue: {message}")
-        except RedisError as e:
-            logger.warning(f"Failed to push to processing queue: {e}")
-            raise
-
-    def remove_from_processing(self, message: dict[str, Any]) -> None:
-        """Remove message from processing queue.
-
-        Args:
-            message: Message to remove
-        """
-        if not self.client:
-            raise RuntimeError("Redis client not connected")
-
-        try:
-            message_str = json.dumps(message)
-            self.client.lrem(
-                self.config.QUEUE_STATS_REFRESH_PROCESSING, 1, message_str
-            )
-            logger.debug(f"Removed message from processing queue: {message}")
-        except RedisError as e:
-            logger.warning(f"Failed to remove from processing queue: {e}")
-            raise
 
     def push_to_failed(self, message: dict[str, Any]) -> None:
         """Push message to failed queue with size limit.
