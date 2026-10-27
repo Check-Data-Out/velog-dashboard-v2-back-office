@@ -12,16 +12,16 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Python
         id: setup-python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
       - name: Install Poetry
-        uses: abatilo/actions-poetry@v2
+        uses: abatilo/actions-poetry@v4
         with:
           poetry-version: 1.8.4
 
@@ -31,13 +31,15 @@ jobs:
           poetry config virtualenvs.in-project true --local
 
       - name: Define a cache for the virtual environment
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ./.venv
-          key: venv-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('poetry.lock') }}
+          key: venv2-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
-        run: poetry install --with dev
+        run: |
+          poetry env use "${{ steps.setup-python.outputs.python-path }}"
+          poetry install --with dev
 
       - name: Create .env.prod file
         # 서명 키는 셸이 $·백틱을 해석하지 않도록 env 로 넘겨 그대로 기록한다

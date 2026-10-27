@@ -55,10 +55,12 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ./.venv
-          key: venv-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('poetry.lock') }}
+          key: venv2-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
-        run: poetry install --with dev
+        run: |
+          poetry env use "${{ steps.setup-python.outputs.python-path }}"
+          poetry install --with dev
 
       # pre-commit 훅을 건너뛴 커밋도 잡는다 (운영 웹은 requirements.txt 로 설치)
       - name: Check lock and requirements.txt are in sync
