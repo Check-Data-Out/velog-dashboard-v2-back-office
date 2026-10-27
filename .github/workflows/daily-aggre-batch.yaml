@@ -10,9 +10,11 @@ on:
         required: true
         type: string
       min_group:
+        description: 'Minimum group number'
         required: true
         type: string
       max_group:
+        description: 'Maximum group number'
         required: true
         type: string
 
@@ -76,9 +78,12 @@ jobs:
         env:
           DJANGO_SETTINGS_MODULE: backoffice.settings.prod
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          # 수동 실행 입력을 셸에 직접 끼워 넣지 않도록 환경 변수로 넘긴다
+          MIN_GROUP: ${{ inputs.min_group }}
+          MAX_GROUP: ${{ inputs.max_group }}
         run: |
           set -e
-          poetry run python scraping/aggregate_batch.py --min-group ${{ inputs.min_group }} --max-group ${{ inputs.max_group }}
+          poetry run python scraping/aggregate_batch.py --min-group "$MIN_GROUP" --max-group "$MAX_GROUP"
 
       # KST 시간을 GitHub Actions 환경 변수에 세팅
       - name: Get Current KST Time
