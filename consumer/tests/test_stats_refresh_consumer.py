@@ -304,7 +304,7 @@ class TestStatsRefreshConsumer:
     def test_process_message_success(
         self, mock_redis_client_class, mock_processor_class, sample_message
     ) -> None:
-        """메시지 처리 성공 — BLMOVE 기반, push_to_processing 은 호출되지 않음."""
+        """메시지 처리 성공 — BLMOVE 기반."""
         mock_redis_client = Mock()
         mock_redis_client_class.return_value = mock_redis_client
 
@@ -324,8 +324,6 @@ class TestStatsRefreshConsumer:
             remove_args[0]
             == consumer.redis_config.QUEUE_STATS_REFRESH_PROCESSING
         )
-        # push_to_processing 은 더 이상 호출되지 않음
-        mock_redis_client.push_to_processing.assert_not_called()
 
     def test_process_message_failure(
         self, mock_redis_client_class, mock_processor_class, sample_message

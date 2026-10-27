@@ -347,8 +347,8 @@ class StatsRefreshConsumer:
     ) -> None:
         """Process a single message.
 
-        BLMOVE 로 이미 processing 큐에 들어간 상태이므로 push_to_processing
-        중복 호출을 하지 않고 lifecycle 상태 전이만 수행한다. 완료 후 processing
+        BLMOVE 로 이미 processing 큐에 들어간 상태이므로 큐 이동 없이
+        lifecycle 상태 전이만 수행한다. 완료 후 processing
         큐에서 원본(raw_str) 을 LREM 으로 제거한다.
 
         Args:

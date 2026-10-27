@@ -1,0 +1,102 @@
+name: Daily Stats Batch (reusable)
+
+# run-daily-aggre-set1~20.yaml 이 호출하는 공통 본문. 세트마다 다른 값(그룹 범위, Slack 표시 이름)만 입력으로 받는다.
+# 스케줄·concurrency·워크플로 이름은 호출하는 쪽에 그대로 있다.
+on:
+  workflow_call:
+    inputs:
+      set_label:
+        description: 'Slack 알림에 표시할 세트 이름 (예: SET1)'
+        required: true
+        type: string
+      min_group:
+        description: 'Minimum group number'
+        required: true
+        type: string
+      max_group:
+        description: 'Maximum group number'
+        required: true
+        type: string
+
+jobs:
+  velog-posts-daily-stats-batch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        id: setup-python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.13"
+
+      - name: Install Poetry
+        uses: abatilo/actions-poetry@v2
+        with:
+          poetry-version: 1.8.4
+
+      - name: Setup a local virtual environment
+        run: |
+          poetry config virtualenvs.create true --local
+          poetry config virtualenvs.in-project true --local
+
+      - name: Define a cache for the virtual environment
+        uses: actions/cache@v4
+        with:
+          path: ./.venv
+          key: venv-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('poetry.lock') }}
+
+      - name: Install dependencies
+        run: poetry install --with dev
+
+      - name: Create .env.prod file
+        run: |
+          echo "SECRET_KEY=${{ secrets.SECRET_KEY }}" >> .env.prod
+          echo "DEBUG=False" >> .env.prod
+          echo "DATABASE_ENGINE=${{ secrets.DATABASE_ENGINE }}" >> .env.prod
+          echo "DATABASE_NAME=${{ secrets.DATABASE_NAME }}" >> .env.prod
+          echo "POSTGRES_USER=${{ secrets.POSTGRES_USER }}" >> .env.prod
+          echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" >> .env.prod
+          echo "POSTGRES_HOST=${{ secrets.POSTGRES_HOST }}" >> .env.prod
+          echo "POSTGRES_PORT=${{ secrets.POSTGRES_PORT }}" >> .env.prod
+          echo "AES_KEY_0=${{ secrets.AES_KEY_0 }}" >> .env.prod
+          echo "AES_KEY_1=${{ secrets.AES_KEY_1 }}" >> .env.prod
+          echo "AES_KEY_2=${{ secrets.AES_KEY_2 }}" >> .env.prod
+          echo "AES_KEY_3=${{ secrets.AES_KEY_3 }}" >> .env.prod
+          echo "AES_KEY_4=${{ secrets.AES_KEY_4 }}" >> .env.prod
+          echo "AES_KEY_5=${{ secrets.AES_KEY_5 }}" >> .env.prod
+          echo "AES_KEY_6=${{ secrets.AES_KEY_6 }}" >> .env.prod
+          echo "AES_KEY_7=${{ secrets.AES_KEY_7 }}" >> .env.prod
+          echo "AES_KEY_8=${{ secrets.AES_KEY_8 }}" >> .env.prod
+          echo "AES_KEY_9=${{ secrets.AES_KEY_9 }}" >> .env.prod
+
+      - name: Run Velog Daily Stats Script
+        id: velog-daily-stats-main
+        timeout-minutes: 48
+        env:
+          DJANGO_SETTINGS_MODULE: backoffice.settings.prod
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          # 수동 실행 입력을 셸에 직접 끼워 넣지 않도록 환경 변수로 넘긴다
+          MIN_GROUP: ${{ inputs.min_group }}
+          MAX_GROUP: ${{ inputs.max_group }}
+        run: |
+          set -e
+          poetry run python scraping/aggregate_batch.py --min-group "$MIN_GROUP" --max-group "$MAX_GROUP"
+
+      # KST 시간을 GitHub Actions 환경 변수에 세팅
+      - name: Get Current KST Time
+        if: always()
+        run: echo "KST_TIME=$(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
+
+      - name: Send Slack Notification on Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "* (${{ inputs.set_label }}) Daily Stats Batch*\n\n❌ *Status:* Failure\n📅 *Timestamp (KST):* ${{ env.KST_TIME }}\n🔗 *Workflow URL:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow>"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

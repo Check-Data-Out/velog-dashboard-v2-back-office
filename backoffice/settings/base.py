@@ -169,6 +169,10 @@ DATABASES = {
         "PORT": env("POSTGRES_PORT", default=""),
         "CONN_MAX_AGE": 600,  # 10분 동안 연결 유지
         "CONN_HEALTH_CHECKS": True,
+        # Actions 배치(일일·주간·정리)는 secret POSTGRES_PORT 로 Supabase pooler 트랜잭션 모드(6543)에 붙을 수 있다.
+        # 트랜잭션마다 서버 연결이 바뀔 수 있어 트랜잭션을 넘는 서버 측 커서(.iterator())를 쓰지 않는다. 세션 모드에서도 무해하다
+        # https://docs.djangoproject.com/en/5.2/ref/databases/#transaction-pooling-and-server-side-cursors
+        "DISABLE_SERVER_SIDE_CURSORS": True,
         "OPTIONS": connection_options_for_engine(
             env("DATABASE_ENGINE", default=None)
         ),
