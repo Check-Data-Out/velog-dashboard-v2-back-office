@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, call, patch
 
 from scraping.batch_runner import batch_exit_code, run_in_processes
+from utils.utils import split_range
 
 
 def _noop(_: int) -> None:
@@ -9,6 +10,11 @@ def _noop(_: int) -> None:
 
 def _raises(_: int) -> None:
     raise RuntimeError("boom")
+
+
+def _first_group(group_range: range) -> int:
+    """Scraper.run 처럼 그룹 범위의 min() 을 쓴다."""
+    return min(group_range)
 
 
 class TestRunInProcesses:
@@ -63,3 +69,14 @@ class TestBatchExitCode:
     def test_treats_none_exitcode_as_failure(self):
         """exitcode 가 None 이면 성공으로 오판하지 않는지"""
         assert batch_exit_code([0, None]) == 1
+
+
+def test_batch_with_single_group_exits_zero():
+    """그룹 1개로 배치를 돌려도 실패 없이 끝나는지.
+
+    split_range 가 빈 구간을 넘기면 그 자식은 min() 에서 죽고 배치는
+    exit 1 로 끝난다(scraping/aggregate_batch.py 의 흐름).
+    """
+    exitcodes = run_in_processes(_first_group, split_range(5, 5, 2))
+
+    assert batch_exit_code(exitcodes) == 0
