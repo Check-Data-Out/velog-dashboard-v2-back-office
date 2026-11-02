@@ -62,7 +62,14 @@ def strip_html_tags(html: str) -> str:
 
 
 def split_range(start: int, end: int, parts: int) -> list[range]:
-    """주어진 범위를 지정된 수만큼 균등하게 분할"""
+    """주어진 범위를 지정된 수만큼 균등하게 분할
+
+    그룹 수가 parts 보다 적으면 빈 구간은 빼고 돌려주므로 parts 보다
+    적은 수의 구간이 나올 수 있다. start 가 end 보다 크면 ValueError.
+    """
+    if start > end:
+        raise ValueError(f"start({start}) 가 end({end}) 보다 큽니다.")
+
     width = end - start
     part_width = width // parts
     ranges = []
@@ -76,7 +83,9 @@ def split_range(start: int, end: int, parts: int) -> list[range]:
         else:
             ranges.append(range(part_start, end + 1))
 
-    return ranges
+    # 그룹 수가 parts 보다 적으면 빈 구간이 생긴다. 빈 구간을 받은
+    # 프로세스는 Scraper.run 의 min()/max() 에서 ValueError 로 죽는다.
+    return [r for r in ranges if r]
 
 
 def split_list(lst: list[int], n_splits: int) -> list[list[int]]:
