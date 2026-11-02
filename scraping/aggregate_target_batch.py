@@ -5,6 +5,9 @@
 - 실행은 아래와 같은 커멘드 활용
 - python ./scraping/aggregate_target_batch.py
 - poetry run python ./scraping/aggregate_target_batch.py
+- 운영 DB 대상이면 레포 루트의 .env.prod 와
+  DJANGO_SETTINGS_MODULE=backoffice.settings.prod 가 필요하다.
+  없으면 setup_django 기본값(backoffice.settings.local)으로 돈다
 """
 
 import asyncio
