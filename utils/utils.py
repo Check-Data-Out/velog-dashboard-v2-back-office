@@ -64,9 +64,10 @@ def strip_html_tags(html: str) -> str:
 def split_range(start: int, end: int, parts: int) -> list[range]:
     """start~end(양끝 포함)를 겹치지 않는 최대 parts 개 구간으로 분할
 
-    end - start 가 parts 보다 작으면 앞쪽 구간이 비는데, 빈 구간은 빼고
-    돌려주므로 parts 보다 적은 수의 구간이 나올 수 있다(예: 1~3 을 3분할
-    하면 구간 1개). start 가 end 보다 크면 ValueError.
+    end - start 가 parts 보다 작으면 앞쪽 구간이 빈다. 빈 구간을 받은
+    프로세스는 Scraper.run 의 min()/max() 에서 죽으므로 빼고 돌려주며,
+    이때는 start~end 전체 구간 1개만 나온다(예: 1~3 을 3분할).
+    start 가 end 보다 크면 ValueError.
     """
     if start > end:
         raise ValueError(f"start({start}) 가 end({end}) 보다 큽니다.")
