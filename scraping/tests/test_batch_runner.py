@@ -79,4 +79,5 @@ def test_batch_with_single_group_exits_zero():
     """
     exitcodes = run_in_processes(_first_group, split_range(5, 5, 2))
 
-    assert batch_exit_code(exitcodes) == 0
+    # [] 도 batch_exit_code 로는 0 이라, 프로세스가 실제로 1개 떴는지 본다
+    assert exitcodes == [0]
