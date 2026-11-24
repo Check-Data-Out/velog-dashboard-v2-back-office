@@ -23,7 +23,7 @@ def _generate_analysis(
     client = OpenAIClient.get_client(api_key)
     prompt = user_prompt.format(posts=posts, count=len(posts))
 
-    logger.info("Generated prompt:\n%s", prompt)
+    logger.debug("Generated prompt:\n%s", prompt)
 
     try:
         result = client.generate_text(
@@ -33,7 +33,7 @@ def _generate_analysis(
             response_format={"type": "json_object"},
         )
 
-        logger.info("LLM raw result:\n%s", result)
+        logger.debug("LLM raw result:\n%s", result)
 
         if isinstance(result, str):
             result = json.loads(result)
