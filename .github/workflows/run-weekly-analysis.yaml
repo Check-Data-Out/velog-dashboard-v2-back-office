@@ -57,9 +57,13 @@ jobs:
           # 이번 주 WeeklyTrend 행이 있으면 물러난다 (읽기 전용 트랜잭션)
           # 행은 공통 분석이 성공해야 생기므로, 서버 공통 분석이 실패한 주는 GitHub 가 다시 돈다
           command -v psql || (sudo apt-get update && sudo apt-get install -y postgresql-client)
-          STARTED=$(psql -X -q -A -t -v ON_ERROR_STOP=1 -c 'BEGIN READ ONLY' \
+          # psql 오류 원문에는 DB 주소가 들어갈 수 있어 공개 로그에 남기지 않는다
+          if ! STARTED=$(psql -X -q -A -t -v ON_ERROR_STOP=1 -c 'BEGIN READ ONLY' \
             -c "SELECT count(*) FROM insight_weeklytrend WHERE week_end_date >= (date_trunc('week', now() AT TIME ZONE 'Asia/Seoul')::date - 1)" \
-            -c 'COMMIT')
+            -c 'COMMIT' 2>/dev/null); then
+            echo "DB 조회 실패 (오류 원문은 남기지 않음)" >&2
+            exit 1
+          fi
           if [ "$STARTED" != "0" ]; then
             decide false "건너뜀: 이번 주 WeeklyTrend 가 이미 있음 (${STARTED}건)"
           fi

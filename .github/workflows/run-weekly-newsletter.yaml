@@ -55,9 +55,13 @@ jobs:
 
           # 이번 주 발송이 끝났거나 서버가 발송을 시작했으면 서버가 끝까지 맡는다 (읽기 전용 트랜잭션)
           command -v psql || (sudo apt-get update && sudo apt-get install -y postgresql-client)
-          STARTED=$(psql -X -q -A -t -v ON_ERROR_STOP=1 -c 'BEGIN READ ONLY' \
+          # psql 오류 원문에는 DB 주소가 들어갈 수 있어 공개 로그에 남기지 않는다
+          if ! STARTED=$(psql -X -q -A -t -v ON_ERROR_STOP=1 -c 'BEGIN READ ONLY' \
             -c "SELECT count(*) FROM insight_weeklytrend WHERE week_end_date >= (date_trunc('week', now() AT TIME ZONE 'Asia/Seoul')::date - 1) AND (is_processed OR insight->'_batch' ? 'newsletter_started_at')" \
-            -c 'COMMIT')
+            -c 'COMMIT' 2>/dev/null); then
+            echo "DB 조회 실패 (오류 원문은 남기지 않음)" >&2
+            exit 1
+          fi
           if [ "$STARTED" != "0" ]; then
             decide false "건너뜀: 이번 주 발송이 끝났거나 시작됨 (${STARTED}건, 서버가 처리)"
           fi
