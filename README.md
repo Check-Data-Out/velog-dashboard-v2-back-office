@@ -241,6 +241,108 @@ END $$;
 
 ---
 
+## 주간 분석·뉴스레터 실행
+
+평소에는 운영 BO 서버 crontab 이 `run-weekly.sh` 로 정시에 실행한다. GitHub Actions 는 서버가 그 주 작업을 시작조차 못 했을 때만 일하는 안전망이다.
+
+### 실행 시각 (KST)
+
+| 시각 | 작업 | 실행 주체 |
+|---|---|---|
+| 월 07:00 | 공통 분석(`trend`). 끝나면 바로 사용자 분석(`user-analysis`) | 서버 |
+| (공통 분석 직후) | 사용자 분석은 그날 일일 통계 20세트가 모일 때까지 최대 90분 기다린 뒤 시작 | 서버 |
+| 월 09:30 | 뉴스레터 발송(`newsletter`) | 서버 |
+| 월 12:10 | 분석 안전망 (`Weekly Analysis Batch`) | GitHub |
+| 월 13:10 | 발송 안전망 (`Weekly Newsletter Batch`) | GitHub |
+
+시간 제한(`timeout`): trend 10분, user-analysis 135분, newsletter 48분. 넘기면 강제 종료되고 Slack 에 "시간 제한 초과"가 간다.
+
+### 서버 crontab
+
+서버 시간대는 UTC 다. 사용자 분석은 공통 분석 결과 행이 있어야 하므로 반드시 한 줄로 잇는다. 서버가 꺼져 있어 놓친 시각은 다시 돌리지 않는다(그 주는 GitHub 안전망과 미실행 알림이 맡는다).
+
+```cron
+0 22 * * 0  <레포>/run-weekly.sh trend && <레포>/run-weekly.sh user-analysis
+30 0 * * 1  <레포>/run-weekly.sh newsletter
+```
+
+### `~/weekly-batch` 구조
+
+gunicorn 과 같은 사용자로 돈다. 파일은 본인만 읽을 수 있다(`umask 077`).
+
+```text
+~/weekly-batch/
+  trend.lock  user-analysis.lock  newsletter.lock   # flock 잠금. 작업이 끝날 때까지 유지
+  logs/<작업>-<YYYYMMDD>.log                          # 8주(56일) 지난 파일은 시작할 때 삭제
+  metrics/weekly_batch_<작업>.prom                    # node_exporter textfile 폴더. 성공(건너뜀 포함) 때만 갱신
+```
+
+지표: `vd_weekly_batch_last_success_timestamp_seconds{job="<작업>"}`. 결과 파일(`weekly_analysis_result.txt`, `newsletter_batch_result.txt`)과 건너뜀 표시 파일(`<스크립트>.skipped`)은 레포 폴더에 생긴다.
+
+### 서버 `.env.prod` 키
+
+값은 적지 않는다. 코드에서 읽는 키만 나열한다.
+
+| 용도 | 키 |
+|---|---|
+| 공통 | `SECRET_KEY`(필수), `DATABASE_ENGINE`, `DATABASE_NAME`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST` |
+| 분석 | `OPENAI_API_KEY` |
+| 발송 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `DEFAULT_FROM_EMAIL`, `NEWSLETTER_UNSUBSCRIBE_SECRET` |
+| 선택 | `SENTRY_DSN`, `SENTRY_TRACES_SAMPLE_RATE`, `SLACK_WEBHOOK_URL`(`run-weekly.sh` 가 읽음, 없으면 Slack 알림만 생략) |
+
+`POSTGRES_PORT` 는 스크립트가 pooler 트랜잭션 모드(6543)로 고정하므로 `.env.prod` 값을 쓰지 않는다. 뉴스레터 서명 키가 없거나 32바이트보다 짧으면 발송은 계속하되 이메일 수신거부 링크로 보낸다.
+
+### 수동 실행
+
+서버에서는 항상 `run-weekly.sh` 로 돌린다. 파이썬 스크립트를 직접 부르면 잠금과 GitHub run 겹침 확인을 거치지 않는다.
+
+```bash
+cd <레포>
+./run-weekly.sh trend           # 공통 분석
+./run-weekly.sh user-analysis   # 사용자 분석 (이번 주 공통 분석 행 필요)
+./run-weekly.sh newsletter      # 뉴스레터 발송
+```
+
+GitHub 에서 돌릴 때는 `gh workflow run "Weekly Analysis Batch"` 또는 `gh workflow run "Weekly Newsletter Batch"`. `workflow_dispatch` 도 판정 job(`guard`)을 거치므로, 서버가 이미 시작했거나 끝낸 주에는 본 작업 없이 조용히 건너뛴다.
+
+### 건너뜀과 중복 방지
+
+| 규칙 | 동작 |
+|---|---|
+| `flock` | 같은 작업이 이미 돌고 있으면 "이미 실행 중, 건너뜀"을 로그에 남기고 종료 코드 0 |
+| GitHub 진행 중 run | 같은 워크플로의 run 이 진행 중이면 "GitHub run 진행 중, 건너뜀"으로 종료 코드 0. 조회가 실패하면 그대로 진행 |
+| 이번 주 처리 표시 | 공통 분석: 이번 주 `WeeklyTrend` 행이 있으면 건너뜀. 사용자 분석: `insight._batch.user_analysis_completed_at` 이 있으면 건너뜀(없으면 이번 주 `UserWeeklyTrend` 가 없는 대상만 처리). 발송: 이번 주 행이 발송 완료(`is_processed`)면 건너뜀, 첫 메일 전에 `_batch.newsletter_started_at` 기록 |
+| 이미 받은 이메일 제외 | 이번 주 뉴스레터를 이미 받은 이메일은 대상에서 빼고(청크마다 다시 적용), 남은 대상이 0명이면 발송 완료로 표시 |
+
+할 일 없이 끝나면 `<스크립트>.skipped` 표시 파일이 생기고 Slack 은 보내지 않는다. 발송은 `user_analysis_completed_at` 이 없으면 메일 0통으로 실패한다. 사용자 분석은 대상의 절반 이상이 실패하면 완료 표시 없이 종료 코드 1 로 끝난다.
+
+### GitHub 안전망이 도는 조건
+
+예약 시각이면 run 은 반드시 만들어지지만, 먼저 `guard` job(체크아웃·secret 파일·DB 쓰기 없음, DB 는 읽기 전용)만 돌고 아래 순서로 판정한다.
+
+| 순서 | 조건 | 결과 |
+|---|---|---|
+| 1 | 예약 이벤트인데 KST 요일이 월요일이 아님 | 건너뜀 |
+| 2 | 같은 워크플로에서 먼저 만들어진 예약·수동 run 이 대기·진행 중 | 건너뜀 |
+| 3 | 분석: 이번 주 `WeeklyTrend` 행이 있음 / 발송: 이번 주 행이 `is_processed` 이거나 `_batch.newsletter_started_at` 이 있음 | 건너뜀 |
+| 4 | 그 밖(서버가 그 주 작업을 시작하지 못함) | 본 작업 실행, Slack 첫 줄에 "GitHub 안전망 실행" 표시 |
+
+서버가 시작한 주는 서버가 끝까지 맡는다. 서버 공통 분석이 실패해 행이 없는 주는 12:10 에 GitHub 가 다시 돈다. `guard` 가 실패하면 Slack 에 "안전망 판정 실패"가 간다.
+
+### 배포 금지 시간
+
+월요일 06:55~10:20 KST 에는 `run.sh` 로 배포하지 않는다. `run.sh` 는 시작할 때 `~/weekly-batch/*.lock` 을 잡아 보고, 하나라도 잡혀 있으면(주간 배치 실행 중) 배포를 멈추고 종료 코드 1 로 끝난다. 다만 검사 직후 cron 이 시작하는 경합은 막지 못하므로 위 시간대를 피한다.
+
+### 장애 시 확인 순서
+
+1. **Slack**: 작업별 메시지의 Status(success·failure·시간 제한 초과), Result, Log 경로를 본다. 메시지가 없으면 건너뜀이거나 Slack 웹훅이 없는 것이다.
+2. **로그**: `~/weekly-batch/logs/<작업>-<날짜>.log` (`trend`·`user-analysis`·`newsletter`). 시작·종료 exit 코드와 건너뜀 사유가 KST 시각과 함께 남는다.
+3. **결과·표시 파일**: 레포 폴더의 `weekly_analysis_result.txt`, `newsletter_batch_result.txt`, `*.skipped`. DB 에서는 이번 주 `insight_weeklytrend` 행과 `insight->'_batch'` 의 `user_analysis_started_at`·`user_analysis_completed_at`·`newsletter_started_at` 을 본다.
+4. **재실행**: 서버에서 `./run-weekly.sh <작업>`. 이미 끝난 부분은 위 규칙으로 건너뛰고 남은 부분만 처리한다. 순서는 trend, user-analysis, newsletter.
+5. **Grafana 미실행 알림**: 월요일 10:30~12:00 KST 에 발송 지표(`job="newsletter"`)가 24시간 넘게 갱신되지 않았으면 울린다(규칙은 모니터링 서버에 있다). 서버는 살아 있는데 crontab 이 지워졌거나 스크립트가 시작 전에 죽은 경우다. 알림이 오면 1~4 순서로 확인한다.
+
+---
+
 ## Runserver
 
 ```bash
