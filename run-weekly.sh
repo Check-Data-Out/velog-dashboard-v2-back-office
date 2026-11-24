@@ -12,6 +12,8 @@
 # 로그는 ~/weekly-batch/logs, 마지막 성공 시각 지표는 ~/weekly-batch/metrics(node_exporter textfile 폴더)에 남는다
 # Slack 웹훅은 .env.prod 의 SLACK_WEBHOOK_URL 을 쓴다. 없으면 알림만 생략한다
 set -euo pipefail
+# 로그·잠금·결과·지표 파일을 본인만 읽게 한다 (node_exporter 는 같은 사용자로 돌아야 지표를 읽는다)
+umask 077
 
 cd "$(dirname "$(readlink -f "$0")")"
 
@@ -142,7 +144,7 @@ else
     result="결과 파일 없음"
 fi
 
-payload_file="$(umask 077 && mktemp)"
+payload_file="$(mktemp)"
 trap 'rm -f "$payload_file"' EXIT
 
 # Slack 텍스트에서 & < > 는 이스케이프해야 그대로 보인다. JSON 은 파이썬 json.dumps 로 만든다
