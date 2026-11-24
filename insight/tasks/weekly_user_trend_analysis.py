@@ -64,6 +64,16 @@ def _to_local_midnight(day: date) -> datetime:
     return timezone.make_aware(datetime.combine(day, datetime.min.time()))
 
 
+def _skip_when_completed(weekly_trend: WeeklyTrend) -> bool:
+    """이번 주 사용자 분석이 이미 끝났으면 건너뜀 줄과 표시 파일을 남기고 True"""
+    if not weekly_trend.batch_value(BATCH_USER_ANALYSIS_COMPLETED):
+        return False
+    with open("weekly_analysis_result.txt", "a") as f:
+        f.write("⏭ 사용자 주간 분석 건너뜀: 이번 주 분석이 이미 끝남\n")
+    Path(SKIP_MARKER).touch()
+    return True
+
+
 @dataclass
 class UserWeeklyData:
     """사용자 주간 데이터"""
@@ -592,10 +602,7 @@ async def main():
         return 1
 
     # 이미 끝난 주는 세션·velog·LLM 을 건드리기 전에 끝낸다
-    if weekly_trend.batch_value(BATCH_USER_ANALYSIS_COMPLETED):
-        with open("weekly_analysis_result.txt", "a") as f:
-            f.write("⏭ 사용자 주간 분석 건너뜀: 이번 주 분석이 이미 끝남\n")
-        Path(SKIP_MARKER).touch()
+    if _skip_when_completed(weekly_trend):
         return 0
 
     # 기다리는 동안(최대 90분) 쉬는 DB 연결은 서버가 끊을 수 있다.
