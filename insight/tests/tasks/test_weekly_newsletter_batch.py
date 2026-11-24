@@ -126,7 +126,7 @@ class TestWeeklyNewsletterBatch:
         ]
 
         with patch.object(User.objects, "filter") as mock_filter:
-            mock_filter.return_value.values.return_value.distinct.return_value = mock_users
+            mock_filter.return_value.exclude.return_value.values.return_value.distinct.return_value = mock_users
 
             chunks = newsletter_batch._get_target_user_chunks()
 
@@ -631,6 +631,40 @@ class TestWeeklyNewsletterBatchRun:
         trend.refresh_from_db()
         assert trend.batch_value(BATCH_NEWSLETTER_STARTED) is None
         assert trend.is_processed is False
+
+    def test_skips_emails_that_already_received_this_newsletter(
+        self, newsletter_batch, work_dir, user, sample_weekly_trend_insight
+    ):
+        """이번 주 뉴스레터를 이미 받은 이메일은 다른 계정으로도 다시 받지 않는다"""
+        trend = create_this_week_trend(
+            sample_weekly_trend_insight.to_json_dict()
+        )
+        subject = f"벨로그 대시보드 주간 뉴스레터 #{trend.id}"
+        # user 는 이미 받았고, 같은 이메일의 다른 계정은 받은 기록이 없다
+        NotiMailLog.objects.create(user=user, subject=subject, is_success=True)
+        create_user(user.email)
+        # 실패 기록만 있는 이메일은 다시 받는다
+        failed = create_user("failed@example.com")
+        NotiMailLog.objects.create(
+            user=failed, subject=subject, is_success=False
+        )
+        # 다른 주 뉴스레터를 받은 이메일은 이번 주 것을 받는다
+        other_week = create_user("other-week@example.com")
+        NotiMailLog.objects.create(
+            user=other_week,
+            subject=f"벨로그 대시보드 주간 뉴스레터 #{trend.id + 1}",
+            is_success=True,
+        )
+        # 계정이 지워져 수신자가 빈 성공 기록은 누구도 빼지 않는다
+        NotiMailLog.objects.create(user=None, subject=subject, is_success=True)
+
+        newsletter_batch.run()
+
+        recipients = sorted(
+            call.args[0].to[0]
+            for call in newsletter_batch.ses_client.send_email.call_args_list
+        )
+        assert recipients == ["failed@example.com", "other-week@example.com"]
 
 
 @pytest.fixture

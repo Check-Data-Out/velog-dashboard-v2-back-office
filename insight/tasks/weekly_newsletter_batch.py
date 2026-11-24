@@ -19,6 +19,7 @@ from time import sleep
 import setup_django  # noqa
 from django.conf import settings
 from django.db import transaction
+from django.db.models import QuerySet
 from django.template.loader import render_to_string
 
 from insight.models import (
@@ -96,8 +97,21 @@ class WeeklyNewsletterBatch:
             # 삭제 실패 시에도 계속 진행
             logger.error(f"Failed to delete old mail logs: {e}")
 
+    def _received_emails(self) -> QuerySet:
+        """이번 주 뉴스레터(제목 끝 #id)를 이미 성공적으로 받은 이메일"""
+        return NotiMailLog.objects.filter(
+            is_success=True,
+            subject__endswith=f"#{self.weekly_info['newsletter_id']}",
+            # NULL 이 섞이면 NOT IN 이 모든 대상을 빼므로 수신자가 없는 기록은 뺀다
+            user__email__isnull=False,
+        ).values_list("user__email", flat=True)
+
     def _get_target_user_chunks(self) -> list[list[dict]]:
-        """뉴스레터 발송 대상 유저 목록 조회 후 청크 단위로 분할"""
+        """뉴스레터 발송 대상 유저 목록 조회 후 청크 단위로 분할
+
+        이메일당 한 계정만 뽑으므로(distinct) 이미 받은 사람은 사용자 id 가
+        아니라 이메일로 뺀다. 그래야 같은 이메일의 다른 계정이 다시 받지 않는다.
+        """
         try:
             target_users = list(
                 User.objects.filter(
@@ -105,6 +119,7 @@ class WeeklyNewsletterBatch:
                     email__isnull=False,
                     newsletter_subscribed=True,
                 )
+                .exclude(email__in=self._received_emails())
                 .values("id", "email", "username")
                 .distinct("email")
             )
