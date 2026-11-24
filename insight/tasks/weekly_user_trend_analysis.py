@@ -527,66 +527,51 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
                     e,
                 )
 
-    async def run(self) -> AnalysisResult[list[dict]]:
-        """배치 실행.
+    async def _process(
+        self, context: AnalysisContext
+    ) -> AnalysisResult[list[dict]]:
+        """본처리.
 
-        전원의 본문을 한꺼번에 쌓지 않도록, 컨텍스트를 한 번 만들고 사용자
-        한 명씩 수집 → 분석 → 저장한다. 그래서 결과(data)는 모아 두지 않는다.
+        전원의 본문을 한꺼번에 쌓지 않도록 사용자 한 명씩 수집 → 분석 →
+        저장한다. 그래서 결과(data)는 모아 두지 않는다.
         """
-        self.logger.info("Starting %s", self.__class__.__name__)
-
-        context = None
-        try:
-            context = await self._initialize_context()
-            await sync_to_async(self.weekly_trend.mark_batch)(
-                BATCH_USER_ANALYSIS_STARTED
-            )
-
-            users = await self._fetch_data(context)
-            self.logger.info("Starting analysis for %d users", len(users))
-
-            processed_count = 0
-            for user in users:
-                if await self._process_user(
-                    user["id"], user["username"], context
-                ):
-                    processed_count += 1
-
-            # 사용자별 실패는 로그만 남기고, 대상 전원을 다 돌았으면 완료로 본다
-            await sync_to_async(self.weekly_trend.mark_batch)(
-                BATCH_USER_ANALYSIS_COMPLETED
-            )
-
-            self.logger.info(
-                "Batch completed: %d users analyzed, %d users expired",
-                processed_count,
-                len(self.expired_token_users),
-            )
-            result = AnalysisResult(
-                success=True,
-                data=[],
-                metadata={"processed_count": processed_count},
-            )
-
-        except Exception as e:
-            self.logger.exception(
-                "Failed to run %s: %s", self.__class__.__name__, e
-            )
-            result = AnalysisResult(success=False, error=e, metadata={})
-
-        finally:
-            # 성공·실패 모두 컨텍스트가 연 aiohttp 세션을 닫는다
-            if context is not None and context.session is not None:
-                await context.session.close()
-
-        result.metadata.update(
-            {
-                "expired_token_users": len(self.expired_token_users),
-                "successful_users": len(self.successful_users),
-                "expired_user_ids": list(self.expired_token_users),
-            }
+        await sync_to_async(self.weekly_trend.mark_batch)(
+            BATCH_USER_ANALYSIS_STARTED
         )
 
+        users = await self._fetch_data(context)
+        self.logger.info("Starting analysis for %d users", len(users))
+
+        processed_count = 0
+        for user in users:
+            if await self._process_user(user["id"], user["username"], context):
+                processed_count += 1
+
+        # 사용자별 실패는 로그만 남기고, 대상 전원을 다 돌았으면 완료로 본다
+        await sync_to_async(self.weekly_trend.mark_batch)(
+            BATCH_USER_ANALYSIS_COMPLETED
+        )
+
+        self.logger.info(
+            "Batch completed: %d users analyzed, %d users expired",
+            processed_count,
+            len(self.expired_token_users),
+        )
+        return AnalysisResult(
+            success=True,
+            data=[],
+            metadata={"processed_count": processed_count},
+        )
+
+    async def run(self) -> AnalysisResult[list[dict]]:
+        """배치 실행. 성공·실패 모두 사용자 집계를 metadata 에 붙인다"""
+        result = await super().run()
+        result.metadata = {
+            **(result.metadata or {}),
+            "expired_token_users": len(self.expired_token_users),
+            "successful_users": len(self.successful_users),
+            "expired_user_ids": list(self.expired_token_users),
+        }
         return result
 
 
