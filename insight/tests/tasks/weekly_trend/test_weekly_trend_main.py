@@ -21,13 +21,6 @@ def weekly_trend_main(mock_setup_django):
 
 
 @pytest.fixture
-def work_dir(tmp_path, monkeypatch):
-    """결과 파일과 표시 파일을 임시 폴더에 쓴다"""
-    monkeypatch.chdir(tmp_path)
-    return tmp_path
-
-
-@pytest.fixture
 def mock_velog_client_cls(mock_post, mock_post_detail):
     """분석 컨텍스트가 만드는 VelogClient"""
     with patch("insight.tasks.base_analysis.VelogClient") as client_cls:

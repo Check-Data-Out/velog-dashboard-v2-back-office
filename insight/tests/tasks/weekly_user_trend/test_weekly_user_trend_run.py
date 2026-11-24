@@ -47,19 +47,6 @@ LLM_RESULT = {
 }
 
 
-def create_user(username: str) -> User:
-    return User.objects.create(
-        velog_uuid=uuid.uuid4(),
-        access_token="test-access-token",
-        refresh_token="test-refresh-token",
-        group_id=1,
-        email=f"{username}@example.com",
-        username=username,
-        is_active=True,
-        newsletter_subscribed=True,
-    )
-
-
 def create_post(
     user: User,
     title: str,
@@ -93,23 +80,21 @@ def create_weekly_trend(insight: dict | None = None) -> WeeklyTrend:
     )
 
 
-def create_writer(username: str) -> tuple[User, Post]:
-    """이번 주 새 글 1편과 오늘자 통계가 있는 사용자"""
-    user = create_user(username)
-    post = create_post(
-        user,
-        f"{username} 의 새 글",
-        WEEK_START + timedelta(days=2),
-        {WEEK_END: (30, 3)},
-    )
-    return user, post
-
-
 @pytest.fixture
-def work_dir(tmp_path, monkeypatch):
-    """결과 파일과 표시 파일을 임시 폴더에 쓴다"""
-    monkeypatch.chdir(tmp_path)
-    return tmp_path
+def create_writer(create_user):
+    """이번 주 새 글 1편과 오늘자 통계가 있는 사용자를 만드는 함수"""
+
+    def _create_writer(username: str) -> tuple[User, Post]:
+        user = create_user(f"{username}@example.com")
+        post = create_post(
+            user,
+            f"{username} 의 새 글",
+            WEEK_START + timedelta(days=2),
+            {WEEK_END: (30, 3)},
+        )
+        return user, post
+
+    return _create_writer
 
 
 @pytest.fixture
@@ -160,13 +145,18 @@ def mock_llm():
 @pytest.mark.usefixtures("mock_setup_django")
 class TestWeeklyUserTrendRun:
     def test_run_saves_trend_per_valid_user_and_reports_expired(
-        self, user_trend_module, monday, mock_velog_client_cls, mock_llm
+        self,
+        user_trend_module,
+        monday,
+        mock_velog_client_cls,
+        mock_llm,
+        create_user,
     ):
         """새 글 있는 사용자·없는 사용자는 저장하고, 토큰 만료 사용자는 빼고 보고한다"""
         analyzer_user = user_trend_module.UserWeeklyAnalyzer(
             create_weekly_trend()
         )
-        writer = create_user("writer")
+        writer = create_user("writer@example.com")
         create_post(
             writer,
             "예전 글",
@@ -179,7 +169,7 @@ class TestWeeklyUserTrendRun:
             WEEK_START + timedelta(days=2, hours=10),
             {WEEK_END: (30, 3)},
         )
-        quiet = create_user("quiet")
+        quiet = create_user("quiet@example.com")
         create_post(
             quiet,
             "마지막 글",
@@ -187,7 +177,7 @@ class TestWeeklyUserTrendRun:
             {WEEK_START: (10, 1), WEEK_END: (25, 2)},
         )
         # 오늘자 통계가 없으면 토큰 만료로 본다
-        expired = create_user("expired")
+        expired = create_user("expired@example.com")
         create_post(
             expired,
             "통계가 끊긴 글",
@@ -256,24 +246,31 @@ class TestWeeklyUserTrendRun:
         }
 
     def test_fetch_data_returns_only_newsletter_target_users(
-        self, analyzer_user
+        self, analyzer_user, create_user
     ):
         """이메일이 있고 활성이며 수신 동의한 사용자의 id·username 만 돌려준다"""
-        target = create_user("target")
-        User.objects.filter(pk=create_user("inactive").pk).update(
+        target = create_user("target@example.com")
+        User.objects.filter(pk=create_user("inactive@example.com").pk).update(
             is_active=False
         )
-        User.objects.filter(pk=create_user("unsubscribed").pk).update(
-            newsletter_subscribed=False
+        User.objects.filter(
+            pk=create_user("unsubscribed@example.com").pk
+        ).update(newsletter_subscribed=False)
+        User.objects.filter(pk=create_user("no-email@example.com").pk).update(
+            email=""
         )
-        User.objects.filter(pk=create_user("no-email").pk).update(email="")
 
         users = async_to_sync(analyzer_user._fetch_data)(None)
 
         assert users == [{"id": target.id, "username": "target"}]
 
     def test_run_resumes_only_users_without_this_week_trend(
-        self, user_trend_module, monday, mock_velog_client_cls, mock_llm
+        self,
+        user_trend_module,
+        monday,
+        mock_velog_client_cls,
+        mock_llm,
+        create_writer,
     ):
         """이번 주 결과가 이미 있는 사용자는 건너뛰고, 시작·완료 표시를 남긴다"""
         weekly_trend = create_weekly_trend({"trending_summary": []})
@@ -307,11 +304,11 @@ class TestWeeklyUserTrendRun:
         assert weekly_trend.batch_value(BATCH_USER_ANALYSIS_COMPLETED)
 
     def test_run_on_tuesday_uses_week_of_weekly_trend(
-        self, user_trend_module, mock_velog_client_cls, mock_llm
+        self, user_trend_module, mock_velog_client_cls, mock_llm, create_user
     ):
         """화요일에 다시 돌려도 공통 분석 행의 주차(월~일)로 계산하고 저장한다"""
         weekly_trend = create_weekly_trend()
-        user = create_user("rerun")
+        user = create_user("rerun@example.com")
         create_post(
             user,
             "예전 글",
@@ -351,6 +348,7 @@ class TestWeeklyUserTrendMain:
         mock_wait,
         mock_velog_client_cls,
         mock_llm,
+        create_writer,
     ):
         """이번 주 공통 분석 행이 없으면 아무것도 부르지 않고 실패로 끝낸다"""
         # 지난주 행만 있다
@@ -380,6 +378,7 @@ class TestWeeklyUserTrendMain:
         mock_wait,
         mock_velog_client_cls,
         mock_llm,
+        create_writer,
     ):
         """완료 표시가 있으면 기다리지도, velog·LLM 을 부르지도 않고 건너뜀 표시를 남긴다"""
         create_weekly_trend(
@@ -412,6 +411,7 @@ class TestWeeklyUserTrendMain:
         mock_wait,
         mock_velog_client_cls,
         mock_llm,
+        create_writer,
     ):
         """이번 주 행이 있고 완료 전이면 일일 통계를 기다린 뒤 분석하고 결과 줄을 남긴다"""
         # 스크래핑 테스트가 다른 스레드에서 커밋해 남긴 사용자가 있을 수 있다.

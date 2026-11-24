@@ -1,4 +1,3 @@
-import uuid
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
@@ -514,27 +513,6 @@ class TestWeeklyNewsletterBatch:
                 newsletter_batch.run()
 
 
-@pytest.fixture
-def work_dir(tmp_path, monkeypatch):
-    """결과 파일과 표시 파일을 임시 폴더에 쓴다"""
-    monkeypatch.chdir(tmp_path)
-    return tmp_path
-
-
-def create_user(email: str) -> User:
-    """뉴스레터를 구독한 활성 사용자"""
-    return User.objects.create(
-        velog_uuid=uuid.uuid4(),
-        access_token="test-access-token",
-        refresh_token="test-refresh-token",
-        group_id=1,
-        email=email,
-        username=email.split("@")[0],
-        is_active=True,
-        newsletter_subscribed=True,
-    )
-
-
 def create_this_week_trend(
     insight: dict, completed: bool = True, **fields
 ) -> WeeklyTrend:
@@ -557,7 +535,12 @@ class TestWeeklyNewsletterBatchRun:
     """실제 DB·템플릿으로 run() 전체를 돌리는 테스트"""
 
     def test_sends_to_every_target_and_marks_week_processed(
-        self, newsletter_batch, work_dir, user, sample_weekly_trend_insight
+        self,
+        newsletter_batch,
+        work_dir,
+        user,
+        create_user,
+        sample_weekly_trend_insight,
     ):
         """대상 이메일마다 메일을 한 통씩 보내고 이번 주 행을 발송 완료로 표시한다"""
         create_user("other@example.com")
@@ -614,7 +597,12 @@ class TestWeeklyNewsletterBatchRun:
         assert trend.is_processed is False
 
     def test_skips_emails_that_already_received_this_newsletter(
-        self, newsletter_batch, work_dir, user, sample_weekly_trend_insight
+        self,
+        newsletter_batch,
+        work_dir,
+        user,
+        create_user,
+        sample_weekly_trend_insight,
     ):
         """이번 주 뉴스레터를 이미 받은 이메일은 다른 계정으로도 다시 받지 않는다"""
         trend = create_this_week_trend(
@@ -689,7 +677,12 @@ class TestWeeklyNewsletterBatchRun:
         assert started_at_send[0] is not None
 
     def test_rechecks_received_emails_before_each_chunk(
-        self, newsletter_batch, work_dir, user, sample_weekly_trend_insight
+        self,
+        newsletter_batch,
+        work_dir,
+        user,
+        create_user,
+        sample_weekly_trend_insight,
     ):
         """청크마다 보내기 직전에 이미 받은 이메일을 다시 빼서 겹친 실행과 중복 발송하지 않는다"""
         newsletter_batch.chunk_size = 1

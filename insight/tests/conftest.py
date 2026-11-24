@@ -61,6 +61,32 @@ def user(db):
 
 
 @pytest.fixture
+def create_user(db):
+    """뉴스레터를 구독한 활성 사용자를 이메일로 만드는 함수. username 은 이메일 앞부분"""
+
+    def _create_user(email: str) -> User:
+        return User.objects.create(
+            velog_uuid=uuid.uuid4(),
+            access_token="test-access-token",
+            refresh_token="test-refresh-token",
+            group_id=1,
+            email=email,
+            username=email.split("@")[0],
+            is_active=True,
+            newsletter_subscribed=True,
+        )
+
+    return _create_user
+
+
+@pytest.fixture
+def work_dir(tmp_path, monkeypatch):
+    """결과 파일과 표시 파일을 임시 폴더에 쓴다"""
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
+
+
+@pytest.fixture
 def admin_site():
     """Django AdminSite 인스턴스"""
     return AdminSite()
