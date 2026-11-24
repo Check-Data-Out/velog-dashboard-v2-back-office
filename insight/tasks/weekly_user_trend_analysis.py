@@ -536,10 +536,6 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
         전원의 본문을 한꺼번에 쌓지 않도록 사용자 한 명씩 수집 → 분석 →
         저장한다. 그래서 결과(data)는 모아 두지 않는다.
         """
-        await sync_to_async(self.weekly_trend.mark_batch)(
-            BATCH_USER_ANALYSIS_STARTED
-        )
-
         users = await self._fetch_data(context)
         self.logger.info("Starting analysis for %d users", len(users))
 
@@ -605,6 +601,9 @@ async def main():
     # 이미 끝난 주는 세션·velog·LLM 을 건드리기 전에 끝낸다
     if _skip_when_completed(weekly_trend):
         return 0
+
+    # 기다리는 동안에도 GitHub 안전망이 실행 중으로 보도록 대기 전에 시작 표시를 남긴다
+    await sync_to_async(weekly_trend.mark_batch)(BATCH_USER_ANALYSIS_STARTED)
 
     # 기다리는 동안(최대 90분) 쉬는 DB 연결은 서버가 끊을 수 있다.
     # 닫아 두면 분석이 새 연결을 연다. 연결은 스레드마다 따로라서

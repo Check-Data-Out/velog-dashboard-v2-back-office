@@ -292,7 +292,7 @@ class TestWeeklyUserTrendRun:
         mock_llm,
         create_writer,
     ):
-        """이번 주 결과가 이미 있는 사용자는 건너뛰고, 시작·완료 표시를 남긴다"""
+        """이번 주 결과가 이미 있는 사용자는 건너뛰고, 완료 표시를 남긴다"""
         weekly_trend = create_weekly_trend({"trending_summary": []})
         done, _ = create_writer("done")
         UserWeeklyTrend.objects.create(
@@ -320,7 +320,6 @@ class TestWeeklyUserTrendRun:
         assert UserWeeklyTrend.objects.filter(user=todo).count() == 1
 
         weekly_trend.refresh_from_db()
-        assert weekly_trend.batch_value(BATCH_USER_ANALYSIS_STARTED)
         assert weekly_trend.batch_value(BATCH_USER_ANALYSIS_COMPLETED)
 
     def test_run_completes_when_failures_are_under_half(
@@ -619,16 +618,20 @@ class TestWeeklyUserTrendMain:
         mock_llm,
         create_writer,
     ):
-        """기다리는 사이 겹친 실행이 분석을 끝냈으면 분석하지 않고 건너뜀 표시를 남긴다"""
+        """기다리는 사이 겹친 실행이 분석을 끝냈으면 분석하지 않고 건너뜀 표시를 남긴다.
+
+        기다리는 동안 안전망이 실행 중으로 보도록 시작 표시는 대기 전에 남아 있다.
+        """
         weekly_trend = create_weekly_trend()
         create_writer("writer")
 
         def finish_while_waiting(*args):
-            WeeklyTrend.objects.get(pk=weekly_trend.pk).mark_batch(
-                BATCH_USER_ANALYSIS_COMPLETED
-            )
+            row = WeeklyTrend.objects.get(pk=weekly_trend.pk)
+            started = row.batch_value(BATCH_USER_ANALYSIS_STARTED)
+            row.mark_batch(BATCH_USER_ANALYSIS_COMPLETED)
             # 대기는 다른 스레드에서 돌므로 그 스레드의 연결을 닫는다
             connection.close()
+            assert started
 
         mock_wait.side_effect = finish_while_waiting
 
