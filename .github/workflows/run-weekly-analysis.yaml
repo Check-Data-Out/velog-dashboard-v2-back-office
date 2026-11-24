@@ -4,12 +4,13 @@ on:
   workflow_dispatch:
   schedule:
     # 평소에는 BO 서버 crontab(run-weekly.sh)이 월요일 07:00 KST 에 공통 분석, 이어서 사용자 분석을 돌린다.
-    # 이 예약은 서버가 그 주 작업을 시작하지 못했을 때만 일하는 안전망이다 (월요일 12:10 KST, 정각은 늦거나 빠지기 쉬워 피한다)
+    # 이 예약은 이번 주 공통 분석 결과(WeeklyTrend 행)가 없을 때만 일하는 안전망이다. 서버 공통 분석이 실패한 주도 여기서 다시 돈다
+    # (월요일 12:10 KST, 정각은 늦거나 빠지기 쉬워 피한다)
     - cron: "10 12 * * 1"
       timezone: "Asia/Seoul"
 
 jobs:
-  # 서버가 이번 주 작업을 이미 시작했거나 먼저 뜬 run 이 돌고 있으면 본 작업을 건너뛴다 (체크아웃·secret 파일·DB 쓰기 없음)
+  # 이번 주 공통 분석 결과가 이미 있거나 먼저 뜬 run 이 돌고 있으면 본 작업을 건너뛴다 (체크아웃·secret 파일·DB 쓰기 없음)
   guard:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -50,16 +51,17 @@ jobs:
             decide false "건너뜀: 먼저 만들어진 run ${ACTIVE}개가 아직 끝나지 않음"
           fi
 
-          # 서버가 이번 주 공통 분석을 시작했으면 서버가 끝까지 맡는다 (읽기 전용 트랜잭션)
+          # 이번 주 WeeklyTrend 행이 있으면 물러난다 (읽기 전용 트랜잭션)
+          # 행은 공통 분석이 성공해야 생기므로, 서버 공통 분석이 실패한 주는 GitHub 가 다시 돈다
           command -v psql || (sudo apt-get update && sudo apt-get install -y postgresql-client)
           STARTED=$(psql -X -q -A -t -v ON_ERROR_STOP=1 -c 'BEGIN READ ONLY' \
             -c "SELECT count(*) FROM insight_weeklytrend WHERE week_end_date >= (date_trunc('week', now() AT TIME ZONE 'Asia/Seoul')::date - 1)" \
             -c 'COMMIT')
           if [ "$STARTED" != "0" ]; then
-            decide false "건너뜀: 이번 주 WeeklyTrend 가 이미 있음 (${STARTED}건, 서버가 처리)"
+            decide false "건너뜀: 이번 주 WeeklyTrend 가 이미 있음 (${STARTED}건)"
           fi
 
-          decide true "실행: 서버가 이번 주 작업을 시작하지 못함"
+          decide true "실행: 이번 주 WeeklyTrend 가 없음"
 
       # 판정이 실패하면 본 작업이 skipped 라 본 작업 Slack 도 가지 않으므로 여기서 알린다
       - name: Send Slack Notification On Guard Failure
