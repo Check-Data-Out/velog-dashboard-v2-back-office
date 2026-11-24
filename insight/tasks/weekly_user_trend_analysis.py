@@ -14,18 +14,23 @@
 import asyncio
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, datetime, time, timedelta
+from pathlib import Path
 from typing import Any
 
 import setup_django  # noqa
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.db.models import Q
+from django.utils import timezone
 
 from insight.models import (
+    BATCH_USER_ANALYSIS_COMPLETED,
+    BATCH_USER_ANALYSIS_STARTED,
     TrendAnalysis,
     TrendingItem,
     UserWeeklyTrend,
+    WeeklyTrend,
     WeeklyUserReminder,
     WeeklyUserStats,
     WeeklyUserTrendInsight,
@@ -40,6 +45,14 @@ from posts.models import Post, PostDailyStatistics
 from scraping.velog.schemas import Post as VelogPost
 from users.models import User
 from utils.utils import to_local_date
+
+# 할 일 없이 끝났음을 실행 스크립트에 알리는 표시 파일 (현재 폴더)
+SKIP_MARKER = "weekly_user_trend_analysis.skipped"
+
+
+def _to_local_midnight(day: date) -> datetime:
+    """day 의 00:00 (Django 현재 시간대, KST)"""
+    return timezone.make_aware(datetime.combine(day, time.min))
 
 
 class TokenExpiredError(Exception):
@@ -64,11 +77,31 @@ class UserWeeklyData:
 class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
     """사용자별 주간 분석기"""
 
-    def __init__(self):
+    def __init__(self, weekly_trend: WeeklyTrend):
+        """
+        Args:
+            weekly_trend: 이번 주 공통 분석 행. 분석 주차와 시작·완료 표시의 기준이다.
+        """
         super().__init__()
+        self.weekly_trend = weekly_trend
         self.expired_token_users = set()
         self.successful_users = set()
         self.all_target_users = set()
+
+    async def _initialize_context(self) -> AnalysisContext:
+        """분석 컨텍스트 초기화.
+
+        주차를 오늘이 아니라 이번 주 공통 분석 행에서 가져온다. 그래서 다른
+        요일에 다시 돌려도 같은 주차로 계산하고 저장한다.
+        """
+        context = await super()._initialize_context()
+        context.week_start = _to_local_midnight(
+            self.weekly_trend.week_start_date
+        )
+        context.week_end = _to_local_midnight(
+            self.weekly_trend.week_end_date + timedelta(days=1)
+        )
+        return context
 
     async def _check_user_token_validity(
         self, user_id: int, context: AnalysisContext
@@ -282,7 +315,11 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
             return trending_items, None
 
     async def _fetch_data(self, context: AnalysisContext) -> list[dict]:
-        """분석 대상 사용자 목록(id, username) 조회"""
+        """분석 대상 사용자 목록(id, username) 조회.
+
+        이번 주 결과가 이미 저장된 사용자는 뺀다. 그래서 중간에 끊긴 실행을
+        다시 돌리면 남은 사용자만 처리한다.
+        """
         users = await sync_to_async(list)(
             User.objects.filter(
                 email__isnull=False,
@@ -290,6 +327,9 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
                 newsletter_subscribed=True,
             )
             .exclude(email="")
+            .exclude(
+                id__in=UserWeeklyTrend.objects.this_week().values("user_id")
+            )
             .values("id", "username")
         )
 
@@ -502,6 +542,9 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
         context = None
         try:
             context = await self._initialize_context()
+            await sync_to_async(self.weekly_trend.mark_batch)(
+                BATCH_USER_ANALYSIS_STARTED
+            )
 
             users = await self._fetch_data(context)
             self.logger.info("Starting analysis for %d users", len(users))
@@ -511,6 +554,11 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
                 processed_count += await self._process_user(
                     user["id"], user["username"], context
                 )
+
+            # 사용자별 실패는 로그만 남기고, 대상 전원을 다 돌았으면 완료로 본다
+            await sync_to_async(self.weekly_trend.mark_batch)(
+                BATCH_USER_ANALYSIS_COMPLETED
+            )
 
             self.logger.info(
                 "Batch completed: %d users analyzed, %d users expired",
@@ -547,7 +595,28 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
 
 async def main():
     """메인 실행 함수"""
-    analyzer = UserWeeklyAnalyzer()
+    # 지난 실행이 남긴 건너뜀 표시를 지운다
+    Path(SKIP_MARKER).unlink(missing_ok=True)
+
+    # 공통 분석이 먼저다. 이번 주 행이 없으면 주차를 정할 수 없다
+    weekly_trend = await sync_to_async(
+        WeeklyTrend.objects.this_week().order_by("-week_end_date").first
+    )()
+    if weekly_trend is None:
+        with open("weekly_analysis_result.txt", "a") as f:
+            f.write(
+                "❌ 사용자 주간 분석 실패: 이번 주 공통 분석 결과가 없음\n"
+            )
+        return 1
+
+    # 이미 끝난 주는 세션·velog·LLM 을 건드리기 전에 끝낸다
+    if weekly_trend.batch_value(BATCH_USER_ANALYSIS_COMPLETED):
+        with open("weekly_analysis_result.txt", "a") as f:
+            f.write("⏭ 사용자 주간 분석 건너뜀: 이번 주 분석이 이미 끝남\n")
+        Path(SKIP_MARKER).touch()
+        return 0
+
+    analyzer = UserWeeklyAnalyzer(weekly_trend)
     result = await analyzer.run()
 
     if result.success:

@@ -1,7 +1,7 @@
 import logging
 import tracemalloc
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
@@ -42,6 +42,14 @@ class FakeQuerySet:
         return None
 
 
+class FakeWeeklyTrend:
+    week_start_date = date(2026, 11, 16)
+    week_end_date = date(2026, 11, 22)
+
+    def mark_batch(self, key: str) -> None:
+        pass
+
+
 class FakeVelogClient:
     async def get_post(self, post_uuid: str) -> VelogPost:
         return VelogPost(
@@ -64,7 +72,7 @@ def fake_analyze_user_posts(posts: list, api_key: str) -> dict:
 
 async def run_and_get_peak(module, user_count: int) -> int:
     """사용자 user_count 명(각자 이번 주 새 글 1편)을 분석하는 동안의 최대 메모리"""
-    analyzer = module.UserWeeklyAnalyzer()
+    analyzer = module.UserWeeklyAnalyzer(FakeWeeklyTrend())
     # pytest 가 로그 레코드를 테스트 끝까지 모아 두므로 측정에서 뺀다
     analyzer.logger = logging.Logger("memory-test")
     analyzer.logger.addHandler(logging.NullHandler())
