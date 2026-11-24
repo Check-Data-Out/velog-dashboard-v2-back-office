@@ -668,11 +668,12 @@ async def main():
         except Exception as e:
             print(f"결과 파일 저장 실패: {e}")
 
-    # 기다려도 끝나지 않은 세트가 있으면 Slack 에서 보이게 남긴다
+    # 기다려도 완료를 확인하지 못한 세트가 있으면 Slack 에서 보이게 남긴다.
+    # GitHub 조회가 잇달아 실패해도 이 목록이 오므로 미완료라고 단정하지 않는다
     if missing:
         with open("weekly_analysis_result.txt", "a") as f:
             f.write(
-                f"경고: 일일 통계 세트 {missing} 미완료 — 해당 세트 사용자는 토큰 만료로 분류됨\n"
+                f"경고: 일일 통계 세트 {missing} 완료를 확인하지 못함(미완료 또는 GitHub 조회 실패) — 그 세트 사용자는 토큰 만료로 분류됐을 수 있음\n"
             )
 
     record_peak_memory(logger, "weekly_analysis_result.txt")

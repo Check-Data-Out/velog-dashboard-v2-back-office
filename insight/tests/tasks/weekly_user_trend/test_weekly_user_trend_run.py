@@ -529,7 +529,8 @@ class TestWeeklyUserTrendMain:
     ):
         """화요일에 다시 돌려도 오늘이 아니라 주차 다음 날(월) 00:00 의 일일 통계를 기다린다.
 
-        기다려도 끝나지 않은 세트는 결과 파일에 경고로 남긴다.
+        기다려도 완료를 확인하지 못한 세트는 결과 파일에 경고로 남긴다.
+        GitHub 조회가 실패해도 같은 목록이 오므로 미완료라고 단정하지 않는다.
         """
         create_weekly_trend()
         mock_wait.return_value = [3, 7]
@@ -540,7 +541,7 @@ class TestWeeklyUserTrendMain:
         assert exit_code == 0
         assert mock_wait.call_args.args[0] == WEEK_END
         assert (
-            "경고: 일일 통계 세트 [3, 7] 미완료 — 해당 세트 사용자는 토큰 만료로 분류됨"
+            "경고: 일일 통계 세트 [3, 7] 완료를 확인하지 못함(미완료 또는 GitHub 조회 실패) — 그 세트 사용자는 토큰 만료로 분류됐을 수 있음"
             in (work_dir / RESULT_FILE).read_text().splitlines()
         )
 
