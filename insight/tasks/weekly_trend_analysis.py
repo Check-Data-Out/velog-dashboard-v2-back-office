@@ -8,6 +8,7 @@
 """
 
 import asyncio
+import resource
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
@@ -302,9 +303,18 @@ async def main():
                 f.write(f"❌ 주간 트렌드 분석 실패: {result.error}\\n")
         except Exception as e:
             print(f"결과 파일 저장 실패: {e}")
-        return 1
 
-    return 0
+    # 최대 메모리 (Linux 의 ru_maxrss 단위는 KiB)
+    peak_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024
+    analyzer.logger.info("Peak memory: %d MB", peak_mb)
+    try:
+        with open("weekly_analysis_result.txt", "a") as f:
+            # 위 결과 줄은 실제 줄바꿈 없이 끝나므로 새 줄에서 시작한다
+            f.write(f"\n최대 메모리: {peak_mb} MB\n")
+    except Exception as e:
+        print(f"결과 파일 저장 실패: {e}")
+
+    return 0 if result.success else 1
 
 
 if __name__ == "__main__":
