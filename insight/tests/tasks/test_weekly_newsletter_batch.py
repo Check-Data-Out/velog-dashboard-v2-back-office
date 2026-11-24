@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from insight.models import (
+    BATCH_NEWSLETTER_STARTED,
     BATCH_STATE_KEY,
     BATCH_USER_ANALYSIS_COMPLETED,
     UserWeeklyTrend,
@@ -385,10 +386,16 @@ class TestWeeklyNewsletterBatch:
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     @pytest.mark.django_db
     def test_run_success(
-        self, mock_logger, mock_get_local_now, newsletter_batch, user
+        self,
+        mock_logger,
+        mock_get_local_now,
+        newsletter_batch,
+        user,
+        sample_weekly_trend_insight,
     ):
         """배치 실행 성공 테스트"""
         mock_get_local_now.return_value = get_local_now()
+        create_this_week_trend(sample_weekly_trend_insight.to_json_dict())
 
         with (
             patch.object(
@@ -398,7 +405,9 @@ class TestWeeklyNewsletterBatch:
                 newsletter_batch, "_get_target_user_chunks"
             ) as mock_get_chunks,
             patch.object(
-                newsletter_batch, "_get_weekly_trend_html"
+                newsletter_batch,
+                "_get_weekly_trend_html",
+                wraps=newsletter_batch._get_weekly_trend_html,
             ) as mock_get_html,
             patch.object(newsletter_batch, "_build_newsletters") as mock_build,
             patch.object(newsletter_batch, "_send_newsletters") as mock_send,
@@ -412,7 +421,6 @@ class TestWeeklyNewsletterBatch:
             mock_get_chunks.return_value = [
                 [{"id": user.id, "email": user.email}]
             ]
-            mock_get_html.return_value = "<div>Weekly Trend HTML</div>"
 
             mock_newsletter = MagicMock()
             mock_newsletter.user_id = user.id
@@ -431,8 +439,12 @@ class TestWeeklyNewsletterBatch:
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     @pytest.mark.django_db
-    def test_run_no_target_users_failure(self, mock_logger, newsletter_batch):
+    def test_run_no_target_users_failure(
+        self, mock_logger, newsletter_batch, sample_weekly_trend_insight
+    ):
         """대상 유저 없음 실패 테스트"""
+        create_this_week_trend(sample_weekly_trend_insight.to_json_dict())
+
         with patch.object(
             newsletter_batch, "_get_target_user_chunks"
         ) as mock_get_chunks:
@@ -542,12 +554,15 @@ def create_user(email: str) -> User:
     )
 
 
-def create_this_week_trend(insight: dict, **fields) -> WeeklyTrend:
-    """이번 주 공통 분석 행(종료일이 지난 일요일). 사용자 분석 완료 표시를 담는다"""
+def create_this_week_trend(
+    insight: dict, completed: bool = True, **fields
+) -> WeeklyTrend:
+    """이번 주 공통 분석 행(종료일이 지난 일요일). completed 면 사용자 분석 완료 표시를 담는다"""
     week_end = get_this_week_monday() - timedelta(days=1)
-    insight[BATCH_STATE_KEY] = {
-        BATCH_USER_ANALYSIS_COMPLETED: get_local_now().isoformat()
-    }
+    if completed:
+        insight[BATCH_STATE_KEY] = {
+            BATCH_USER_ANALYSIS_COMPLETED: get_local_now().isoformat()
+        }
     return WeeklyTrend.objects.create(
         week_start_date=week_end - timedelta(days=6),
         week_end_date=week_end,
@@ -596,6 +611,26 @@ class TestWeeklyNewsletterBatchRun:
         newsletter_batch.ses_client.send_email.assert_not_called()
         assert (work_dir / SKIP_MARKER).exists()
         assert "건너뜀" in (work_dir / RESULT_FILE).read_text()
+
+    def test_fails_without_mail_when_user_analysis_is_not_completed(
+        self, newsletter_batch, work_dir, user, sample_weekly_trend_insight
+    ):
+        """사용자 분석 완료 표시가 없으면 기록을 지우지 않고 메일 0통으로 실패한다"""
+        trend = create_this_week_trend(
+            sample_weekly_trend_insight.to_json_dict(), completed=False
+        )
+
+        with (
+            patch.object(newsletter_batch, "_delete_old_maillogs") as delete,
+            pytest.raises(Exception, match="analysis is not completed"),
+        ):
+            newsletter_batch.run()
+
+        delete.assert_not_called()
+        newsletter_batch.ses_client.send_email.assert_not_called()
+        trend.refresh_from_db()
+        assert trend.batch_value(BATCH_NEWSLETTER_STARTED) is None
+        assert trend.is_processed is False
 
 
 @pytest.fixture

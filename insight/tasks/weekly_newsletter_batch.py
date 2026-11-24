@@ -22,6 +22,7 @@ from django.db import transaction
 from django.template.loader import render_to_string
 
 from insight.models import (
+    BATCH_USER_ANALYSIS_COMPLETED,
     SENDABLE_REVIEW_STATUSES,
     UserWeeklyTrend,
     WeeklyTrend,
@@ -526,12 +527,29 @@ class WeeklyNewsletterBatch:
                 )
 
             # ========================================================== #
-            # STEP1: 토큰이 유효성 체크 및 업데이트. 이후 사용자 정보 업데이트
+            # STEP1: 공통 WeeklyTrend 조회 및 템플릿 생성 (없거나 보류면 예외)
+            # ========================================================== #
+            weekly_trend_html = self._get_weekly_trend_html()
+
+            # 사용자 분석이 끝나지 않았으면 메일을 한 통도 보내지 않고 실패한다
+            weekly_trend = WeeklyTrend.objects.get(
+                id=self.weekly_info["newsletter_id"]
+            )
+            if not weekly_trend.batch_value(BATCH_USER_ANALYSIS_COMPLETED):
+                logger.error(
+                    "User weekly trend analysis is not completed, batch stopped"
+                )
+                raise Exception(
+                    "User weekly trend analysis is not completed, batch stopped"
+                )
+
+            # ========================================================== #
+            # STEP2: 오래된 발송 기록 삭제
             # ========================================================== #
             self._delete_old_maillogs()
 
             # ========================================================== #
-            # STEP2: 뉴스레터 발송 대상 유저 목록 조회
+            # STEP3: 뉴스레터 발송 대상 유저 목록 조회
             # ========================================================== #
             target_user_chunks = self._get_target_user_chunks()
 
@@ -543,11 +561,6 @@ class WeeklyNewsletterBatch:
                 raise Exception(
                     "No target users found for newsletter, batch stopped"
                 )
-
-            # ========================================================== #
-            # STEP3: 공통 WeeklyTrend 조회 및 템플릿 생성
-            # ========================================================== #
-            weekly_trend_html = self._get_weekly_trend_html()
 
             # 로컬 환경에선 뉴스레터 발송 건너뜀
             if settings.DEBUG:
