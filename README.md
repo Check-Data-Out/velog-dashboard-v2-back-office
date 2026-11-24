@@ -339,7 +339,15 @@ GitHub 에서 돌릴 때는 `gh workflow run "Weekly Analysis Batch"` 또는 `gh
 2. **로그**: `~/weekly-batch/logs/<작업>-<날짜>.log` (`trend`·`user-analysis`·`newsletter`). 시작·종료 exit 코드와 건너뜀 사유가 KST 시각과 함께 남는다.
 3. **결과·표시 파일**: 레포 폴더의 `weekly_analysis_result.txt`, `newsletter_batch_result.txt`, `*.skipped`. DB 에서는 이번 주 `insight_weeklytrend` 행과 `insight->'_batch'` 의 `user_analysis_started_at`·`user_analysis_completed_at`·`newsletter_started_at` 을 본다.
 4. **재실행**: 서버에서 `./run-weekly.sh <작업>`. 이미 끝난 부분은 위 규칙으로 건너뛰고 남은 부분만 처리한다. 순서는 trend, user-analysis, newsletter.
-5. **Grafana 미실행 알림**: 월요일 10:30~12:00 KST 에 발송 지표(`job="newsletter"`)가 24시간 넘게 갱신되지 않았으면 울린다(규칙은 모니터링 서버에 있다). 서버는 살아 있는데 crontab 이 지워졌거나 스크립트가 시작 전에 죽은 경우다. 알림이 오면 1~4 순서로 확인한다.
+5. **일일 통계 세트가 늦은 주 (09:30 발송 전에만)**: 사용자 분석 결과에 `경고: 일일 통계 세트 [...] 미완료` 가 있으면 그 세트 사용자는 토큰 만료로 분류돼 이번 주 행이 없다. 세트가 끝난 뒤 이번 주 행에서 `_batch.user_analysis_completed_at` 만 지우고 `./run-weekly.sh user-analysis` 를 다시 돌린다. 이번 주 행이 없는 사용자만 다시 분석한다.
+
+   ```sql
+   UPDATE insight_weeklytrend
+   SET insight = insight #- '{_batch,user_analysis_completed_at}'
+   WHERE week_end_date >= (date_trunc('week', now() AT TIME ZONE 'Asia/Seoul')::date - 1);
+   ```
+
+6. **Grafana 미실행 알림**: 월요일 10:30~12:00 KST 에 발송 지표(`job="newsletter"`)가 24시간 넘게 갱신되지 않았으면 울린다(규칙은 모니터링 서버에 있다). 서버는 살아 있는데 crontab 이 지워졌거나 스크립트가 시작 전에 죽은 경우다. 알림이 오면 1~4 순서로 확인한다.
 
 ---
 
