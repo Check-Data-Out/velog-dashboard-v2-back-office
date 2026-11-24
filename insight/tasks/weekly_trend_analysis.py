@@ -270,13 +270,18 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
             raise
 
 
+def _write_skipped() -> None:
+    """이번 주 결과가 이미 있어 건너뛰었음을 결과 파일과 표시 파일로 남긴다"""
+    with open("weekly_analysis_result.txt", "w") as f:
+        f.write("⏭ 주간 트렌드 분석 건너뜀: 이번 주 결과가 이미 있음\n")
+    Path(SKIP_MARKER).touch()
+
+
 async def main():
     """메인 실행 함수"""
     # 이번 주 결과가 이미 있으면 세션·velog·LLM 을 건드리기 전에 끝낸다
     if await sync_to_async(WeeklyTrend.objects.this_week().exists)():
-        with open("weekly_analysis_result.txt", "w") as f:
-            f.write("⏭ 주간 트렌드 분석 건너뜀: 이번 주 결과가 이미 있음\n")
-        Path(SKIP_MARKER).touch()
+        _write_skipped()
         return 0
 
     analyzer = WeeklyTrendAnalyzer(trending_limit=10)
