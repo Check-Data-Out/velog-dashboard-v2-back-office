@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.db import DatabaseError
 
 from insight.models import (
     BATCH_NEWSLETTER_STARTED,
@@ -266,6 +267,7 @@ class TestWeeklyNewsletterBatch:
         )
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
+    @pytest.mark.django_db
     def test_send_newsletters_success(
         self, mock_logger, newsletter_batch, sample_newsletters
     ):
@@ -282,6 +284,7 @@ class TestWeeklyNewsletterBatch:
         assert newsletter_batch.ses_client.send_email.call_count == 2
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
+    @pytest.mark.django_db
     def test_send_newsletters_max_retry_exceeded_failure(
         self, mock_logger, newsletter_batch, sample_newsletters
     ):
@@ -304,12 +307,11 @@ class TestWeeklyNewsletterBatch:
     @pytest.mark.parametrize(
         "error_cls", [AuthenticationError, SendingBlockedError]
     )
-    @patch("insight.tasks.weekly_newsletter_batch.NotiMailLog")
     @patch("insight.tasks.weekly_newsletter_batch.logger")
+    @pytest.mark.django_db
     def test_send_newsletters_stops_when_sending_is_blocked(
         self,
         mock_logger,
-        mock_mail_log,
         error_cls,
         newsletter_batch,
         sample_newsletter,
@@ -320,7 +322,7 @@ class TestWeeklyNewsletterBatch:
         )
         newsletter_batch._update_user_weekly_trend_results = MagicMock()
 
-        with pytest.raises(error_cls):
+        with pytest.raises(error_cls, match="blocked"):
             newsletter_batch._send_newsletters(
                 [sample_newsletter, sample_newsletter]
             )
@@ -329,7 +331,10 @@ class TestWeeklyNewsletterBatch:
         newsletter_batch._update_user_weekly_trend_results.assert_called_once_with(
             []
         )
-        mock_mail_log.objects.bulk_create.assert_called_once()
+        # 멈춘 메일의 실패 기록은 남긴다
+        assert list(
+            NotiMailLog.objects.values_list("is_success", "error_message")
+        ) == [(False, "blocked")]
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     @pytest.mark.django_db
@@ -473,6 +478,10 @@ def create_this_week_trend(
         insight=insight,
         **fields,
     )
+
+
+class ProcessKilled(BaseException):
+    """어디서도 잡지 않는 예외. 발송 도중 프로세스가 죽는 상황을 흉내 낸다"""
 
 
 def create_old_mail_log(user: User, sent_at: datetime) -> NotiMailLog:
@@ -633,6 +642,67 @@ class TestWeeklyNewsletterBatchRun:
 
         assert len(started_at_send) == 1
         assert started_at_send[0] is not None
+
+    def test_rerun_after_crash_does_not_resend_to_received_emails(
+        self,
+        newsletter_batch,
+        work_dir,
+        user,
+        create_user,
+        sample_weekly_trend_insight,
+    ):
+        """청크 중간에 프로세스가 죽은 뒤 다시 돌려도 이미 보낸 이메일로는 다시 보내지 않는다"""
+        create_user("second@example.com")
+        create_user("third@example.com")
+        create_this_week_trend(sample_weekly_trend_insight.to_json_dict())
+        sent = []
+
+        def send_until_killed(message):
+            # 한 청크의 세 번째 메일을 보내다 프로세스가 죽는다
+            if len(sent) == 2:
+                raise ProcessKilled()
+            sent.append(message.to[0])
+
+        newsletter_batch.ses_client.send_email.side_effect = send_until_killed
+        with pytest.raises(ProcessKilled):
+            newsletter_batch.run()
+
+        # 새 프로세스로 다시 돌린다
+        newsletter_batch.ses_client.send_email.side_effect = (
+            lambda message: sent.append(message.to[0])
+        )
+        type(newsletter_batch)(ses_client=newsletter_batch.ses_client).run()
+
+        assert sorted(sent) == [
+            "second@example.com",
+            "test@example.com",
+            "third@example.com",
+        ]
+
+    def test_stops_when_mail_log_cannot_be_saved(
+        self,
+        newsletter_batch,
+        work_dir,
+        user,
+        create_user,
+        sample_weekly_trend_insight,
+    ):
+        """발송 기록을 저장하지 못하면 다음 청크를 보내지 않고 배치를 멈춘다"""
+        newsletter_batch.chunk_size = 1
+        create_user("other@example.com")
+        create_this_week_trend(sample_weekly_trend_insight.to_json_dict())
+
+        with (
+            patch.object(
+                NotiMailLog.objects,
+                "create",
+                side_effect=DatabaseError("db down"),
+            ),
+            pytest.raises(DatabaseError, match="db down"),
+        ):
+            newsletter_batch.run()
+
+        assert newsletter_batch.ses_client.send_email.call_count == 1
 
     def test_rechecks_received_emails_before_each_chunk(
         self,

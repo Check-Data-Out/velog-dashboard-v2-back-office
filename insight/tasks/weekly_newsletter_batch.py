@@ -18,7 +18,7 @@ from time import sleep
 
 import setup_django  # noqa
 from django.conf import settings
-from django.db import transaction
+from django.db import DatabaseError, transaction
 from django.db.models import QuerySet
 from django.template.loader import render_to_string
 
@@ -405,9 +405,13 @@ class WeeklyNewsletterBatch:
             return []
 
     def _send_newsletters(self, newsletters: list[Newsletter]) -> list[int]:
-        """뉴스레터 발송 (실패시 max_retry_count 만큼 재시도)"""
+        """뉴스레터 발송 (실패시 max_retry_count 만큼 재시도)
+
+        메일 1건을 보낼 때마다 발송 기록을 바로 저장한다. 그래서 도중에
+        프로세스가 죽어도 다시 돌리면 이미 받은 이메일은 대상에서 빠진다.
+        기록을 저장하지 못하면 중복 발송을 막을 수 없으므로 예외를 그대로 올린다.
+        """
         success_user_ids = []
-        mail_logs = []
         # 인증 실패·계정 정지는 받는 사람을 바꿔도 계속 실패하므로 남은 발송·재시도를 멈춘다
         blocked_error = None
 
@@ -443,32 +447,18 @@ class WeeklyNewsletterBatch:
                     if failed_count != self.max_retry_count:
                         sleep(failed_count)
 
-            try:
-                # bulk_create를 위한 메일 발송 로그 생성
-                mail_logs.append(
-                    NotiMailLog(
-                        user_id=newsletter.user_id,
-                        subject=newsletter.email_message.subject,
-                        body=newsletter.email_message.text_body,
-                        is_success=success,
-                        sent_at=get_local_now(),
-                        error_message=error_message if not success else "",
-                    )
-                )
-            except Exception as e:
-                # 로그 생성 실패해도 청크는 계속 진행
-                logger.error(f"Failed to create NotiMailLog object: {e}")
+            # 다음 메일을 보내기 전에 이 메일의 발송 기록을 저장한다
+            NotiMailLog.objects.create(
+                user_id=newsletter.user_id,
+                subject=newsletter.email_message.subject,
+                body=newsletter.email_message.text_body,
+                is_success=success,
+                sent_at=get_local_now(),
+                error_message=error_message if not success else "",
+            )
 
             if blocked_error:
                 break
-
-        # 메일 발송 로그 저장
-        if mail_logs:
-            try:
-                NotiMailLog.objects.bulk_create(mail_logs)
-            except Exception as e:
-                # 저장 실패 시에도 계속 진행
-                logger.error(f"Failed to save mail logs: {e}")
 
         logger.info(
             f"Successfully sent {len(success_user_ids)} newsletters out of {len(newsletters)}"
@@ -645,7 +635,13 @@ class WeeklyNewsletterBatch:
                     total_processed += len(success_user_ids)
                     total_failed += len(newsletters) - len(success_user_ids)
 
-                except (AuthenticationError, SendingBlockedError):
+                except (
+                    AuthenticationError,
+                    SendingBlockedError,
+                    DatabaseError,
+                ):
+                    # 발송 중지와 발송 기록 저장 실패·DB 장애는 배치를 멈춘다.
+                    # 기록 없이 다음 청크를 보내면 다시 돌릴 때 중복 발송된다
                     raise
 
                 except Exception as e:
