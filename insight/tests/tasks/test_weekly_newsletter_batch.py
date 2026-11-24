@@ -622,6 +622,21 @@ class TestWeeklyNewsletterBatchRun:
         assert trend.is_processed is True
         assert "✅" in (work_dir / RESULT_FILE).read_text()
 
+    def test_fails_when_there_are_no_subscribers(
+        self, newsletter_batch, work_dir, sample_weekly_trend_insight
+    ):
+        """구독자가 한 명도 없으면 발송 완료 표시 없이 실패한다"""
+        trend = create_this_week_trend(
+            sample_weekly_trend_insight.to_json_dict()
+        )
+
+        with pytest.raises(Exception, match="No target users found"):
+            newsletter_batch.run()
+
+        trend.refresh_from_db()
+        assert trend.is_processed is False
+        assert "❌" in (work_dir / RESULT_FILE).read_text()
+
     def test_marks_newsletter_started_before_first_mail(
         self, newsletter_batch, work_dir, user, sample_weekly_trend_insight
     ):
