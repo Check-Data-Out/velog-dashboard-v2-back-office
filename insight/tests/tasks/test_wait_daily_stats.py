@@ -69,7 +69,10 @@ class TestFetchTodaySuccessRuns:
         assert len(runs) == 101
         assert [q["page"] for q in requested] == [["1"], ["2"]]
         assert requested[0]["status"] == ["success"]
-        assert requested[0]["created"] == [">=2026-11-23T00:00:00+09:00"]
+        # 다음 날 run 은 보지 않는다 (화요일에 다시 돌려도 월요일 세트만 센다)
+        assert requested[0]["created"] == [
+            "2026-11-23T00:00:00+09:00..2026-11-23T23:59:59+09:00"
+        ]
 
     def test_stops_reading_pages_when_all_sets_are_found(self, monkeypatch):
         """최신순으로 읽다가 20세트를 다 찾으면 남은 쪽은 읽지 않는다"""

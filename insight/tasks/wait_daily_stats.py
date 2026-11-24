@@ -15,7 +15,7 @@ import sys
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger("newsletter")
@@ -66,21 +66,25 @@ def _get_json(url: str) -> dict:
 
 
 def fetch_today_success_runs(now: datetime) -> list[dict]:
-    """now 가 속한 날(KST) 00:00 이후 성공한 run 을 모은다.
+    """now 가 속한 날(KST)에 만들어져 성공한 run 을 모은다.
 
+    다음 날 run 은 보지 않는다. 그래서 화요일에 다시 돌려도 월요일 세트만 센다
+    (월요일에 만들어져 늦게 끝난 run 은 센다).
     run 은 최신순으로 온다. 일일 통계 세트를 다 찾으면 남은 쪽은 읽지 않는다
     (보통 첫 쪽에서 끝난다).
     """
     today_start = now.astimezone(KST).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
+    # GitHub 의 created 범위(a..b)는 양 끝을 포함한다
+    today_end = today_start + timedelta(days=1, seconds=-1)
     runs: list[dict] = []
     page = 1
     while True:
         query = urllib.parse.urlencode(
             {
                 "status": "success",
-                "created": f">={today_start.isoformat()}",
+                "created": f"{today_start.isoformat()}..{today_end.isoformat()}",
                 "per_page": 100,
                 "page": page,
             }
@@ -140,7 +144,7 @@ def wait_for_daily_stats(
     통계가 덜 모여도 분석은 진행해야 하므로 예외를 내지 않는다.
 
     Args:
-        now: 기준 시각. 이날 00:00(KST) 이후 run 을 본다.
+        now: 기준 시각. 이날(KST) 만들어진 run 을 본다.
         fetch: now 를 받아 성공 run 목록을 돌려주는 함수
         sleep: 초 단위로 기다리는 함수
         clock: 지금 시각을 초로 돌려주는 단조 시계
