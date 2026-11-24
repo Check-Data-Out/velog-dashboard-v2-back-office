@@ -370,7 +370,7 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
 
             results = await self._analyze_data([user_data], context)
             await self._save_results(results, context)
-            return bool(results)
+            return True
 
         except Exception as e:
             self.logger.warning("Failed to process user %s: %s", user_id, e)
@@ -456,25 +456,20 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
     async def _analyze_data(
         self, raw_data: list[UserWeeklyData], context: AnalysisContext
     ) -> list[dict]:
-        """사용자별 데이터 분석"""
+        """사용자별 데이터 분석.
+
+        실패는 삼키지 않는다. _process_user 가 받아 실패한 사용자로 센다.
+        """
 
         results = []
 
         for user_data in raw_data:
-            try:
-                insight = await self._analyze_user_data(user_data, context)
+            insight = await self._analyze_user_data(user_data, context)
 
-                results.append(
-                    {"user_id": user_data.user_id, "insight": insight}
-                )
-                self.logger.debug(
-                    "Successfully analyzed user %s", user_data.user_id
-                )
-
-            except Exception as e:
-                self.logger.error(
-                    "Failed to analyze user %s: %s", user_data.user_id, e
-                )
+            results.append({"user_id": user_data.user_id, "insight": insight})
+            self.logger.debug(
+                "Successfully analyzed user %s", user_data.user_id
+            )
 
         return results
 
@@ -515,33 +510,23 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
     async def _save_results(
         self, results: list[dict], context: AnalysisContext
     ) -> None:
-        """결과를 데이터베이스에 저장"""
+        """결과를 데이터베이스에 저장.
+
+        실패는 삼키지 않는다. _process_user 가 받아 실패한 사용자로 센다.
+        """
 
         for result in results:
-            try:
-                user_id = result["user_id"]
-                insight = result["insight"]
+            # WeeklyUserTrendInsight 객체를 딕셔너리로 변환
+            insight_data = result["insight"].to_dict()
 
-                # WeeklyUserTrendInsight 객체를 딕셔너리로 변환
-                insight_data = insight.to_dict()
-
-                await sync_to_async(UserWeeklyTrend.objects.create)(
-                    user_id=user_id,
-                    week_start_date=context.week_start.date(),
-                    week_end_date=(
-                        context.week_end - timedelta(days=1)
-                    ).date(),
-                    insight=insight_data,
-                    is_processed=False,
-                    processed_at=context.week_end,
-                )
-
-            except Exception as e:
-                self.logger.error(
-                    "Failed to save UserWeeklyTrend for user %s: %s",
-                    user_id,
-                    e,
-                )
+            await sync_to_async(UserWeeklyTrend.objects.create)(
+                user_id=result["user_id"],
+                week_start_date=context.week_start.date(),
+                week_end_date=(context.week_end - timedelta(days=1)).date(),
+                insight=insight_data,
+                is_processed=False,
+                processed_at=context.week_end,
+            )
 
     async def _process(
         self, context: AnalysisContext
@@ -563,7 +548,7 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
             if await self._process_user(user["id"], user["username"], context):
                 processed_count += 1
 
-        # 사용자별 실패가 이번 실행 대상의 절반 이상이면(수집 단계 DB 장애 등)
+        # 사용자별 실패가 이번 실행 대상의 절반 이상이면(수집·분석·저장 단계 DB 장애 등)
         # 완료 표시 없이 실패로 끝낸다. 뉴스레터는 완료 표시가 있어야 보내므로
         # 개인 통계 없는 메일이 전원에게 나가지 않는다.
         # OpenAI 장애는 "[분석 실패]" 요약으로 저장되므로 실패 수에 들어가지 않는다

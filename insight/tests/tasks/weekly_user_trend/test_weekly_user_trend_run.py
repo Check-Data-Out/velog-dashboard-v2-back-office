@@ -349,6 +349,55 @@ class TestWeeklyUserTrendRun:
         weekly_trend.refresh_from_db()
         assert weekly_trend.batch_value(BATCH_USER_ANALYSIS_COMPLETED)
 
+    def test_run_counts_users_whose_analysis_or_save_fails(
+        self,
+        user_trend_module,
+        monday,
+        mock_velog_client_cls,
+        mock_llm,
+        create_user,
+        create_writer,
+    ):
+        """분석이나 저장에서 실패한 사용자도 실패 수에 세고, 분석한 수에는 넣지 않는다"""
+        weekly_trend = create_weekly_trend()
+        for name in ("first", "second", "third"):
+            create_writer(name)
+        unsaved, _ = create_writer("unsaved")
+        # 새 글이 없는 사용자는 분석 단계에서 리마인더를 만든다
+        quiet = create_user("quiet@example.com")
+        create_post(
+            quiet,
+            "예전 글",
+            WEEK_START - timedelta(days=30),
+            {WEEK_START: (5, 0), WEEK_END: (10, 1)},
+        )
+        create_trend = UserWeeklyTrend.objects.create
+
+        def create(**fields):
+            if fields["user_id"] == unsaved.id:
+                raise RuntimeError("save down")
+            return create_trend(**fields)
+
+        with (
+            patch.object(
+                UserWeeklyTrend.objects, "create", side_effect=create
+            ),
+            patch.object(
+                user_trend_module.UserWeeklyAnalyzer,
+                "_create_user_reminder",
+                side_effect=RuntimeError("reminder down"),
+            ),
+        ):
+            result = async_to_sync(
+                user_trend_module.UserWeeklyAnalyzer(weekly_trend).run
+            )()
+
+        assert result.success is True
+        assert result.metadata["failed_users"] == 2
+        assert result.metadata["successful_users"] == 3
+        assert result.metadata["processed_count"] == 3
+        assert UserWeeklyTrend.objects.count() == 3
+
     def test_run_on_another_day_uses_week_of_weekly_trend(
         self,
         user_trend_module,
