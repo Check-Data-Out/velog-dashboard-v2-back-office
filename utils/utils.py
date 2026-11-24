@@ -27,8 +27,11 @@ def get_local_now() -> datetime:
 
 
 def get_this_week_monday(now: datetime | None = None) -> date:
-    """now(기본 지금 KST)가 속한 주의 월요일 날짜. 월요일이면 그날"""
-    today = (now or get_local_now()).date()
+    """now(기본 지금 KST)가 속한 주의 월요일 날짜. 월요일이면 그날.
+
+    now 가 다른 시간대여도 KST 로 바꾼 뒤 날짜를 구한다.
+    """
+    today = (timezone.localtime(now) if now else get_local_now()).date()
     return today - timedelta(days=today.weekday())
 
 
