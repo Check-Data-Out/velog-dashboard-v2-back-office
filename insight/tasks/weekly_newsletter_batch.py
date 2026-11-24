@@ -110,6 +110,14 @@ class WeeklyNewsletterBatch:
             user__email__isnull=False,
         ).values_list("user__email", flat=True)
 
+    def _subscribers(self) -> QuerySet:
+        """뉴스레터를 구독한 활성 사용자"""
+        return User.objects.filter(
+            is_active=True,
+            email__isnull=False,
+            newsletter_subscribed=True,
+        )
+
     def _get_target_user_chunks(self) -> list[list[dict]]:
         """뉴스레터 발송 대상 유저 목록 조회 후 청크 단위로 분할
 
@@ -118,11 +126,7 @@ class WeeklyNewsletterBatch:
         """
         try:
             target_users = list(
-                User.objects.filter(
-                    is_active=True,
-                    email__isnull=False,
-                    newsletter_subscribed=True,
-                )
+                self._subscribers()
                 .exclude(email__in=self._received_emails())
                 .values("id", "email", "username")
                 .distinct("email")
