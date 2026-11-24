@@ -212,3 +212,31 @@ class TestWaitForDailyStats:
 
         assert missing == []
         assert 0 < clock.now < 300
+
+
+class TestMain:
+    @pytest.mark.parametrize(
+        "status, exit_code",
+        [("in_progress", 3), ("completed", 0)],
+        ids=["active", "finished"],
+    )
+    def test_exit_code_tells_whether_run_is_active(
+        self, monkeypatch, status, exit_code
+    ):
+        """워크플로에 진행 중인 run 이 있으면 3, 없으면 0 으로 끝난다(run-weekly.sh 가 읽는다)"""
+        monkeypatch.setattr(
+            wait_daily_stats,
+            "fetch_recent_runs",
+            lambda: [
+                {
+                    "name": "Weekly Analysis",
+                    "event": "schedule",
+                    "status": status,
+                }
+            ],
+        )
+
+        assert (
+            wait_daily_stats.main(["active-run", "Weekly Analysis"])
+            == exit_code
+        )
