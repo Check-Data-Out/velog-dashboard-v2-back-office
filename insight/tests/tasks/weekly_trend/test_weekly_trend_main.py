@@ -86,3 +86,18 @@ class TestWeeklyTrendMain:
         mock_llm.assert_called_once()
         assert not (work_dir / SKIP_MARKER).exists()
         assert WeeklyTrend.objects.this_week().count() == 1
+        session = mock_velog_client_cls.get_client.call_args.kwargs["session"]
+        assert session.closed
+
+    def test_closes_session_when_analysis_fails(
+        self, weekly_trend_main, work_dir, mock_velog_client_cls, mock_llm
+    ):
+        """분석이 실패해도 컨텍스트가 연 aiohttp 세션을 닫는다"""
+        velog_client = mock_velog_client_cls.get_client.return_value
+        velog_client.get_trending_posts.side_effect = Exception("velog down")
+
+        exit_code = async_to_sync(weekly_trend_main)()
+
+        assert exit_code == 1
+        session = mock_velog_client_cls.get_client.call_args.kwargs["session"]
+        assert session.closed

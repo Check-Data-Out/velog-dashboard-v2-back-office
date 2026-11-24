@@ -19,6 +19,8 @@ class AnalysisContext:
     week_start: datetime
     week_end: datetime
     velog_client: VelogClient
+    # run() 이 분석을 마치면 닫는다
+    session: aiohttp.ClientSession | None = None
 
 
 @dataclass
@@ -41,6 +43,7 @@ class BaseBatchAnalyzer(ABC, Generic[T]):
         """메인 실행 메서드"""
         self.logger.info("Starting %s", self.__class__.__name__)
 
+        context = None
         try:
             # 1. 컨텍스트 초기화
             context = await self._initialize_context()
@@ -74,6 +77,11 @@ class BaseBatchAnalyzer(ABC, Generic[T]):
             )
             return AnalysisResult(success=False, error=e)
 
+        finally:
+            # 성공·실패 모두 컨텍스트가 연 aiohttp 세션을 닫는다
+            if context is not None and context.session is not None:
+                await context.session.close()
+
     async def _initialize_context(self) -> AnalysisContext:
         """분석 컨텍스트 초기화"""
         week_start, week_end = get_previous_week_range()
@@ -89,6 +97,7 @@ class BaseBatchAnalyzer(ABC, Generic[T]):
             week_start=week_start,
             week_end=week_end,
             velog_client=velog_client,
+            session=session,
         )
 
     @abstractmethod
