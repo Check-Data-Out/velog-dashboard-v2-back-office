@@ -563,9 +563,10 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
             if await self._process_user(user["id"], user["username"], context):
                 processed_count += 1
 
-        # 사용자별 실패가 이번 실행 대상의 절반 이상이면(OpenAI·DB 장애 등)
+        # 사용자별 실패가 이번 실행 대상의 절반 이상이면(수집 단계 DB 장애 등)
         # 완료 표시 없이 실패로 끝낸다. 뉴스레터는 완료 표시가 있어야 보내므로
-        # 개인 통계 없는 메일이 전원에게 나가지 않는다
+        # 개인 통계 없는 메일이 전원에게 나가지 않는다.
+        # OpenAI 장애는 "[분석 실패]" 요약으로 저장되므로 실패 수에 들어가지 않는다
         failed_count = len(self.failed_users)
         if users and failed_count * 2 >= len(users):
             raise Exception(
