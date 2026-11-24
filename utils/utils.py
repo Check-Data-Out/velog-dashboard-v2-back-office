@@ -2,7 +2,7 @@ import json
 import random
 import re
 from dataclasses import fields, is_dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Type, TypeVar, get_args, get_origin, no_type_check
 
 from django.utils import timezone
@@ -22,6 +22,12 @@ def get_local_now() -> datetime:
         timezone=timezone.get_current_timezone(),
     )
     return local_now
+
+
+def get_this_week_monday(now: datetime | None = None) -> date:
+    """now(기본 지금 KST)가 속한 주의 월요일 날짜. 월요일이면 그날"""
+    today = (now or get_local_now()).date()
+    return today - timedelta(days=today.weekday())
 
 
 def get_local_now_date() -> datetime:
