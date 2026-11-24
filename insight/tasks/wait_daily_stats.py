@@ -173,10 +173,17 @@ def wait_for_daily_stats(
     return missing
 
 
-if __name__ == "__main__":
-    # python insight/tasks/wait_daily_stats.py active-run "<워크플로 이름>"
-    # 진행 중 run 이 있으면 3, 없으면 0. 조회 실패는 잡지 않아 다른 코드로 끝난다
-    command, workflow_name = sys.argv[1:]
+def main(argv: list[str]) -> int:
+    """active-run "<워크플로 이름>": 진행 중 run 이 있으면 3, 없으면 0
+
+    조회 실패는 잡지 않아 다른 코드로 끝난다.
+    """
+    command, workflow_name = argv
     if command != "active-run":
         sys.exit(f"알 수 없는 명령: {command}")
-    sys.exit(3 if has_active_run(fetch_recent_runs(), workflow_name) else 0)
+    return 3 if has_active_run(fetch_recent_runs(), workflow_name) else 0
+
+
+if __name__ == "__main__":
+    # python insight/tasks/wait_daily_stats.py active-run "<워크플로 이름>"
+    sys.exit(main(sys.argv[1:]))
