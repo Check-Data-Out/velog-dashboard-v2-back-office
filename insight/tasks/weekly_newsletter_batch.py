@@ -13,6 +13,7 @@
 
 import logging
 from datetime import timedelta
+from pathlib import Path
 from time import sleep
 
 import setup_django  # noqa
@@ -47,6 +48,9 @@ from utils.utils import (
 )
 
 logger = logging.getLogger("newsletter")
+
+# 할 일 없이 끝났음을 실행 스크립트에 알리는 표시 파일 (현재 폴더)
+SKIP_MARKER = "weekly_newsletter_batch.skipped"
 
 
 class WeeklyNewsletterBatch:
@@ -500,6 +504,20 @@ class WeeklyNewsletterBatch:
         total_failed = 0
 
         try:
+            # 이번 주 뉴스레터를 이미 보냈으면 기록 삭제·대상 조회 전에 끝낸다
+            if (
+                WeeklyTrend.objects.this_week()
+                .filter(is_processed=True)
+                .exists()
+            ):
+                logger.info("This week's newsletter is already sent, skipped")
+                with open("newsletter_batch_result.txt", "w") as f:
+                    f.write(
+                        "⏭ 뉴스레터 발송 건너뜀: 이번 주 뉴스레터를 이미 보냄\n"
+                    )
+                Path(SKIP_MARKER).touch()
+                return
+
             # 서명 키가 없어도 발송은 멈추지 않고 기존 email 수신거부 링크로 보낸다
             if not is_usable_secret(settings.NEWSLETTER_UNSUBSCRIBE_SECRET):
                 logger.warning(
@@ -625,6 +643,9 @@ class WeeklyNewsletterBatch:
 
 def main() -> None:
     """메인 실행 함수"""
+    # 지난 실행이 남긴 건너뜀 표시를 지운다
+    Path(SKIP_MARKER).unlink(missing_ok=True)
+
     # SES 클라이언트 초기화
     try:
         aws_credentials = AWSSESCredentials(

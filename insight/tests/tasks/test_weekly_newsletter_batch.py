@@ -19,6 +19,9 @@ from noti.models import NotiMailLog
 from users.models import User
 from utils.utils import get_local_now, get_this_week_monday
 
+SKIP_MARKER = "weekly_newsletter_batch.skipped"
+RESULT_FILE = "newsletter_batch_result.txt"
+
 
 @pytest.fixture
 def mock_ses_client():
@@ -571,3 +574,49 @@ class TestWeeklyNewsletterBatchRun:
         assert newsletter_batch.ses_client.send_email.call_count == 2
         trend.refresh_from_db()
         assert trend.is_processed is True
+
+    def test_skips_before_deleting_logs_when_this_week_is_sent(
+        self, newsletter_batch, work_dir, user, sample_weekly_trend_insight
+    ):
+        """이번 주 뉴스레터를 이미 보냈으면 기록 삭제·대상 조회 없이 건너뜀 표시를 남긴다"""
+        create_this_week_trend(
+            sample_weekly_trend_insight.to_json_dict(), is_processed=True
+        )
+
+        with (
+            patch.object(newsletter_batch, "_delete_old_maillogs") as delete,
+            patch.object(
+                newsletter_batch, "_get_target_user_chunks"
+            ) as get_chunks,
+        ):
+            newsletter_batch.run()
+
+        delete.assert_not_called()
+        get_chunks.assert_not_called()
+        newsletter_batch.ses_client.send_email.assert_not_called()
+        assert (work_dir / SKIP_MARKER).exists()
+        assert "건너뜀" in (work_dir / RESULT_FILE).read_text()
+
+
+@pytest.fixture
+def newsletter_main(mock_setup_django):
+    # 모듈 맨 위의 import setup_django 를 흉내 낸 뒤에만 불러올 수 있다
+    from insight.tasks.weekly_newsletter_batch import main
+
+    return main
+
+
+@pytest.mark.django_db
+class TestWeeklyNewsletterMain:
+    @patch("insight.tasks.weekly_newsletter_batch.SESClient")
+    def test_removes_last_skip_marker_at_start(
+        self, mock_ses_client_cls, newsletter_main, work_dir
+    ):
+        """시작할 때 지난 실행이 남긴 건너뜀 표시를 지운다"""
+        (work_dir / SKIP_MARKER).touch()
+
+        # 대상·이번 주 행이 없어 실패하는 실행
+        with pytest.raises(Exception):
+            newsletter_main()
+
+        assert not (work_dir / SKIP_MARKER).exists()
