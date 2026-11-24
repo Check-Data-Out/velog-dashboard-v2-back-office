@@ -727,9 +727,6 @@ class WeeklyNewsletterBatch:
 
 def main() -> None:
     """메인 실행 함수"""
-    # 지난 실행이 남긴 건너뜀 표시를 지운다
-    Path(SKIP_MARKER).unlink(missing_ok=True)
-
     # SES 클라이언트 초기화
     try:
         aws_credentials = AWSSESCredentials(

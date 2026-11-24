@@ -1,5 +1,4 @@
 from datetime import timedelta
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -70,15 +69,13 @@ class TestWeeklyTrendMain:
     def test_analyzes_when_only_last_week_exists(
         self, weekly_trend_main, work_dir, mock_velog_client_cls, mock_llm
     ):
-        """지난주 결과만 있으면 분석하고, 지난 실행의 건너뜀 표시를 지운다"""
+        """지난주 결과만 있으면 분석한다"""
         create_weekly_trend(weeks_ago=1)
-        Path(work_dir / SKIP_MARKER).touch()
 
         exit_code = async_to_sync(weekly_trend_main)()
 
         assert exit_code == 0
         mock_llm.assert_called_once()
-        assert not (work_dir / SKIP_MARKER).exists()
         assert WeeklyTrend.objects.this_week().count() == 1
         session = mock_velog_client_cls.get_client.call_args.kwargs["session"]
         assert session.closed

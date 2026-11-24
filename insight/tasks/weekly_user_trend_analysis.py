@@ -606,9 +606,6 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
 
 async def main():
     """메인 실행 함수"""
-    # 지난 실행이 남긴 건너뜀 표시를 지운다
-    Path(SKIP_MARKER).unlink(missing_ok=True)
-
     # 공통 분석이 먼저다. 이번 주 행이 없으면 주차를 정할 수 없다
     weekly_trend = await sync_to_async(
         WeeklyTrend.objects.this_week().order_by("-week_end_date").first

@@ -272,9 +272,6 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
 
 async def main():
     """메인 실행 함수"""
-    # 지난 실행이 남긴 건너뜀 표시를 지운다
-    Path(SKIP_MARKER).unlink(missing_ok=True)
-
     # 이번 주 결과가 이미 있으면 세션·velog·LLM 을 건드리기 전에 끝낸다
     if await sync_to_async(WeeklyTrend.objects.this_week().exists)():
         with open("weekly_analysis_result.txt", "w") as f:

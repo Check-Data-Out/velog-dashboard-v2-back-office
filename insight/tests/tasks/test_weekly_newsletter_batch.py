@@ -726,27 +726,3 @@ class TestWeeklyNewsletterBatchRun:
         newsletter_batch.run()
 
         assert newsletter_batch.ses_client.send_email.call_count == 1
-
-
-@pytest.fixture
-def newsletter_main(mock_setup_django):
-    # 모듈 맨 위의 import setup_django 를 흉내 낸 뒤에만 불러올 수 있다
-    from insight.tasks.weekly_newsletter_batch import main
-
-    return main
-
-
-@pytest.mark.django_db
-class TestWeeklyNewsletterMain:
-    @patch("insight.tasks.weekly_newsletter_batch.SESClient")
-    def test_removes_last_skip_marker_at_start(
-        self, mock_ses_client_cls, newsletter_main, work_dir
-    ):
-        """시작할 때 지난 실행이 남긴 건너뜀 표시를 지운다"""
-        (work_dir / SKIP_MARKER).touch()
-
-        # 이번 주 행이 없어 실패하는 실행
-        with pytest.raises(Exception, match="No WeeklyTrend data"):
-            newsletter_main()
-
-        assert not (work_dir / SKIP_MARKER).exists()

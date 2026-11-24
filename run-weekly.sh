@@ -93,6 +93,7 @@ case $active in
     *) log "GitHub 조회 실패, 진행 (exit $active)" ;;
 esac
 
+# 지난 실행이 남긴 결과 파일과 건너뜀 표시를 지운다 (파이썬은 표시 파일을 지우지 않는다)
 rm -f "$RESULT_FILE" "$SKIP_MARKER"
 
 # 환경변수가 .env.prod 보다 우선한다 (django-environ read_env 는 이미 있는 값을 덮어쓰지 않는다)

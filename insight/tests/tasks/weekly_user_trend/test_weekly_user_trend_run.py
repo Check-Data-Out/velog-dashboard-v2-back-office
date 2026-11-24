@@ -1,6 +1,5 @@
 import uuid
 from datetime import datetime, timedelta
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
@@ -437,7 +436,6 @@ class TestWeeklyUserTrendMain:
             week_end_date=(WEEK_START - timedelta(days=1)).date(),
         )
         create_writer("writer")
-        Path(work_dir / SKIP_MARKER).touch()
 
         exit_code = async_to_sync(user_trend_module.main)()
 
@@ -445,7 +443,6 @@ class TestWeeklyUserTrendMain:
         result_text = (work_dir / RESULT_FILE).read_text()
         assert "❌ 사용자 주간 분석 실패" in result_text
         assert "이번 주 공통 분석 결과가 없음" in result_text
-        assert not (work_dir / SKIP_MARKER).exists()
         mock_wait.assert_not_called()
         mock_velog_client_cls.get_client.assert_not_called()
         mock_llm.assert_not_called()
