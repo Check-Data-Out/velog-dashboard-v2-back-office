@@ -327,8 +327,8 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
     async def _fetch_data(self, context: AnalysisContext) -> list[dict]:
         """분석 대상 사용자 목록(id, username) 조회.
 
-        이번 주 결과가 이미 저장된 사용자는 뺀다. 그래서 중간에 끊긴 실행을
-        다시 돌리면 남은 사용자만 처리한다.
+        분석 주차의 결과가 이미 저장된 사용자는 뺀다. 그래서 중간에 끊긴
+        실행을 다시 돌리면 남은 사용자만 처리한다.
         """
         users = await sync_to_async(list)(
             User.objects.filter(
@@ -338,7 +338,9 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
             )
             .exclude(email="")
             .exclude(
-                id__in=UserWeeklyTrend.objects.this_week().values("user_id")
+                id__in=UserWeeklyTrend.objects.filter(
+                    week_end_date=self.weekly_trend.week_end_date
+                ).values("user_id")
             )
             .values("id", "username")
         )

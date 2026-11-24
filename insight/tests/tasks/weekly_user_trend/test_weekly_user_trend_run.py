@@ -289,6 +289,30 @@ class TestWeeklyUserTrendRun:
         assert weekly_trend.batch_value(BATCH_USER_ANALYSIS_STARTED)
         assert weekly_trend.batch_value(BATCH_USER_ANALYSIS_COMPLETED)
 
+    def test_run_resumes_by_week_of_weekly_trend_after_week_passes(
+        self, user_trend_module, mock_velog_client_cls, mock_llm, create_writer
+    ):
+        """한 주가 지나 다시 돌려도 분석 주차의 결과가 있는 사용자는 다시 분석하지 않는다"""
+        weekly_trend = create_weekly_trend()
+        done, _ = create_writer("done")
+        UserWeeklyTrend.objects.create(
+            user=done,
+            week_start_date=weekly_trend.week_start_date,
+            week_end_date=weekly_trend.week_end_date,
+            insight={"saved": "지난 실행"},
+        )
+
+        with patch(
+            "utils.utils.get_local_now",
+            return_value=WEEK_END + timedelta(days=7, hours=7),
+        ):
+            result = async_to_sync(
+                user_trend_module.UserWeeklyAnalyzer(weekly_trend).run
+            )()
+
+        assert result.success is True
+        assert UserWeeklyTrend.objects.filter(user=done).count() == 1
+
     def test_run_closes_session(
         self,
         user_trend_module,
