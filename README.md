@@ -347,7 +347,7 @@ GitHub 에서 돌릴 때는 `gh workflow run "Weekly Analysis Batch"` 또는 `gh
 2. **로그**: `~/weekly-batch/logs/<작업>-<날짜>.log` (`trend`·`user-analysis`·`newsletter`). 시작·종료 exit 코드와 건너뜀 사유가 KST 시각과 함께 남는다.
 3. **결과·표시 파일**: 레포 폴더의 `weekly_analysis_result.txt`, `newsletter_batch_result.txt`, `*.skipped`. DB 에서는 이번 주 `insight_weeklytrend` 행과 `insight->'_batch'` 의 `user_analysis_started_at`·`user_analysis_completed_at`·`newsletter_started_at` 을 본다.
 4. **재실행**: 서버에서 `./run-weekly.sh <작업>`. 이미 끝난 부분은 위 규칙으로 건너뛰고 남은 부분만 처리한다. 순서는 trend, user-analysis, newsletter.
-5. **일일 통계 세트가 늦은 주 (09:30 발송 전에만)**: 사용자 분석 결과에 `경고: 일일 통계 세트 [...] 미완료` 가 있으면 그 세트 사용자는 토큰 만료로 분류돼 이번 주 행이 없다. 세트가 끝난 뒤 이번 주 행에서 `_batch.user_analysis_completed_at` 만 지우고 `./run-weekly.sh user-analysis` 를 다시 돌린다. 이번 주 행이 없는 사용자만 다시 분석한다.
+5. **일일 통계 세트가 늦은 주 (발송 전에만)**: 사용자 분석 결과에 `경고: 일일 통계 세트 [...] 완료를 확인하지 못함` 이 있고 토큰 만료 수가 평소보다 많으면, 그 세트 사용자는 토큰 만료로 분류돼 이번 주 행이 없다(GitHub 조회만 실패했으면 토큰 만료 수는 평소와 같다). 세트가 끝난 뒤 이번 주 행에서 `_batch.user_analysis_completed_at` 만 지우고 `./run-weekly.sh user-analysis` 를 다시 돌린다. 이번 주 행이 없는 사용자만 다시 분석한다. 이 사용자 분석은 09:30 전에 **끝나야** 한다. 09:30 에 완료 표시가 없으면 예약 발송은 메일 없이 실패하므로, 그때는 분석이 끝난 뒤 바로 `./run-weekly.sh newsletter` 로 보낸다(보내지 않으면 13:10 GitHub 안전망이 보낼 수 있다).
 
    ```sql
    UPDATE insight_weeklytrend
