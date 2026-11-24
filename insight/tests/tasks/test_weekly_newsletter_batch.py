@@ -8,7 +8,6 @@ from insight.models import (
     BATCH_NEWSLETTER_STARTED,
     BATCH_STATE_KEY,
     BATCH_USER_ANALYSIS_COMPLETED,
-    UserWeeklyTrend,
     WeeklyTrend,
 )
 from modules.mail.exceptions import AuthenticationError, SendingBlockedError
@@ -158,25 +157,10 @@ class TestWeeklyNewsletterBatch:
     ):
         """유저 주간 트렌드 청크 조회 성공 테스트"""
         user_ids = [user_weekly_trend.user.id]
-        mock_trends = [
-            {
-                "user_id": user_weekly_trend.user.id,
-                "insight": user_weekly_trend.insight,
-            }
-        ]
 
-        with patch.object(UserWeeklyTrend.objects, "filter") as mock_filter:
-            mock_filter.return_value.values.return_value = mock_trends
+        trends = newsletter_batch._get_users_weekly_trend_chunk(user_ids)
 
-            trends = newsletter_batch._get_users_weekly_trend_chunk(user_ids)
-
-            mock_filter.assert_called_once_with(
-                week_end_date__gte=newsletter_batch.before_a_week,
-                user_id__in=user_ids,
-                is_processed=False,
-            )
-            assert len(trends) == 1
-            assert user_weekly_trend.user.id in trends
+        assert list(trends) == user_ids
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     def test_build_newsletters_success(
@@ -363,28 +347,12 @@ class TestWeeklyNewsletterBatch:
         self, mock_logger, newsletter_batch, user_weekly_trend
     ):
         """유저 주간 트렌드 결과 업데이트 성공 테스트"""
-        success_user_ids = [user_weekly_trend.user.id]
+        newsletter_batch._update_user_weekly_trend_results(
+            [user_weekly_trend.user.id]
+        )
 
-        with (
-            patch.object(UserWeeklyTrend.objects, "filter") as mock_filter,
-            patch(
-                "insight.tasks.weekly_newsletter_batch.transaction"
-            ) as mock_transaction,
-        ):
-            mock_update = MagicMock()
-            mock_filter.return_value.update = mock_update
-            mock_transaction.atomic.return_value.__enter__ = MagicMock()
-            mock_transaction.atomic.return_value.__exit__ = MagicMock()
-
-            newsletter_batch._update_user_weekly_trend_results(
-                success_user_ids
-            )
-
-            mock_filter.assert_called_once_with(
-                user_id__in=success_user_ids,
-                week_end_date__gte=newsletter_batch.before_a_week,
-            )
-            mock_update.assert_called_once()
+        user_weekly_trend.refresh_from_db()
+        assert user_weekly_trend.is_processed is True
 
     @pytest.mark.parametrize(
         "secret",
