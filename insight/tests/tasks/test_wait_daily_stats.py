@@ -68,6 +68,24 @@ class TestFetchTodaySuccessRuns:
         assert requested[0]["status"] == ["success"]
         assert requested[0]["created"] == [">=2026-11-23T00:00:00+09:00"]
 
+    def test_stops_reading_pages_when_all_sets_are_found(self, monkeypatch):
+        """최신순으로 읽다가 20세트를 다 찾으면 남은 쪽은 읽지 않는다"""
+        requested = []
+
+        def fake_get_json(url):
+            requested.append(url)
+            return {
+                "total_count": 250,
+                "workflow_runs": all_stats_runs() + [stats_run(1)] * 80,
+            }
+
+        monkeypatch.setattr(wait_daily_stats, "_get_json", fake_get_json)
+
+        runs = fetch_today_success_runs(NOW)
+
+        assert missing_sets(runs) == []
+        assert len(requested) == 1
+
 
 class TestHasActiveRun:
     def test_unfinished_run_is_active(self):
@@ -146,3 +164,26 @@ class TestWaitForDailyStats:
         )
 
         assert missing == list(range(1, 21))
+
+    def test_retries_fetch_error_sooner_than_interval(self):
+        """조회가 실패하면 조회 간격이 아니라 30초 뒤 다시 본다"""
+        clock = FakeClock()
+        responses = iter([urllib.error.URLError("network down")])
+
+        def fetch_once_failing(now):
+            error = next(responses, None)
+            if error:
+                raise error
+            return all_stats_runs()
+
+        missing = wait_for_daily_stats(
+            NOW,
+            fetch_once_failing,
+            clock.sleep,
+            clock,
+            MagicMock(),
+            interval_sec=300,
+        )
+
+        assert missing == []
+        assert clock.now == 30
