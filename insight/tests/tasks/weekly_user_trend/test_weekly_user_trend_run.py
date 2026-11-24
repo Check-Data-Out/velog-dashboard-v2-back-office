@@ -546,6 +546,20 @@ class TestWeeklyUserTrendMain:
         )
 
     @pytest.mark.django_db(transaction=True)
+    def test_main_succeeds_when_result_file_cannot_be_written(
+        self, no_leftover_users, user_trend_module, work_dir, mock_wait
+    ):
+        """결과 파일을 못 써도(디스크 가득 등) 세트 경고 줄 때문에 실패로 끝나지 않는다"""
+        create_weekly_trend()
+        mock_wait.return_value = [3]
+        # 같은 이름의 폴더가 있으면 파일 열기가 모두 실패한다
+        (work_dir / RESULT_FILE).mkdir()
+
+        exit_code = async_to_sync(user_trend_module.main)()
+
+        assert exit_code == 0
+
+    @pytest.mark.django_db(transaction=True)
     def test_main_skips_when_completed_while_waiting(
         self,
         no_leftover_users,
