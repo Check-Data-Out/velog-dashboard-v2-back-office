@@ -421,8 +421,17 @@ class TestWeeklyNewsletterBatchRun:
         create_user,
         sample_weekly_trend_insight,
     ):
-        """대상 이메일마다 메일을 한 통씩 보내고 이번 주 행을 발송 완료로 표시한다"""
+        """대상 이메일마다 메일을 한 통씩 보내고 이번 주 행을 발송 완료로 표시한다.
+
+        구독을 해지했거나 비활성인 사용자는 대상이 아니다.
+        """
         create_user("other@example.com")
+        User.objects.filter(pk=create_user("unsub@example.com").pk).update(
+            newsletter_subscribed=False
+        )
+        User.objects.filter(pk=create_user("inactive@example.com").pk).update(
+            is_active=False
+        )
         trend = create_this_week_trend(
             sample_weekly_trend_insight.to_json_dict()
         )
@@ -430,6 +439,11 @@ class TestWeeklyNewsletterBatchRun:
         newsletter_batch.run()
 
         assert newsletter_batch.ses_client.send_email.call_count == 2
+        recipients = sorted(
+            call.args[0].to[0]
+            for call in newsletter_batch.ses_client.send_email.call_args_list
+        )
+        assert recipients == ["other@example.com", "test@example.com"]
         trend.refresh_from_db()
         assert trend.is_processed is True
         # Slack 에 그대로 옮겨지므로 결과는 실제 줄바꿈으로 나뉜 줄이다
