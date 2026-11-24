@@ -64,15 +64,6 @@ def _to_local_midnight(day: date) -> datetime:
     return timezone.make_aware(datetime.combine(day, datetime.min.time()))
 
 
-class TokenExpiredError(Exception):
-    """토큰 만료 예외"""
-
-    def __init__(self, user_id: int, message: str = "Token expired"):
-        self.user_id = user_id
-        self.message = message
-        super().__init__(message)
-
-
 @dataclass
 class UserWeeklyData:
     """사용자 주간 데이터"""
@@ -347,33 +338,29 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
 
     async def _process_user(
         self, user_id: int, username: str, context: AnalysisContext
-    ) -> int:
+    ) -> bool:
         """사용자 한 명을 수집 → 분석 → 저장한다.
 
         본문 참조가 이 함수 안에서 끝나므로, 동시에 메모리에 있는 본문은
         한 명분이다.
 
         Returns:
-            분석한 사용자 수 (0 또는 1)
+            분석했으면 True. 토큰이 만료됐거나 실패하면 False
         """
         try:
             user_data = await self._collect_user_data(
                 user_id, username, context
             )
             if user_data is None:
-                return 0
+                return False
 
             results = await self._analyze_data([user_data], context)
             await self._save_results(results, context)
-            return len(results)
+            return bool(results)
 
-        except TokenExpiredError:
-            self.expired_token_users.add(user_id)
-            self.logger.warning("Token expired for user %s", user_id)
         except Exception as e:
             self.logger.warning("Failed to process user %s: %s", user_id, e)
-
-        return 0
+            return False
 
     async def _collect_user_data(
         self, user_id: int, username: str, context: AnalysisContext
@@ -560,9 +547,10 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
 
             processed_count = 0
             for user in users:
-                processed_count += await self._process_user(
+                if await self._process_user(
                     user["id"], user["username"], context
-                )
+                ):
+                    processed_count += 1
 
             # 사용자별 실패는 로그만 남기고, 대상 전원을 다 돌았으면 완료로 본다
             await sync_to_async(self.weekly_trend.mark_batch)(
