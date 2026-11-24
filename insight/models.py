@@ -1,9 +1,11 @@
 from dataclasses import dataclass, field
+from datetime import timedelta
 
 from django.db import models
 
 from common.models import SerializableMixin, TimeStampedModel
 from users.models import User
+from utils.utils import get_local_now, get_this_week_monday
 
 
 @dataclass
@@ -67,6 +69,20 @@ REVIEW_STATUS_CHOICES = [
 SENDABLE_REVIEW_STATUSES = (REVIEW_READY, REVIEW_APPROVED)
 
 
+# 배치 시작·완료 표시는 insight JSON 의 이 키 아래에 둔다
+BATCH_STATE_KEY = "_batch"
+BATCH_USER_ANALYSIS_STARTED = "user_analysis_started_at"
+BATCH_USER_ANALYSIS_COMPLETED = "user_analysis_completed_at"
+BATCH_NEWSLETTER_STARTED = "newsletter_started_at"
+
+
+class WeekQuerySet(models.QuerySet):
+    def this_week(self, now=None):
+        """이번 주 행. 주 종료일이 이번 주 월요일 전날(일요일) 이후인 행"""
+        last_sunday = get_this_week_monday(now) - timedelta(days=1)
+        return self.filter(week_end_date__gte=last_sunday)
+
+
 class WeeklyTrend(TimeStampedModel):
     """
     전체 velog 주간 트렌드 인사이트
@@ -97,6 +113,8 @@ class WeeklyTrend(TimeStampedModel):
         verbose_name="검수 상태",
     )
 
+    objects = WeekQuerySet.as_manager()
+
     class Meta:
         verbose_name = "주간 트렌드"
         verbose_name_plural = "주간 트렌드 목록"
@@ -108,6 +126,26 @@ class WeeklyTrend(TimeStampedModel):
 
     def __str__(self):
         return f"주간 트렌드 ({self.week_start_date} ~ {self.week_end_date})"
+
+    def batch_value(self, key: str) -> str | None:
+        """insight["_batch"][key] 값. 없으면 None"""
+        return self.insight.get(BATCH_STATE_KEY, {}).get(key)
+
+    def mark_batch(self, key: str) -> None:
+        """insight["_batch"][key] 에 지금 시각을 남긴다. 다른 키는 그대로 둔다.
+
+        다른 프로세스가 그 사이 남긴 표시를 덮지 않도록 DB 의 현재 값을
+        다시 읽어 그 위에 key 만 바꾼다.
+        """
+        insight = WeeklyTrend.objects.values_list("insight", flat=True).get(
+            pk=self.pk
+        )
+        insight[BATCH_STATE_KEY] = {
+            **insight.get(BATCH_STATE_KEY, {}),
+            key: get_local_now().isoformat(),
+        }
+        WeeklyTrend.objects.filter(pk=self.pk).update(insight=insight)
+        self.insight = insight
 
 
 class UserWeeklyTrend(TimeStampedModel):
@@ -138,6 +176,8 @@ class UserWeeklyTrend(TimeStampedModel):
     processed_at = models.DateTimeField(
         null=True, blank=True, verbose_name="처리 완료 시간"
     )
+
+    objects = WeekQuerySet.as_manager()
 
     class Meta:
         verbose_name = "사용자 주간 인사이트"
