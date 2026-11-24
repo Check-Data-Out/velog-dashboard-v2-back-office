@@ -289,6 +289,25 @@ class TestWeeklyUserTrendRun:
         assert weekly_trend.batch_value(BATCH_USER_ANALYSIS_STARTED)
         assert weekly_trend.batch_value(BATCH_USER_ANALYSIS_COMPLETED)
 
+    def test_run_closes_session(
+        self,
+        user_trend_module,
+        monday,
+        mock_velog_client_cls,
+        mock_llm,
+        create_writer,
+    ):
+        """분석이 끝나면 컨텍스트가 연 aiohttp 세션을 닫는다"""
+        create_writer("writer")
+
+        result = async_to_sync(
+            user_trend_module.UserWeeklyAnalyzer(create_weekly_trend()).run
+        )()
+
+        assert result.success is True
+        session = mock_velog_client_cls.get_client.call_args.kwargs["session"]
+        assert session.closed
+
     def test_run_on_tuesday_uses_week_of_weekly_trend(
         self, user_trend_module, mock_velog_client_cls, mock_llm, create_user
     ):
