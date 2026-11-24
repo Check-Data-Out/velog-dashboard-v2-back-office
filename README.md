@@ -303,7 +303,7 @@ cd <레포>
 ./run-weekly.sh newsletter      # 뉴스레터 발송
 ```
 
-GitHub 에서 돌릴 때는 `gh workflow run "Weekly Analysis Batch"` 또는 `gh workflow run "Weekly Newsletter Batch"`. `workflow_dispatch` 도 판정 job(`guard`)을 거치므로, 서버가 이미 시작했거나 끝낸 주에는 본 작업 없이 조용히 건너뛴다.
+GitHub 에서 돌릴 때는 `gh workflow run "Weekly Analysis Batch"` 또는 `gh workflow run "Weekly Newsletter Batch"`. `workflow_dispatch` 도 판정 job(`guard`)을 거치므로, 서버가 이미 시작했거나 끝낸 주에는 본 작업 없이 조용히 건너뛴다. GitHub 에서 실패한 job 만 다시 돌리지 않는다(`Re-run all jobs` 또는 서버 `run-weekly.sh`).
 
 ### 건너뜀과 중복 방지
 
