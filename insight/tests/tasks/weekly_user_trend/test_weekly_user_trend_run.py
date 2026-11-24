@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from asgiref.sync import async_to_sync
 from django.conf import settings
+from django.db import connection
 
 from insight.models import (
     BATCH_STATE_KEY,
@@ -533,3 +534,51 @@ class TestWeeklyUserTrendMain:
         assert "실패 1명" in (work_dir / RESULT_FILE).read_text()
         weekly_trend.refresh_from_db()
         assert weekly_trend.batch_value(BATCH_USER_ANALYSIS_COMPLETED) is None
+
+    @pytest.mark.django_db(transaction=True)
+    def test_main_waits_for_stats_of_day_after_week_on_rerun(
+        self, user_trend_module, work_dir, mock_wait
+    ):
+        """화요일에 다시 돌려도 오늘이 아니라 주차 다음 날(월) 00:00 의 일일 통계를 기다린다"""
+        # 트랜잭션으로 감싸지 않는 테스트라 다른 테스트가 남긴 사용자를 먼저 지운다
+        User.objects.all().delete()
+        create_weekly_trend()
+
+        with patch("utils.utils.get_local_now", return_value=TUESDAY):
+            exit_code = async_to_sync(user_trend_module.main)()
+
+        assert exit_code == 0
+        assert mock_wait.call_args.args[0] == WEEK_END
+
+    @pytest.mark.django_db(transaction=True)
+    def test_main_skips_when_completed_while_waiting(
+        self,
+        user_trend_module,
+        work_dir,
+        mock_wait,
+        mock_velog_client_cls,
+        mock_llm,
+        create_writer,
+    ):
+        """기다리는 사이 겹친 실행이 분석을 끝냈으면 분석하지 않고 건너뜀 표시를 남긴다"""
+        # 트랜잭션으로 감싸지 않는 테스트라 다른 테스트가 남긴 사용자를 먼저 지운다
+        User.objects.all().delete()
+        weekly_trend = create_weekly_trend()
+        create_writer("writer")
+
+        def finish_while_waiting(*args):
+            WeeklyTrend.objects.get(pk=weekly_trend.pk).mark_batch(
+                BATCH_USER_ANALYSIS_COMPLETED
+            )
+            # 대기는 다른 스레드에서 돌므로 그 스레드의 연결을 닫는다
+            connection.close()
+
+        mock_wait.side_effect = finish_while_waiting
+
+        exit_code = async_to_sync(user_trend_module.main)()
+
+        assert exit_code == 0
+        assert (work_dir / SKIP_MARKER).exists()
+        mock_velog_client_cls.get_client.assert_not_called()
+        mock_llm.assert_not_called()
+        assert UserWeeklyTrend.objects.count() == 0

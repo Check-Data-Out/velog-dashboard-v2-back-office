@@ -629,14 +629,20 @@ async def main():
     await sync_to_async(connections.close_all)()
 
     # 개인 통계는 주차가 끝난 다음 날(월요일)의 일일 통계로 만든다.
-    # 그날 세트가 다 모일 때까지 기다린다
-    wait_for_daily_stats(
+    # 그날 세트가 다 모일 때까지 기다린다. 동기 대기라 이벤트 루프 밖에서 돌린다
+    await asyncio.to_thread(
+        wait_for_daily_stats,
         _to_local_midnight(weekly_trend.week_end_date + timedelta(days=1)),
         fetch_today_success_runs,
         time.sleep,
         time.monotonic,
         logger,
     )
+
+    # 기다리는 사이 겹친 실행이 분석을 끝냈을 수 있으므로 한 번 더 확인한다
+    await sync_to_async(weekly_trend.refresh_from_db)()
+    if _skip_when_completed(weekly_trend):
+        return 0
 
     analyzer = UserWeeklyAnalyzer(weekly_trend)
     result = await analyzer.run()
