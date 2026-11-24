@@ -10,6 +10,7 @@
 import asyncio
 from dataclasses import dataclass, field
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 import setup_django  # noqa
@@ -28,6 +29,9 @@ from insight.models import (
 from insight.tasks.base_analysis import AnalysisContext, BaseBatchAnalyzer
 from insight.tasks.weekly_llm_analyzer import analyze_trending_posts
 from scraping.velog.schemas import Post
+
+# 할 일 없이 끝났음을 실행 스크립트에 알리는 표시 파일 (현재 폴더)
+SKIP_MARKER = "weekly_trend_analysis.skipped"
 
 
 @dataclass
@@ -267,6 +271,16 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
 
 async def main():
     """메인 실행 함수"""
+    # 지난 실행이 남긴 건너뜀 표시를 지운다
+    Path(SKIP_MARKER).unlink(missing_ok=True)
+
+    # 이번 주 결과가 이미 있으면 세션·velog·LLM 을 건드리기 전에 끝낸다
+    if await sync_to_async(WeeklyTrend.objects.this_week().exists)():
+        with open("weekly_analysis_result.txt", "w") as f:
+            f.write("⏭ 주간 트렌드 분석 건너뜀: 이번 주 결과가 이미 있음\n")
+        Path(SKIP_MARKER).touch()
+        return 0
+
     analyzer = WeeklyTrendAnalyzer(trending_limit=10)
     result = await analyzer.run()
 
