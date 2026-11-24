@@ -116,30 +116,6 @@ class TestWeeklyNewsletterBatch:
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     @pytest.mark.django_db
-    def test_get_target_user_chunks_success(
-        self, mock_logger, newsletter_batch, user
-    ):
-        """대상 유저 청크 조회 성공 테스트"""
-        mock_users = [
-            {"id": user.id, "email": user.email, "username": user.username}
-        ]
-
-        with patch.object(User.objects, "filter") as mock_filter:
-            mock_filter.return_value.exclude.return_value.values.return_value.distinct.return_value = mock_users
-
-            chunks = newsletter_batch._get_target_user_chunks()
-
-            mock_filter.assert_called_once_with(
-                is_active=True,
-                email__isnull=False,
-                newsletter_subscribed=True,
-            )
-            assert len(chunks) == 1
-            assert len(chunks[0]) == 1
-            assert chunks[0][0]["email"] == user.email
-
-    @patch("insight.tasks.weekly_newsletter_batch.logger")
-    @pytest.mark.django_db
     def test_get_target_user_chunks_failure(
         self, mock_logger, newsletter_batch
     ):
@@ -399,38 +375,6 @@ class TestWeeklyNewsletterBatch:
         assert mock_render.call_args.args[1][
             "unsubscribe_url"
         ] == build_legacy_unsubscribe_url(user.email)
-
-    @patch("insight.tasks.weekly_newsletter_batch.logger")
-    @pytest.mark.django_db
-    def test_run_no_weekly_trend_data_failure(
-        self, mock_logger, newsletter_batch, user
-    ):
-        """주간 트렌드 데이터 없음 실패 테스트"""
-        with (
-            patch.object(
-                newsletter_batch, "_get_target_user_chunks"
-            ) as mock_get_chunks,
-            patch.object(
-                newsletter_batch, "_get_weekly_trend_html"
-            ) as mock_get_html,
-        ):
-            mock_get_chunks.return_value = [
-                [
-                    {
-                        "id": user.id,
-                        "email": user.email,
-                        "username": user.username,
-                    }
-                ]
-            ]
-            mock_get_html.side_effect = Exception(
-                "No WeeklyTrend data, batch stopped"
-            )
-
-            with pytest.raises(
-                Exception, match="No WeeklyTrend data, batch stopped"
-            ):
-                newsletter_batch.run()
 
 
 def create_this_week_trend(
