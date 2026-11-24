@@ -192,7 +192,7 @@ jobs:
           DELIM="SLACK_EOF_$(openssl rand -hex 16)"
           {
             echo "TEXT<<$DELIM"
-            printf '⚠️ 서버 실행 누락 — GitHub 안전망이 처리\n'
+            printf '⚠️ GitHub 안전망 실행 — 이번 주 공통 분석 결과가 없었음\n'
             printf '*Weekly Analysis Batch*\n\n'
             printf '%s *Status:* %s\n' "$ICON" "$JOB_STATUS"
             printf '📅 *Timestamp (KST):* %s\n' "$KST_TIME"
