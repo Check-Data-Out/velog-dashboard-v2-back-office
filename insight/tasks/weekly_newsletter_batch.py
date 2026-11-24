@@ -599,6 +599,19 @@ class WeeklyNewsletterBatch:
                 )
 
                 try:
+                    # 겹친 실행이 그사이 보낸 이메일은 보내기 직전에 다시 뺀다
+                    received_emails = set(self._received_emails())
+                    user_chunk = [
+                        user
+                        for user in user_chunk
+                        if user["email"] not in received_emails
+                    ]
+                    if not user_chunk:
+                        logger.info(
+                            f"All users in chunk {chunk_index} already received, skipped"
+                        )
+                        continue
+
                     # 해당 청크에 대한 뉴스레터 객체 일괄 생성
                     # 토큰 만료로 판단되는 경우 user_weekly_trend_html 가 None
                     newsletters = self._build_newsletters(

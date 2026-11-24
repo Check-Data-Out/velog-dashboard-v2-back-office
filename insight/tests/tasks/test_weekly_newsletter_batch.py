@@ -688,6 +688,33 @@ class TestWeeklyNewsletterBatchRun:
         assert len(started_at_send) == 1
         assert started_at_send[0] is not None
 
+    def test_rechecks_received_emails_before_each_chunk(
+        self, newsletter_batch, work_dir, user, sample_weekly_trend_insight
+    ):
+        """청크마다 보내기 직전에 이미 받은 이메일을 다시 빼서 겹친 실행과 중복 발송하지 않는다"""
+        newsletter_batch.chunk_size = 1
+        other = create_user("other@example.com")
+        trend = create_this_week_trend(
+            sample_weekly_trend_insight.to_json_dict()
+        )
+        subject = f"벨로그 대시보드 주간 뉴스레터 #{trend.id}"
+
+        def send_while_other_run_sends_the_rest(message):
+            # 첫 청크를 보내는 사이 겹친 실행이 나머지 사람에게 보냈다
+            for target in (user, other):
+                if target.email != message.to[0]:
+                    NotiMailLog.objects.create(
+                        user=target, subject=subject, is_success=True
+                    )
+
+        newsletter_batch.ses_client.send_email.side_effect = (
+            send_while_other_run_sends_the_rest
+        )
+
+        newsletter_batch.run()
+
+        assert newsletter_batch.ses_client.send_email.call_count == 1
+
 
 @pytest.fixture
 def newsletter_main(mock_setup_django):
