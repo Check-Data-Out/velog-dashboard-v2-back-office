@@ -120,7 +120,8 @@ if [[ $rc -eq 0 ]]; then
     mv "$prom.$$" "$prom"
 fi
 
-if [[ -e "$SKIP_MARKER" ]]; then
+# 표시 파일이 있어도 실패로 끝났으면 알린다
+if [[ $rc -eq 0 && -e "$SKIP_MARKER" ]]; then
     log "할 일 없이 끝나 Slack 을 보내지 않음"
     exit "$rc"
 fi

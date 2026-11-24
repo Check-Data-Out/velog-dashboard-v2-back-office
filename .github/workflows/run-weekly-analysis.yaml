@@ -182,8 +182,8 @@ jobs:
           KST_TIME: ${{ env.KST_TIME }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          # 두 분석이 모두 할 일 없이 끝났으면 알리지 않는다
-          if [ -e weekly_trend_analysis.skipped ] && [ -e weekly_user_trend_analysis.skipped ]; then
+          # 두 분석이 모두 할 일 없이 성공으로 끝났으면 알리지 않는다
+          if [ "$JOB_STATUS" = "success" ] && [ -e weekly_trend_analysis.skipped ] && [ -e weekly_user_trend_analysis.skipped ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
           RESULT=$(cat weekly_analysis_result.txt 2>/dev/null || echo "No output file found")
