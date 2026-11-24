@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import timedelta
 
-from django.db import models
+from django.db import models, transaction
 
 from common.models import SerializableMixin, TimeStampedModel
 from users.models import User
@@ -134,17 +134,22 @@ class WeeklyTrend(TimeStampedModel):
     def mark_batch(self, key: str) -> None:
         """insight["_batch"][key] 에 지금 시각을 남긴다. 다른 키는 그대로 둔다.
 
-        다른 프로세스가 그 사이 남긴 표시를 덮지 않도록 DB 의 현재 값을
-        다시 읽어 그 위에 key 만 바꾼다.
+        행을 잠근(select_for_update) 트랜잭션 안에서 DB 의 현재 insight 를
+        다시 읽고 key 만 바꿔 저장한다. 그래서 동시에 불린 mark_batch 끼리는
+        서로의 표시를 지우지 않는다. 잠그지 않고 insight 전체를 저장하는
+        코드(save() 등)와 겹치는 것까지 막지는 않는다.
         """
-        insight = WeeklyTrend.objects.values_list("insight", flat=True).get(
-            pk=self.pk
-        )
-        insight[BATCH_STATE_KEY] = {
-            **insight.get(BATCH_STATE_KEY, {}),
-            key: get_local_now().isoformat(),
-        }
-        WeeklyTrend.objects.filter(pk=self.pk).update(insight=insight)
+        with transaction.atomic():
+            insight = (
+                WeeklyTrend.objects.select_for_update()
+                .values_list("insight", flat=True)
+                .get(pk=self.pk)
+            )
+            insight[BATCH_STATE_KEY] = {
+                **insight.get(BATCH_STATE_KEY, {}),
+                key: get_local_now().isoformat(),
+            }
+            WeeklyTrend.objects.filter(pk=self.pk).update(insight=insight)
         self.insight = insight
 
 
