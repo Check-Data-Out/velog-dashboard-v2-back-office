@@ -3,10 +3,10 @@
 # 운영 BO 서버에서 주간 배치(공통 분석·사용자 분석·뉴스레터 발송)를 실행하는 script
 # 사용법: ./run-weekly.sh <trend|user-analysis|newsletter>
 #
-# crontab 예시 (서버 시간대 UTC 기준, 월요일 07:00·07:05·09:30 KST)
-#   0 22 * * 0  <레포 폴더>/run-weekly.sh trend
-#   5 22 * * 0  <레포 폴더>/run-weekly.sh user-analysis
+# crontab 예시 (서버 시간대 UTC 기준, 월요일 07:00·09:30 KST)
+#   0 22 * * 0  <레포 폴더>/run-weekly.sh trend && <레포 폴더>/run-weekly.sh user-analysis
 #   30 0 * * 1  <레포 폴더>/run-weekly.sh newsletter
+# 두 분석은 반드시 한 줄로 잇는다. 사용자 분석은 공통 분석 결과 행이 있어야 하고, 같은 결과 파일을 쓴다
 #
 # 수동 실행도 반드시 이 스크립트로 한다. 파이썬 스크립트를 직접 부르면 잠금·GitHub run 겹침 확인을 거치지 않는다
 # 로그는 ~/weekly-batch/logs, 마지막 성공 시각 지표는 ~/weekly-batch/metrics(node_exporter textfile 폴더)에 남는다

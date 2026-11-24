@@ -3,7 +3,7 @@ name: Weekly Analysis Batch
 on:
   workflow_dispatch:
   schedule:
-    # 평소에는 BO 서버 crontab(run-weekly.sh)이 월요일 07:00·07:05 KST 에 돌린다.
+    # 평소에는 BO 서버 crontab(run-weekly.sh)이 월요일 07:00 KST 에 공통 분석, 이어서 사용자 분석을 돌린다.
     # 이 예약은 서버가 그 주 작업을 시작하지 못했을 때만 일하는 안전망이다 (월요일 12:10 KST, 정각은 늦거나 빠지기 쉬워 피한다)
     - cron: "10 12 * * 1"
       timezone: "Asia/Seoul"
