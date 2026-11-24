@@ -4,6 +4,8 @@ from datetime import datetime
 from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from insight.tasks import wait_daily_stats
 from insight.tasks.wait_daily_stats import (
     fetch_today_success_runs,
@@ -89,19 +91,41 @@ class TestFetchTodaySuccessRuns:
 
 class TestHasActiveRun:
     def test_unfinished_run_is_active(self):
-        """끝나지 않은 run 이 있으면 True"""
-        runs = [{"name": "Weekly Analysis", "status": "in_progress"}]
+        """예약·수동으로 뜬 끝나지 않은 run 이 있으면 True"""
+        runs = [
+            {
+                "name": "Weekly Analysis",
+                "event": "schedule",
+                "status": "in_progress",
+            }
+        ]
 
         assert has_active_run(runs, "Weekly Analysis")
 
-    def test_finished_or_other_workflow_is_not_active(self):
-        """끝난 run 이나 다른 워크플로의 실행 중 run 은 보지 않는다"""
-        runs = [
-            {"name": "Weekly Analysis", "status": "completed"},
-            {"name": "Weekly Newsletter", "status": "in_progress"},
-        ]
-
-        assert not has_active_run(runs, "Weekly Analysis")
+    @pytest.mark.parametrize(
+        "run",
+        [
+            {
+                "name": "Weekly Analysis",
+                "event": "schedule",
+                "status": "completed",
+            },
+            {
+                "name": "Weekly Newsletter",
+                "event": "schedule",
+                "status": "in_progress",
+            },
+            {
+                "name": "Weekly Analysis",
+                "event": "pull_request",
+                "status": "in_progress",
+            },
+        ],
+        ids=["finished", "other_workflow", "other_event"],
+    )
+    def test_finished_other_workflow_or_other_event_is_not_active(self, run):
+        """끝난 run, 다른 워크플로의 run, 예약·수동이 아닌 이벤트(fork PR 등)의 run 은 보지 않는다"""
+        assert not has_active_run([run], "Weekly Analysis")
 
 
 class TestWaitForDailyStats:

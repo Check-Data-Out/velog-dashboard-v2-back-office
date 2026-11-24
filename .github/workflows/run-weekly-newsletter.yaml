@@ -43,9 +43,12 @@ jobs:
             decide false "건너뜀: 예약 run 인데 KST 월요일이 아님"
           fi
 
-          # 먼저 만들어진 run 만 본다 (둘이 동시에 떠서 서로를 보고 함께 건너뛰지 않게)
+          # 먼저 만들어진 예약·수동 run 만 본다 (둘이 동시에 떠서 서로를 보고 함께 건너뛰지 않게)
+          # fork PR 등 다른 이벤트 run 은 이름이 같아도 세지 않는다
           ACTIVE=$(gh api "repos/${{ github.repository }}/actions/workflows/run-weekly-newsletter.yaml/runs?per_page=50" \
-            --jq '[.workflow_runs[] | select(.id < '"$RUN_ID"' and (.status | test("^(queued|in_progress|waiting|pending|requested)$")))] | length')
+            --jq '[.workflow_runs[] | select(.id < '"$RUN_ID"'
+              and (.event == "schedule" or .event == "workflow_dispatch")
+              and (.status | test("^(queued|in_progress|waiting|pending|requested)$")))] | length')
           if [ "$ACTIVE" != "0" ]; then
             decide false "건너뜀: 먼저 만들어진 run ${ACTIVE}개가 아직 끝나지 않음"
           fi

@@ -29,6 +29,8 @@ DAILY_STATS_SET_COUNT = 20
 
 # 아직 끝나지 않은 run 의 status
 ACTIVE_RUN_STATUSES = ("queued", "in_progress", "waiting", "pending")
+# 진행 중으로 세는 run 의 event. fork PR 등 다른 이벤트 run 은 이름이 같아도 세지 않는다
+ACTIVE_RUN_EVENTS = ("schedule", "workflow_dispatch")
 
 # 5분 간격으로 최대 90분 (조회 실패가 없으면 최대 19회, 비인증 한도 시간당 60회 안)
 WAIT_TIMEOUT_SEC = 90 * 60
@@ -107,9 +109,10 @@ def missing_sets(runs: list[dict]) -> list[int]:
 
 
 def has_active_run(runs: list[dict], workflow_name: str) -> bool:
-    """workflow_name 의 run 중 아직 끝나지 않은(대기·실행 중) 것이 있는지"""
+    """workflow_name 의 예약·수동 run 중 아직 끝나지 않은(대기·실행 중) 것이 있는지"""
     return any(
         run.get("name") == workflow_name
+        and run.get("event") in ACTIVE_RUN_EVENTS
         and run.get("status") in ACTIVE_RUN_STATUSES
         for run in runs
     )
