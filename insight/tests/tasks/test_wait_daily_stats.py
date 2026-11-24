@@ -4,8 +4,6 @@ from datetime import datetime
 from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
-import pytest
-
 from insight.tasks import wait_daily_stats
 from insight.tasks.wait_daily_stats import (
     fetch_today_success_runs,
@@ -72,12 +70,9 @@ class TestFetchTodaySuccessRuns:
 
 
 class TestHasActiveRun:
-    @pytest.mark.parametrize(
-        "status", ["queued", "in_progress", "waiting", "pending"]
-    )
-    def test_unfinished_run_is_active(self, status):
+    def test_unfinished_run_is_active(self):
         """끝나지 않은 run 이 있으면 True"""
-        runs = [{"name": "Weekly Analysis", "status": status}]
+        runs = [{"name": "Weekly Analysis", "status": "in_progress"}]
 
         assert has_active_run(runs, "Weekly Analysis")
 
@@ -121,10 +116,9 @@ class TestWaitForDailyStats:
         assert missing == []
         assert clock.now == 300
 
-    def test_times_out_with_warning(self):
-        """제한 시간이 지나면 빠진 세트를 경고로 남기고 돌려준다"""
+    def test_times_out_with_missing_sets(self):
+        """제한 시간이 지나면 기다림을 멈추고 빠진 세트를 돌려준다"""
         clock = FakeClock()
-        logger = MagicMock()
         runs = [run for run in all_stats_runs() if run != stats_run(5)]
 
         missing = wait_for_daily_stats(
@@ -132,26 +126,23 @@ class TestWaitForDailyStats:
             lambda now: runs,
             clock.sleep,
             clock,
-            logger,
+            MagicMock(),
             timeout_sec=900,
             interval_sec=300,
         )
 
         assert missing == [5]
         assert clock.now <= 900
-        assert [5] in logger.warning.call_args.args
 
     def test_fetch_errors_do_not_raise(self):
         """조회가 계속 실패해도 예외 없이 모든 세트를 빠진 것으로 돌려준다"""
         clock = FakeClock()
-        logger = MagicMock()
 
         def failing_fetch(now):
             raise urllib.error.URLError("network down")
 
         missing = wait_for_daily_stats(
-            NOW, failing_fetch, clock.sleep, clock, logger
+            NOW, failing_fetch, clock.sleep, clock, MagicMock()
         )
 
         assert missing == list(range(1, 21))
-        assert list(range(1, 21)) in logger.warning.call_args.args

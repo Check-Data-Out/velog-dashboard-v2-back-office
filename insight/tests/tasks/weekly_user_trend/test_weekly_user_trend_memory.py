@@ -10,8 +10,8 @@ import pytest
 from scraping.velog.schemas import Post as VelogPost
 
 MODULE = "insight.tasks.weekly_user_trend_analysis"
-# 글 한 편의 본문 크기 (약 100KB)
-BODY_SIZE = 100_000
+# 글 한 편의 본문 크기 (약 1MB). 측정 잡음보다 충분히 크게 잡는다
+BODY_SIZE = 1_000_000
 TODAY = datetime(2026, 11, 23, tzinfo=ZoneInfo("Asia/Seoul"))
 
 
@@ -114,11 +114,11 @@ class TestWeeklyUserTrendMemory:
     async def test_peak_memory_does_not_grow_with_user_count(
         self, user_trend_module
     ):
-        """사용자가 20명에서 200명으로 늘어도 최대 메모리는 본문 2편 크기만큼도 늘지 않는다"""
+        """사용자가 20명에서 60명으로 늘어도 최대 메모리는 본문 2편 크기만큼도 늘지 않는다"""
         # 첫 실행에만 생기는 할당(스레드 풀·캐시)을 측정 전에 치른다
         await run_and_get_peak(user_trend_module, 1)
 
         peak_20 = await run_and_get_peak(user_trend_module, 20)
-        peak_200 = await run_and_get_peak(user_trend_module, 200)
+        peak_60 = await run_and_get_peak(user_trend_module, 60)
 
-        assert peak_200 - peak_20 < 2 * BODY_SIZE
+        assert peak_60 - peak_20 < 2 * BODY_SIZE

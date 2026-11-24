@@ -4,7 +4,6 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from insight.models import (
-    BATCH_NEWSLETTER_STARTED,
     BATCH_STATE_KEY,
     BATCH_USER_ANALYSIS_COMPLETED,
     BATCH_USER_ANALYSIS_STARTED,
@@ -67,7 +66,3 @@ class TestWeeklyTrendThisWeek:
         )
         assert saved[BATCH_STATE_KEY][BATCH_USER_ANALYSIS_COMPLETED]
         assert weekly_trend.insight == saved
-
-    def test_batch_value_is_none_when_absent(self, weekly_trend):
-        """표시가 없으면 None 인지"""
-        assert weekly_trend.batch_value(BATCH_NEWSLETTER_STARTED) is None

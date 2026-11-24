@@ -152,7 +152,10 @@ class TestWeeklyUserTrendRun:
         mock_llm,
         create_user,
     ):
-        """새 글 있는 사용자·없는 사용자는 저장하고, 토큰 만료 사용자는 빼고 보고한다"""
+        """새 글 있는 사용자·없는 사용자는 저장하고, 토큰 만료 사용자는 빼고 보고한다.
+
+        비활성·수신 거부·이메일 없는 사용자는 뉴스레터 대상이 아니므로 분석하지 않는다.
+        """
         analyzer_user = user_trend_module.UserWeeklyAnalyzer(
             create_weekly_trend()
         )
@@ -183,6 +186,16 @@ class TestWeeklyUserTrendRun:
             "통계가 끊긴 글",
             WEEK_START - timedelta(days=30),
             {WEEK_START: (5, 0)},
+        )
+        # 뉴스레터 대상이 아닌 사용자
+        User.objects.filter(pk=create_user("inactive@example.com").pk).update(
+            is_active=False
+        )
+        User.objects.filter(
+            pk=create_user("unsubscribed@example.com").pk
+        ).update(newsletter_subscribed=False)
+        User.objects.filter(pk=create_user("no-email@example.com").pk).update(
+            email=""
         )
 
         result = async_to_sync(analyzer_user.run)()
@@ -244,25 +257,6 @@ class TestWeeklyUserTrendRun:
             },
             "user_weekly_reminder": {"title": "마지막 글", "days_ago": 13},
         }
-
-    def test_fetch_data_returns_only_newsletter_target_users(
-        self, analyzer_user, create_user
-    ):
-        """이메일이 있고 활성이며 수신 동의한 사용자의 id·username 만 돌려준다"""
-        target = create_user("target@example.com")
-        User.objects.filter(pk=create_user("inactive@example.com").pk).update(
-            is_active=False
-        )
-        User.objects.filter(
-            pk=create_user("unsubscribed@example.com").pk
-        ).update(newsletter_subscribed=False)
-        User.objects.filter(pk=create_user("no-email@example.com").pk).update(
-            email=""
-        )
-
-        users = async_to_sync(analyzer_user._fetch_data)(None)
-
-        assert users == [{"id": target.id, "username": "target"}]
 
     def test_run_resumes_only_users_without_this_week_trend(
         self,

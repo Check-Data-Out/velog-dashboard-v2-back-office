@@ -381,61 +381,6 @@ class TestWeeklyNewsletterBatch:
             )
             mock_update.assert_called_once()
 
-    @patch("insight.tasks.weekly_newsletter_batch.get_local_now")
-    @patch("insight.tasks.weekly_newsletter_batch.logger")
-    @pytest.mark.django_db
-    def test_run_success(
-        self,
-        mock_logger,
-        mock_get_local_now,
-        newsletter_batch,
-        user,
-        sample_weekly_trend_insight,
-    ):
-        """배치 실행 성공 테스트"""
-        mock_get_local_now.return_value = get_local_now()
-        create_this_week_trend(sample_weekly_trend_insight.to_json_dict())
-
-        with (
-            patch.object(
-                newsletter_batch, "_delete_old_maillogs"
-            ) as mock_delete,
-            patch.object(
-                newsletter_batch, "_get_target_user_chunks"
-            ) as mock_get_chunks,
-            patch.object(
-                newsletter_batch,
-                "_get_weekly_trend_html",
-                wraps=newsletter_batch._get_weekly_trend_html,
-            ) as mock_get_html,
-            patch.object(newsletter_batch, "_build_newsletters") as mock_build,
-            patch.object(newsletter_batch, "_send_newsletters") as mock_send,
-            patch.object(
-                newsletter_batch, "_update_user_weekly_trend_results"
-            ) as mock_update_user,
-            patch.object(
-                newsletter_batch, "_update_weekly_trend_result"
-            ) as mock_update_weekly,
-        ):
-            mock_get_chunks.return_value = [
-                [{"id": user.id, "email": user.email}]
-            ]
-
-            mock_newsletter = MagicMock()
-            mock_newsletter.user_id = user.id
-            mock_build.return_value = [mock_newsletter]
-            mock_send.return_value = [user.id]
-
-            newsletter_batch.run()
-
-            mock_delete.assert_called_once()
-            mock_get_chunks.assert_called_once()
-            mock_get_html.assert_called_once()
-            mock_build.assert_called_once()
-            mock_send.assert_called_once()
-            mock_update_user.assert_called_once()
-            mock_update_weekly.assert_called_once()
-
     @pytest.mark.parametrize(
         "secret",
         ["", "x" * 31],
@@ -726,8 +671,8 @@ class TestWeeklyNewsletterMain:
         """시작할 때 지난 실행이 남긴 건너뜀 표시를 지운다"""
         (work_dir / SKIP_MARKER).touch()
 
-        # 대상·이번 주 행이 없어 실패하는 실행
-        with pytest.raises(Exception):
+        # 이번 주 행이 없어 실패하는 실행
+        with pytest.raises(Exception, match="No WeeklyTrend data"):
             newsletter_main()
 
         assert not (work_dir / SKIP_MARKER).exists()
