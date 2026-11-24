@@ -502,8 +502,13 @@ class TestWeeklyNewsletterBatchRun:
         sample_weekly_trend_insight,
     ):
         """이번 주 뉴스레터를 이미 보냈으면 지난 발송 기록을 지우지 않고 메일 없이 건너뜀 표시를 남긴다"""
-        create_this_week_trend(
+        trend = create_this_week_trend(
             sample_weekly_trend_insight.to_json_dict(), is_processed=True
+        )
+        NotiMailLog.objects.create(
+            user=user,
+            subject=f"벨로그 대시보드 주간 뉴스레터 #{trend.id}",
+            is_success=True,
         )
         old_log = create_old_mail_log(user, monday - timedelta(weeks=2))
 
@@ -513,6 +518,34 @@ class TestWeeklyNewsletterBatchRun:
         newsletter_batch.ses_client.send_email.assert_not_called()
         assert (work_dir / SKIP_MARKER).exists()
         assert "건너뜀" in (work_dir / RESULT_FILE).read_text()
+
+    def test_reports_processed_week_without_mail_log(
+        self, newsletter_batch, work_dir, user, sample_weekly_trend_insight
+    ):
+        """처리 완료 표시만 있고 이번 주 발송 기록이 없으면 메일을 보내지 않고, 건너뜀 표시 없이 성공으로 끝나 Slack 이 가게 한다"""
+        trend = create_this_week_trend(
+            sample_weekly_trend_insight.to_json_dict(), is_processed=True
+        )
+        # 실패 기록과 다른 주의 성공 기록은 이번 주 발송 기록이 아니다
+        NotiMailLog.objects.create(
+            user=user,
+            subject=f"벨로그 대시보드 주간 뉴스레터 #{trend.id}",
+            is_success=False,
+        )
+        NotiMailLog.objects.create(
+            user=user,
+            subject=f"벨로그 대시보드 주간 뉴스레터 #{trend.id + 1}",
+            is_success=True,
+        )
+
+        newsletter_batch.run()
+
+        newsletter_batch.ses_client.send_email.assert_not_called()
+        assert not (work_dir / SKIP_MARKER).exists()
+        assert (
+            "처리 완료 표시는 있으나 이번 주 발송 기록이 없음"
+            in (work_dir / RESULT_FILE).read_text()
+        )
 
     def test_fails_without_mail_when_user_analysis_is_not_completed(
         self,

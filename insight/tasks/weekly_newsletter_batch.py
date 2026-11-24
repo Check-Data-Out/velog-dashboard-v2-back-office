@@ -520,11 +520,27 @@ class WeeklyNewsletterBatch:
 
         try:
             # 이번 주 뉴스레터를 이미 보냈으면 기록 삭제·대상 조회 전에 끝낸다
-            if (
+            sent_trend = (
                 WeeklyTrend.objects.this_week()
                 .filter(is_processed=True)
-                .exists()
-            ):
+                .first()
+            )
+            if sent_trend:
+                # 처리 완료 표시만 있고 보낸 메일이 없으면(admin 에서 잘못 표시 등)
+                # 표시 파일 없이 끝내 Slack 으로 알린다
+                if not NotiMailLog.objects.filter(
+                    is_success=True,
+                    subject__endswith=f"#{sent_trend.id}",
+                ).exists():
+                    logger.warning(
+                        "This week's newsletter is marked as sent but has no mail log"
+                    )
+                    with open("newsletter_batch_result.txt", "w") as f:
+                        f.write(
+                            "⚠️ 뉴스레터 발송 건너뜀: 처리 완료 표시는 있으나 이번 주 발송 기록이 없음\n"
+                        )
+                    return
+
                 logger.info("This week's newsletter is already sent, skipped")
                 with open("newsletter_batch_result.txt", "w") as f:
                     f.write(
