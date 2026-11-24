@@ -316,6 +316,12 @@ GitHub 에서 돌릴 때는 `gh workflow run "Weekly Analysis Batch"` 또는 `gh
 
 할 일 없이 끝나면 `<스크립트>.skipped` 표시 파일이 생기고 Slack 은 보내지 않는다. 발송은 `user_analysis_completed_at` 이 없으면 메일 0통으로 실패한다. 사용자 분석은 대상의 절반 이상이 실패하면 완료 표시 없이 종료 코드 1 로 끝난다.
 
+### 검수 보류 주
+
+- admin 에서 이번 주 행을 "발송 보류"로 두면 09:30 서버 발송 실패 Slack, 10:30 Grafana 미실행 알림, 13:10 GitHub 안전망 실패 Slack 이 가는 것이 정상이다.
+- "보류 해제"를 하면 그날 GitHub 안전망이 자동으로 보낼 수 있다. 발송을 미루려면 보류를 유지한다.
+- 검수가 끝난 뒤 수동 발송은 서버에서 `./run-weekly.sh newsletter` 로 한다.
+
 ### GitHub 안전망이 도는 조건
 
 예약 시각이면 run 은 반드시 만들어지지만, 먼저 `guard` job(체크아웃·secret 파일·DB 쓰기 없음, DB 는 읽기 전용)만 돌고 아래 순서로 판정한다.
