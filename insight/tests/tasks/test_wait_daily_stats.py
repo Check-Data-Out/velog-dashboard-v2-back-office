@@ -90,13 +90,14 @@ class TestFetchTodaySuccessRuns:
 
 
 class TestHasActiveRun:
-    def test_unfinished_run_is_active(self):
-        """예약·수동으로 뜬 끝나지 않은 run 이 있으면 True"""
+    @pytest.mark.parametrize("status", ["in_progress", "requested"])
+    def test_unfinished_run_is_active(self, status):
+        """예약·수동으로 뜬 끝나지 않은 run(막 만들어진 run 포함)이 있으면 True"""
         runs = [
             {
                 "name": "Weekly Analysis",
                 "event": "schedule",
-                "status": "in_progress",
+                "status": status,
             }
         ]
 

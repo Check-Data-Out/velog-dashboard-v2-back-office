@@ -27,8 +27,14 @@ REQUEST_TIMEOUT_SEC = 30
 DAILY_STATS_WORKFLOW = "Daily Stats Batch (set{})"
 DAILY_STATS_SET_COUNT = 20
 
-# 아직 끝나지 않은 run 의 status
-ACTIVE_RUN_STATUSES = ("queued", "in_progress", "waiting", "pending")
+# 아직 끝나지 않은 run 의 status (워크플로 guard 의 목록과 같게 둔다)
+ACTIVE_RUN_STATUSES = (
+    "queued",
+    "in_progress",
+    "waiting",
+    "pending",
+    "requested",
+)
 # 진행 중으로 세는 run 의 event. fork PR 등 다른 이벤트 run 은 이름이 같아도 세지 않는다
 ACTIVE_RUN_EVENTS = ("schedule", "workflow_dispatch")
 
