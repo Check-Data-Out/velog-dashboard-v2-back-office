@@ -305,46 +305,11 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
                 username = user["username"]
 
                 try:
-                    # 토큰 유효성 확인
-                    if not await self._check_user_token_validity(
-                        user_id, context
-                    ):
-                        self.expired_token_users.add(user_id)
-                        continue
-
-                    # 토큰이 유효하면 successful_users에 추가
-                    self.successful_users.add(user_id)
-
-                    # 1. 주간 새글 수집 (LLM 분석용)
-                    weekly_new_posts = await self._fetch_user_weekly_new_posts(
-                        user_id, context
+                    user_data = await self._collect_user_data(
+                        user_id, username, context
                     )
-
-                    # 2. 주간 전체 통계 계산
-                    weekly_total_stats = (
-                        await self._calculate_user_weekly_total_stats(
-                            user_id, context
-                        )
-                    )
-
-                    # UserWeeklyData 생성
-                    user_data = UserWeeklyData(
-                        user_id=user_id,
-                        username=username,
-                        weekly_new_posts=weekly_new_posts,
-                        weekly_total_stats=weekly_total_stats,
-                    )
-                    user_weekly_data.append(user_data)
-
-                    self.logger.debug(
-                        "Collected data for user %s: %d new posts, stats(posts=%d, new_posts=%d, views=%d, likes=%d)",
-                        user_id,
-                        len(weekly_new_posts),
-                        weekly_total_stats.posts,
-                        weekly_total_stats.new_posts,
-                        weekly_total_stats.views,
-                        weekly_total_stats.likes,
-                    )
+                    if user_data is not None:
+                        user_weekly_data.append(user_data)
 
                 except TokenExpiredError:
                     self.expired_token_users.add(user_id)
@@ -364,6 +329,45 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
         except Exception as e:
             self.logger.error("Failed to fetch user data: %s", e)
             raise
+
+    async def _collect_user_data(
+        self, user_id: int, username: str, context: AnalysisContext
+    ) -> UserWeeklyData | None:
+        """사용자 한 명의 주간 데이터 수집. 토큰이 만료됐으면 None"""
+        # 토큰 유효성 확인
+        if not await self._check_user_token_validity(user_id, context):
+            self.expired_token_users.add(user_id)
+            return None
+
+        # 토큰이 유효하면 successful_users에 추가
+        self.successful_users.add(user_id)
+
+        # 1. 주간 새글 수집 (LLM 분석용)
+        weekly_new_posts = await self._fetch_user_weekly_new_posts(
+            user_id, context
+        )
+
+        # 2. 주간 전체 통계 계산
+        weekly_total_stats = await self._calculate_user_weekly_total_stats(
+            user_id, context
+        )
+
+        self.logger.debug(
+            "Collected data for user %s: %d new posts, stats(posts=%d, new_posts=%d, views=%d, likes=%d)",
+            user_id,
+            len(weekly_new_posts),
+            weekly_total_stats.posts,
+            weekly_total_stats.new_posts,
+            weekly_total_stats.views,
+            weekly_total_stats.likes,
+        )
+
+        return UserWeeklyData(
+            user_id=user_id,
+            username=username,
+            weekly_new_posts=weekly_new_posts,
+            weekly_total_stats=weekly_total_stats,
+        )
 
     async def _fetch_user_weekly_new_posts(
         self, user_id: int, context: AnalysisContext
