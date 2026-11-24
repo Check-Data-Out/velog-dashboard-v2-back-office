@@ -153,8 +153,8 @@ class WeeklyNewsletterBatch:
         is_processed=False 만 보면 묵은 보류 row 가 신주 발송을 잠식한다(데드락).
         """
         return (
-            WeeklyTrend.objects.filter(
-                week_end_date__gte=self.before_a_week,
+            WeeklyTrend.objects.this_week()
+            .filter(
                 is_processed=False,
                 review_status__in=SENDABLE_REVIEW_STATUSES,
             )
@@ -215,11 +215,11 @@ class WeeklyNewsletterBatch:
     ) -> dict[int, WeeklyUserTrendInsight]:
         """여러 유저의 UserWeeklyTrend 일괄 조회 후 매핑"""
         try:
-            user_weekly_trends = UserWeeklyTrend.objects.filter(
-                week_end_date__gte=self.before_a_week,
-                user_id__in=user_ids,
-                is_processed=False,
-            ).values("user_id", "insight")
+            user_weekly_trends = (
+                UserWeeklyTrend.objects.this_week()
+                .filter(user_id__in=user_ids, is_processed=False)
+                .values("user_id", "insight")
+            )
 
             # user_id를 키로 하는 딕셔너리로 변환 (매핑)
             users_weekly_trends_dict = {}
@@ -492,12 +492,13 @@ class WeeklyNewsletterBatch:
         """개별 부분(UserWeeklyTrend) 발송 결과 일괄 저장"""
         try:
             with transaction.atomic():
-                updated_count = UserWeeklyTrend.objects.filter(
-                    user_id__in=success_user_ids,
-                    week_end_date__gte=self.before_a_week,
-                ).update(
-                    is_processed=True,
-                    processed_at=get_local_now(),
+                updated_count = (
+                    UserWeeklyTrend.objects.this_week()
+                    .filter(user_id__in=success_user_ids)
+                    .update(
+                        is_processed=True,
+                        processed_at=get_local_now(),
+                    )
                 )
             logger.info(
                 f"Updated {updated_count} UserWeeklyTrend records as processed"

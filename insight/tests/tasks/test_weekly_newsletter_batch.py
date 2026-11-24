@@ -590,6 +590,31 @@ class TestWeeklyNewsletterBatchRun:
         assert trend.is_processed is True
         assert "✅" in (work_dir / RESULT_FILE).read_text()
 
+    def test_does_not_send_row_that_is_not_this_week(
+        self,
+        newsletter_batch,
+        work_dir,
+        user,
+        monday,
+        sample_weekly_trend_insight,
+    ):
+        """건너뜀 판정이 이번 주로 보지 않는 행(지난 일요일 전에 끝남)은 보내지 않는다"""
+        insight = sample_weekly_trend_insight.to_json_dict()
+        insight[BATCH_STATE_KEY] = {
+            BATCH_USER_ANALYSIS_COMPLETED: monday.isoformat()
+        }
+        saturday = monday.date() - timedelta(days=2)
+        WeeklyTrend.objects.create(
+            week_start_date=saturday - timedelta(days=6),
+            week_end_date=saturday,
+            insight=insight,
+        )
+
+        with pytest.raises(Exception, match="No WeeklyTrend data"):
+            newsletter_batch.run()
+
+        newsletter_batch.ses_client.send_email.assert_not_called()
+
     def test_fails_when_there_are_no_subscribers(
         self, newsletter_batch, work_dir, sample_weekly_trend_insight
     ):
