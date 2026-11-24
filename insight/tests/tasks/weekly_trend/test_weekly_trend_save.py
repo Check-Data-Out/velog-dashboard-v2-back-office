@@ -4,8 +4,18 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+@pytest.fixture
+def no_this_week_trend(mock_setup_django):
+    """저장 직전 재확인에서 이번 주 결과가 없다고 본다"""
+    with patch(
+        "insight.tasks.weekly_trend_analysis.WeeklyTrend.objects.this_week"
+    ) as this_week:
+        this_week.return_value.exists.return_value = False
+        yield this_week
+
+
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("mock_setup_django")
+@pytest.mark.usefixtures("mock_setup_django", "no_this_week_trend")
 class TestWeeklyTrendSave:
     @patch("insight.tasks.weekly_trend_analysis.WeeklyTrend.objects.create")
     async def test_save_results_success(

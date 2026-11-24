@@ -72,6 +72,8 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
         self.has_borderline = False
         # Slack 검수 프리뷰용 후보별 판정 누적 (drop/borderline/pass 모두)
         self.filter_preview: list[dict] = []
+        # 저장 직전에 이번 주 결과를 발견해 저장하지 않았으면 True
+        self.skipped = False
 
     async def _fetch_data(
         self, context: AnalysisContext
@@ -237,6 +239,12 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
         if not results:
             return
 
+        # 분석하는 사이 겹친 실행이 이번 주 결과를 저장했으면 저장하지 않는다
+        if await sync_to_async(WeeklyTrend.objects.this_week().exists)():
+            self.logger.info("This week's WeeklyTrend already exists, skipped")
+            self.skipped = True
+            return
+
         result = results[0]  # 주간 트렌드는 하나의 결과만 있음
 
         try:
@@ -286,6 +294,11 @@ async def main():
 
     analyzer = WeeklyTrendAnalyzer(trending_limit=10)
     result = await analyzer.run()
+
+    # 겹친 실행이 먼저 저장했으면 앞쪽 건너뜀과 같은 신호로 끝낸다
+    if analyzer.skipped:
+        _write_skipped()
+        return 0
 
     if result.success:
         try:

@@ -2,7 +2,7 @@ from datetime import timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from asgiref.sync import async_to_sync
+from asgiref.sync import async_to_sync, sync_to_async
 
 from insight.models import WeeklyTrend
 from utils.utils import get_this_week_monday
@@ -79,6 +79,31 @@ class TestWeeklyTrendMain:
         assert WeeklyTrend.objects.this_week().count() == 1
         session = mock_velog_client_cls.get_client.call_args.kwargs["session"]
         assert session.closed
+
+    def test_skips_saving_when_this_week_is_saved_during_analysis(
+        self,
+        weekly_trend_main,
+        work_dir,
+        mock_velog_client_cls,
+        mock_llm,
+        mock_post_detail,
+    ):
+        """분석하는 사이 겹친 실행이 이번 주 결과를 저장했으면 저장하지 않고 건너뜀 표시를 남긴다"""
+
+        async def other_run_saves_while_fetching(post_id):
+            await sync_to_async(create_weekly_trend)(weeks_ago=0)
+            return mock_post_detail
+
+        velog_client = mock_velog_client_cls.get_client.return_value
+        velog_client.get_post.side_effect = other_run_saves_while_fetching
+
+        exit_code = async_to_sync(weekly_trend_main)()
+
+        assert exit_code == 0
+        mock_llm.assert_called_once()
+        assert WeeklyTrend.objects.this_week().count() == 1
+        assert (work_dir / SKIP_MARKER).exists()
+        assert "건너뜀" in (work_dir / RESULT_FILE).read_text()
 
     def test_closes_session_when_analysis_fails(
         self, weekly_trend_main, work_dir, mock_velog_client_cls, mock_llm
