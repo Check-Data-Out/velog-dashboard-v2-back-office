@@ -133,6 +133,27 @@ def mock_llm():
         yield llm
 
 
+@pytest.fixture
+def fail_users(user_trend_module):
+    """넘긴 사용자의 주간 통계 계산이 예외를 내게 하는 patch 를 만드는 함수"""
+    analyzer_cls = user_trend_module.UserWeeklyAnalyzer
+    original = analyzer_cls._calculate_user_weekly_total_stats
+
+    def _fail_users(*users: User):
+        failing_ids = {user.id for user in users}
+
+        async def calculate(self, user_id, context):
+            if user_id in failing_ids:
+                raise RuntimeError("stats down")
+            return await original(self, user_id, context)
+
+        return patch.object(
+            analyzer_cls, "_calculate_user_weekly_total_stats", calculate
+        )
+
+    return _fail_users
+
+
 @pytest.mark.django_db
 @pytest.mark.usefixtures("mock_setup_django")
 class TestWeeklyUserTrendRun:
@@ -197,6 +218,7 @@ class TestWeeklyUserTrendRun:
             "processed_count": 2,
             "expired_token_users": 1,
             "successful_users": 2,
+            "failed_users": 0,
             "expired_user_ids": [expired.id],
         }
 
@@ -312,6 +334,32 @@ class TestWeeklyUserTrendRun:
 
         assert result.success is True
         assert UserWeeklyTrend.objects.filter(user=done).count() == 1
+
+    def test_run_completes_when_failures_are_under_half(
+        self,
+        user_trend_module,
+        monday,
+        mock_velog_client_cls,
+        mock_llm,
+        create_writer,
+        fail_users,
+    ):
+        """사용자별 실패가 대상의 절반 미만이면 완료 표시를 남기고 실패 수를 보고한다"""
+        weekly_trend = create_weekly_trend()
+        create_writer("first")
+        create_writer("second")
+        failed, _ = create_writer("failed")
+
+        with fail_users(failed):
+            result = async_to_sync(
+                user_trend_module.UserWeeklyAnalyzer(weekly_trend).run
+            )()
+
+        assert result.success is True
+        assert result.metadata["failed_users"] == 1
+        assert result.metadata["successful_users"] == 2
+        weekly_trend.refresh_from_db()
+        assert weekly_trend.batch_value(BATCH_USER_ANALYSIS_COMPLETED)
 
     def test_run_closes_session(
         self,
@@ -459,3 +507,29 @@ class TestWeeklyUserTrendMain:
         )
         assert not (work_dir / SKIP_MARKER).exists()
         assert UserWeeklyTrend.objects.filter(user=writer).count() == 1
+
+    @pytest.mark.django_db(transaction=True)
+    def test_main_fails_without_completion_when_half_of_users_fail(
+        self,
+        user_trend_module,
+        work_dir,
+        mock_wait,
+        mock_velog_client_cls,
+        mock_llm,
+        create_writer,
+        fail_users,
+    ):
+        """사용자별 실패가 이번 실행 대상의 절반이면 완료 표시 없이 실패하고 실패 수를 남긴다"""
+        # 트랜잭션으로 감싸지 않는 테스트라 다른 테스트가 남긴 사용자를 먼저 지운다
+        User.objects.all().delete()
+        weekly_trend = create_weekly_trend()
+        create_writer("writer")
+        failed, _ = create_writer("failed")
+
+        with fail_users(failed):
+            exit_code = async_to_sync(user_trend_module.main)()
+
+        assert exit_code == 1
+        assert "실패 1명" in (work_dir / RESULT_FILE).read_text()
+        weekly_trend.refresh_from_db()
+        assert weekly_trend.batch_value(BATCH_USER_ANALYSIS_COMPLETED) is None

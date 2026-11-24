@@ -96,6 +96,7 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
         self.weekly_trend = weekly_trend
         self.expired_token_users = set()
         self.successful_users = set()
+        self.failed_users = set()
         self.all_target_users = set()
 
     async def _initialize_context(self) -> AnalysisContext:
@@ -357,7 +358,8 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
         한 명분이다.
 
         Returns:
-            분석했으면 True. 토큰이 만료됐거나 실패하면 False
+            분석했으면 True. 토큰이 만료됐거나 실패하면 False.
+            예외로 실패한 사용자는 failed_users 에 남긴다.
         """
         try:
             user_data = await self._collect_user_data(
@@ -372,6 +374,8 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
 
         except Exception as e:
             self.logger.warning("Failed to process user %s: %s", user_id, e)
+            self.successful_users.discard(user_id)
+            self.failed_users.add(user_id)
             return False
 
     async def _collect_user_data(
@@ -559,7 +563,18 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
             if await self._process_user(user["id"], user["username"], context):
                 processed_count += 1
 
-        # 사용자별 실패는 로그만 남기고, 대상 전원을 다 돌았으면 완료로 본다
+        # 사용자별 실패가 이번 실행 대상의 절반 이상이면(OpenAI·DB 장애 등)
+        # 완료 표시 없이 실패로 끝낸다. 뉴스레터는 완료 표시가 있어야 보내므로
+        # 개인 통계 없는 메일이 전원에게 나가지 않는다
+        failed_count = len(self.failed_users)
+        if users and failed_count * 2 >= len(users):
+            raise Exception(
+                f"사용자별 실패 {failed_count}명 / 이번 실행 대상 {len(users)}명 (절반 이상). "
+                "완료 표시를 남기지 않음. 다시 돌리면 결과가 없는 사용자만 분석하며, "
+                "그 사용자들이 계속 실패하면 완료되지 않음"
+            )
+
+        # 실패가 절반 미만이면 로그만 남기고, 대상 전원을 다 돌았으면 완료로 본다
         await sync_to_async(self.weekly_trend.mark_batch)(
             BATCH_USER_ANALYSIS_COMPLETED
         )
@@ -582,6 +597,7 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
             **(result.metadata or {}),
             "expired_token_users": len(self.expired_token_users),
             "successful_users": len(self.successful_users),
+            "failed_users": len(self.failed_users),
             "expired_user_ids": list(self.expired_token_users),
         }
         return result
@@ -629,12 +645,13 @@ async def main():
         metadata = result.metadata or {}
         successful = metadata.get("successful_users", 0)
         expired = metadata.get("expired_token_users", 0)
+        failed = metadata.get("failed_users", 0)
 
         # 결과 파일 저장 (for slack notification)
         try:
             with open("weekly_analysis_result.txt", "a") as f:
                 f.write(
-                    f"✅ 사용자 주간 분석 완료: 성공 {successful}명, 토큰 만료 {expired}명\\n"
+                    f"✅ 사용자 주간 분석 완료: 성공 {successful}명, 토큰 만료 {expired}명, 실패 {failed}명\\n"
                 )
                 f.write(
                     f"   - 토큰 만료 사용자: {metadata.get('expired_user_ids', [])}"
