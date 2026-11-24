@@ -4,11 +4,14 @@ GitHub Actions run 목록으로 확인하고 다 모일 때까지 기다린다.
 
 - Django 없이 표준 라이브러리만 쓴다.
 - 공개 레포라 토큰 없이 읽힌다. GITHUB_TOKEN 환경변수가 있으면 붙인다.
+- 직접 실행하면 워크플로에 진행 중인 run 이 있는지 종료 코드로 알려 준다
+  (run-weekly.sh 가 쓴다).
 """
 
 import json
 import logging
 import os
+import sys
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
@@ -165,3 +168,12 @@ def wait_for_daily_stats(
 
     logger.warning("Proceeding without daily stats sets: %s", missing)
     return missing
+
+
+if __name__ == "__main__":
+    # python insight/tasks/wait_daily_stats.py active-run "<워크플로 이름>"
+    # 진행 중 run 이 있으면 3, 없으면 0. 조회 실패는 잡지 않아 다른 코드로 끝난다
+    command, workflow_name = sys.argv[1:]
+    if command != "active-run":
+        sys.exit(f"알 수 없는 명령: {command}")
+    sys.exit(3 if has_active_run(fetch_recent_runs(), workflow_name) else 0)
