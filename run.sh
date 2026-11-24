@@ -5,10 +5,9 @@
 set -euo pipefail
 
 # 주간 배치(run-weekly.sh)가 도는 중이면 배포를 멈춘다. 배치가 쥔 잠금을 잡아 보고, 못 잡으면 실행 중이다
-for job in trend user-analysis newsletter; do
-    lock="$HOME/weekly-batch/$job.lock"
+for lock in "$HOME"/weekly-batch/*.lock; do
     if [[ -e "$lock" ]] && ! flock -n "$lock" true; then
-        echo "주간 배치($job) 실행 중이라 배포를 멈춥니다" >&2
+        echo "주간 배치($(basename "$lock" .lock)) 실행 중이라 배포를 멈춥니다" >&2
         exit 1
     fi
 done
