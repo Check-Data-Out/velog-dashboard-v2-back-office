@@ -303,7 +303,9 @@ cd <레포>
 ./run-weekly.sh newsletter      # 뉴스레터 발송
 ```
 
-GitHub 에서 돌릴 때는 `gh workflow run "Weekly Analysis Batch"` 또는 `gh workflow run "Weekly Newsletter Batch"`. `workflow_dispatch` 도 판정 job(`guard`)을 거치므로, 서버가 이미 시작했거나 끝낸 주에는 본 작업 없이 조용히 건너뛴다. GitHub 에서 실패한 job 만 다시 돌리지 않는다(`Re-run all jobs` 또는 서버 `run-weekly.sh`).
+GitHub 에서 돌릴 때는 `gh workflow run "Weekly Analysis Batch"` 또는 `gh workflow run "Weekly Newsletter Batch"`. `workflow_dispatch` 도 판정 job(`guard`)을 거치므로, 서버가 이미 시작했거나 끝낸 주에는 본 작업 없이 조용히 건너뛴다.
+
+실패한 GitHub run 은 다시 돌리지 않는다(`Re-run all jobs` 포함). `guard` 가 첫 시도가 남긴 DB 기록(이번 주 공통 분석 행, 발송 시작 표시)을 보고 본 작업 없이 조용히 끝날 수 있다. 실패한 주를 다시 돌릴 때는 서버에서 `./run-weekly.sh <작업>` 으로만 한다.
 
 ### 건너뜀과 중복 방지
 
@@ -333,7 +335,7 @@ GitHub 에서 돌릴 때는 `gh workflow run "Weekly Analysis Batch"` 또는 `gh
 | 3 | 분석: 이번 주 `WeeklyTrend` 행이 있음 / 발송: 이번 주 행이 `is_processed` 이거나 `_batch.newsletter_started_at` 이 있음 | 건너뜀 |
 | 4 | 그 밖(서버가 그 주 작업을 시작하지 못함) | 본 작업 실행, Slack 첫 줄에 "GitHub 안전망 실행" 표시 |
 
-서버가 시작한 주는 서버가 끝까지 맡는다. 서버 공통 분석이 실패해 행이 없는 주는 12:10 에 GitHub 가 다시 돈다. `guard` 가 실패하면 Slack 에 "안전망 판정 실패"가 간다.
+서버가 시작한 주는 서버가 끝까지 맡는다. 분석 판정은 공통 분석 행만 보고 사용자 분석 완료 여부는 보지 않는다. 그래서 행이 생긴 뒤 사용자 분석이 실패한 주는(GitHub 가 돌린 주도) GitHub 가 이어서 하지 않으니 서버에서 `./run-weekly.sh user-analysis` 로 잇는다. 서버 공통 분석이 실패해 행이 없는 주는 12:10 에 GitHub 가 다시 돈다. `guard` 가 실패하면 Slack 에 "안전망 판정 실패"가 간다.
 
 ### 배포 금지 시간
 
