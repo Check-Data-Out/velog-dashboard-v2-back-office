@@ -602,7 +602,13 @@ class WeeklyNewsletterBatch:
 
                 try:
                     # 겹친 실행이 그사이 보낸 이메일은 보내기 직전에 다시 뺀다
-                    received_emails = set(self._received_emails())
+                    received_emails = set(
+                        self._received_emails().filter(
+                            user__email__in=[
+                                user["email"] for user in user_chunk
+                            ]
+                        )
+                    )
                     user_chunk = [
                         user
                         for user in user_chunk
