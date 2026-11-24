@@ -31,7 +31,7 @@ def get_this_week_monday(now: datetime | None = None) -> date:
 
     now 가 다른 시간대여도 KST 로 바꾼 뒤 날짜를 구한다.
     """
-    today = timezone.localdate(now or get_local_now())
+    today: date = timezone.localdate(now or get_local_now())
     return today - timedelta(days=today.weekday())
 
 
