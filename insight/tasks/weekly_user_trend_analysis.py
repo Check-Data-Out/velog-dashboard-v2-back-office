@@ -12,15 +12,19 @@
 """
 
 import asyncio
+import logging
+import resource
+import time
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import setup_django  # noqa
 from asgiref.sync import sync_to_async
 from django.conf import settings
+from django.db import connections
 from django.db.models import Q
 from django.utils import timezone
 
@@ -40,11 +44,17 @@ from insight.tasks.base_analysis import (
     AnalysisResult,
     BaseBatchAnalyzer,
 )
+from insight.tasks.wait_daily_stats import (
+    fetch_today_success_runs,
+    wait_for_daily_stats,
+)
 from insight.tasks.weekly_llm_analyzer import analyze_user_posts
 from posts.models import Post, PostDailyStatistics
 from scraping.velog.schemas import Post as VelogPost
 from users.models import User
 from utils.utils import to_local_date
+
+logger = logging.getLogger("newsletter")
 
 # 할 일 없이 끝났음을 실행 스크립트에 알리는 표시 파일 (현재 폴더)
 SKIP_MARKER = "weekly_user_trend_analysis.skipped"
@@ -52,7 +62,7 @@ SKIP_MARKER = "weekly_user_trend_analysis.skipped"
 
 def _to_local_midnight(day: date) -> datetime:
     """day 의 00:00 (Django 현재 시간대, KST)"""
-    return timezone.make_aware(datetime.combine(day, time.min))
+    return timezone.make_aware(datetime.combine(day, datetime.min.time()))
 
 
 class TokenExpiredError(Exception):
@@ -616,6 +626,21 @@ async def main():
         Path(SKIP_MARKER).touch()
         return 0
 
+    # 기다리는 동안(최대 90분) 쉬는 DB 연결은 서버가 끊을 수 있다.
+    # 닫아 두면 분석이 새 연결을 연다. 연결은 스레드마다 따로라서
+    # 쿼리를 돌린 스레드에서 닫는다
+    await sync_to_async(connections.close_all)()
+
+    # 개인 통계는 주차가 끝난 다음 날(월요일)의 일일 통계로 만든다.
+    # 그날 세트가 다 모일 때까지 기다린다
+    wait_for_daily_stats(
+        _to_local_midnight(weekly_trend.week_end_date + timedelta(days=1)),
+        fetch_today_success_runs,
+        time.sleep,
+        time.monotonic,
+        logger,
+    )
+
     analyzer = UserWeeklyAnalyzer(weekly_trend)
     result = await analyzer.run()
 
@@ -642,9 +667,17 @@ async def main():
         except Exception as e:
             print(f"결과 파일 저장 실패: {e}")
 
-        return 1
+    # 최대 메모리 (Linux 의 ru_maxrss 단위는 KiB)
+    peak_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024
+    logger.info("Peak memory: %d MB", peak_mb)
+    try:
+        with open("weekly_analysis_result.txt", "a") as f:
+            # 위 결과 줄은 실제 줄바꿈 없이 끝나므로 새 줄에서 시작한다
+            f.write(f"\n최대 메모리: {peak_mb} MB\n")
+    except Exception as e:
+        print(f"결과 파일 저장 실패: {e}")
 
-    return 0
+    return 0 if result.success else 1
 
 
 if __name__ == "__main__":

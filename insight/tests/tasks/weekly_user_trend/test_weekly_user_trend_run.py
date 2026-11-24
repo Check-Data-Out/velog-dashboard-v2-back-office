@@ -141,6 +141,13 @@ def mock_velog_client_cls():
 
 
 @pytest.fixture
+def mock_wait(user_trend_module):
+    """일일 통계 대기. 진짜는 GitHub 를 조회하며 최대 90분 기다린다"""
+    with patch.object(user_trend_module, "wait_for_daily_stats") as wait:
+        yield wait
+
+
+@pytest.fixture
 def mock_llm():
     with patch(
         "insight.tasks.weekly_user_trend_analysis.analyze_user_posts",
@@ -338,7 +345,12 @@ class TestWeeklyUserTrendRun:
 @pytest.mark.usefixtures("monday")
 class TestWeeklyUserTrendMain:
     def test_main_fails_when_this_week_weekly_trend_is_missing(
-        self, user_trend_module, work_dir, mock_velog_client_cls, mock_llm
+        self,
+        user_trend_module,
+        work_dir,
+        mock_wait,
+        mock_velog_client_cls,
+        mock_llm,
     ):
         """이번 주 공통 분석 행이 없으면 아무것도 부르지 않고 실패로 끝낸다"""
         # 지난주 행만 있다
@@ -356,14 +368,20 @@ class TestWeeklyUserTrendMain:
         assert "❌ 사용자 주간 분석 실패" in result_text
         assert "이번 주 공통 분석 결과가 없음" in result_text
         assert not (work_dir / SKIP_MARKER).exists()
+        mock_wait.assert_not_called()
         mock_velog_client_cls.get_client.assert_not_called()
         mock_llm.assert_not_called()
         assert UserWeeklyTrend.objects.count() == 0
 
     def test_main_skips_when_user_analysis_is_already_completed(
-        self, user_trend_module, work_dir, mock_velog_client_cls, mock_llm
+        self,
+        user_trend_module,
+        work_dir,
+        mock_wait,
+        mock_velog_client_cls,
+        mock_llm,
     ):
-        """완료 표시가 있으면 velog·LLM 을 부르지 않고 건너뜀 표시를 남긴다"""
+        """완료 표시가 있으면 기다리지도, velog·LLM 을 부르지도 않고 건너뜀 표시를 남긴다"""
         create_weekly_trend(
             {
                 BATCH_STATE_KEY: {
@@ -380,20 +398,32 @@ class TestWeeklyUserTrendMain:
             "⏭ 사용자 주간 분석 건너뜀" in (work_dir / RESULT_FILE).read_text()
         )
         assert (work_dir / SKIP_MARKER).exists()
+        mock_wait.assert_not_called()
         mock_velog_client_cls.get_client.assert_not_called()
         mock_llm.assert_not_called()
         assert UserWeeklyTrend.objects.count() == 0
 
+    # 기다리기 전에 DB 연결을 진짜로 닫으므로 테스트를 트랜잭션으로 감싸지 않는다
+    @pytest.mark.django_db(transaction=True)
     def test_main_analyzes_and_writes_result_line(
-        self, user_trend_module, work_dir, mock_velog_client_cls, mock_llm
+        self,
+        user_trend_module,
+        work_dir,
+        mock_wait,
+        mock_velog_client_cls,
+        mock_llm,
     ):
-        """이번 주 행이 있고 완료 전이면 분석하고 결과 줄을 남긴다"""
+        """이번 주 행이 있고 완료 전이면 일일 통계를 기다린 뒤 분석하고 결과 줄을 남긴다"""
+        # 스크래핑 테스트가 다른 스레드에서 커밋해 남긴 사용자가 있을 수 있다.
+        # 트랜잭션으로 감싸지 않는 테스트는 끝에서만 DB 를 비우므로 먼저 지운다
+        User.objects.all().delete()
         create_weekly_trend()
         writer, _ = create_writer("writer")
 
         exit_code = async_to_sync(user_trend_module.main)()
 
         assert exit_code == 0
+        mock_wait.assert_called_once()
         assert (
             "✅ 사용자 주간 분석 완료: 성공 1명, 토큰 만료 0명"
             in (work_dir / RESULT_FILE).read_text()
