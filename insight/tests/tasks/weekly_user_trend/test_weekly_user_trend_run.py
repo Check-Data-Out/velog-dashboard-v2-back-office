@@ -120,8 +120,10 @@ def mock_velog_client_cls():
 
 @pytest.fixture
 def mock_wait(user_trend_module):
-    """일일 통계 대기. 진짜는 GitHub 를 조회하며 최대 90분 기다린다"""
-    with patch.object(user_trend_module, "wait_for_daily_stats") as wait:
+    """일일 통계 대기. 진짜는 GitHub 를 조회하며 최대 90분 기다린다. 기본은 모두 모임"""
+    with patch.object(
+        user_trend_module, "wait_for_daily_stats", return_value=[]
+    ) as wait:
         yield wait
 
 
@@ -539,16 +541,24 @@ class TestWeeklyUserTrendMain:
     def test_main_waits_for_stats_of_day_after_week_on_rerun(
         self, user_trend_module, work_dir, mock_wait
     ):
-        """화요일에 다시 돌려도 오늘이 아니라 주차 다음 날(월) 00:00 의 일일 통계를 기다린다"""
+        """화요일에 다시 돌려도 오늘이 아니라 주차 다음 날(월) 00:00 의 일일 통계를 기다린다.
+
+        기다려도 끝나지 않은 세트는 결과 파일에 경고로 남긴다.
+        """
         # 트랜잭션으로 감싸지 않는 테스트라 다른 테스트가 남긴 사용자를 먼저 지운다
         User.objects.all().delete()
         create_weekly_trend()
+        mock_wait.return_value = [3, 7]
 
         with patch("utils.utils.get_local_now", return_value=TUESDAY):
             exit_code = async_to_sync(user_trend_module.main)()
 
         assert exit_code == 0
         assert mock_wait.call_args.args[0] == WEEK_END
+        assert (
+            "경고: 일일 통계 세트 [3, 7] 미완료 — 해당 세트 사용자는 토큰 만료로 분류됨"
+            in (work_dir / RESULT_FILE).read_text().splitlines()
+        )
 
     @pytest.mark.django_db(transaction=True)
     def test_main_skips_when_completed_while_waiting(

@@ -630,7 +630,7 @@ async def main():
 
     # 개인 통계는 주차가 끝난 다음 날(월요일)의 일일 통계로 만든다.
     # 그날 세트가 다 모일 때까지 기다린다. 동기 대기라 이벤트 루프 밖에서 돌린다
-    await asyncio.to_thread(
+    missing = await asyncio.to_thread(
         wait_for_daily_stats,
         _to_local_midnight(weekly_trend.week_end_date + timedelta(days=1)),
         fetch_today_success_runs,
@@ -670,6 +670,13 @@ async def main():
                 f.write(f"❌ 사용자 주간 분석 실패: {result.error}\n")
         except Exception as e:
             print(f"결과 파일 저장 실패: {e}")
+
+    # 기다려도 끝나지 않은 세트가 있으면 Slack 에서 보이게 남긴다
+    if missing:
+        with open("weekly_analysis_result.txt", "a") as f:
+            f.write(
+                f"경고: 일일 통계 세트 {missing} 미완료 — 해당 세트 사용자는 토큰 만료로 분류됨\n"
+            )
 
     record_peak_memory(logger, "weekly_analysis_result.txt")
 
