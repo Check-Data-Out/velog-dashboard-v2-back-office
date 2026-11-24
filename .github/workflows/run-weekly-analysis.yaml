@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
   schedule:
     # 평소에는 BO 서버 crontab(run-weekly.sh)이 월요일 07:00 KST 에 공통 분석, 이어서 사용자 분석을 돌린다.
-    # 이 예약은 이번 주 공통 분석 결과(WeeklyTrend 행)가 없을 때만 일하는 안전망이다. 서버 공통 분석이 실패한 주도 여기서 다시 돈다
+    # 이 예약은 이번 주 분석이 끝나지 않았고 실행 중도 아닐 때만 일하는 안전망이다. 서버가 공통 분석이나 사용자 분석을 끝내지 못한 주는 여기서 이어서 돈다
     # (월요일 12:10 KST, 정각은 늦거나 빠지기 쉬워 피한다)
     - cron: "10 12 * * 1"
       timezone: "Asia/Seoul"
 
 jobs:
-  # 이번 주 공통 분석 결과가 이미 있거나 먼저 뜬 run 이 돌고 있으면 본 작업을 건너뛴다 (체크아웃·secret 파일·DB 쓰기 없음)
+  # 이번 주 분석이 끝났거나 실행 중이거나 먼저 뜬 run 이 돌고 있으면 본 작업을 건너뛴다 (체크아웃·secret 파일·DB 쓰기 없음)
   guard:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -54,21 +54,22 @@ jobs:
             decide false "건너뜀: 먼저 만들어진 run ${ACTIVE}개가 아직 끝나지 않음"
           fi
 
-          # 이번 주 WeeklyTrend 행이 있으면 물러난다 (읽기 전용 트랜잭션)
-          # 행은 공통 분석이 성공해야 생기므로, 서버 공통 분석이 실패한 주는 GitHub 가 다시 돈다
+          # 이번 주 사용자 분석이 끝났거나 150분 안에 시작했으면(아직 도는 중) 물러난다 (읽기 전용 트랜잭션)
+          # 150분은 사용자 분석 시간 제한 135분에 여유를 더한 값이다. 이번 주 행이 없거나(공통 분석 실패)
+          # 사용자 분석이 끝나지 않은 채 멈춘 주는 GitHub 가 이어서 돈다. 끝난 부분은 파이썬이 건너뛴다
           command -v psql || (sudo apt-get update && sudo apt-get install -y postgresql-client)
           # psql 오류 원문에는 DB 주소가 들어갈 수 있어 공개 로그에 남기지 않는다
           if ! FOUND=$(psql -X -q -A -t -v ON_ERROR_STOP=1 -c 'BEGIN READ ONLY' \
-            -c "SELECT count(*) FROM insight_weeklytrend WHERE week_end_date >= (date_trunc('week', now() AT TIME ZONE 'Asia/Seoul')::date - 1)" \
+            -c "SELECT count(*) FROM insight_weeklytrend WHERE week_end_date >= (date_trunc('week', now() AT TIME ZONE 'Asia/Seoul')::date - 1) AND (insight->'_batch' ? 'user_analysis_completed_at' OR (insight->'_batch'->>'user_analysis_started_at')::timestamptz > now() - interval '150 minutes')" \
             -c 'COMMIT' 2>/dev/null); then
             echo "DB 조회 실패 (오류 원문은 남기지 않음)" >&2
             exit 1
           fi
           if [ "$FOUND" != "0" ]; then
-            decide false "건너뜀: 이번 주 WeeklyTrend 가 이미 있음 (${FOUND}건)"
+            decide false "건너뜀: 이번 주 분석이 끝났거나 실행 중 (${FOUND}건)"
           fi
 
-          decide true "실행: 이번 주 WeeklyTrend 가 없음"
+          decide true "실행: 이번 주 분석이 끝나지 않았고 실행 중도 아님"
 
       # 판정이 실패하면 본 작업이 skipped 라 본 작업 Slack 도 가지 않으므로 여기서 알린다
       - name: Send Slack Notification On Guard Failure
@@ -192,7 +193,7 @@ jobs:
           DELIM="SLACK_EOF_$(openssl rand -hex 16)"
           {
             echo "TEXT<<$DELIM"
-            printf '⚠️ GitHub 안전망 실행 — 이번 주 공통 분석 결과가 없었음\n'
+            printf '⚠️ GitHub 안전망 실행 — 이번 주 분석이 끝나지 않았고 실행 중도 아니었음\n'
             printf '*Weekly Analysis Batch*\n\n'
             printf '%s *Status:* %s\n' "$ICON" "$JOB_STATUS"
             printf '📅 *Timestamp (KST):* %s\n' "$KST_TIME"

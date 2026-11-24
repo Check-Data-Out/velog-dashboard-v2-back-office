@@ -79,7 +79,7 @@ if ! flock -n 9; then
 fi
 
 # 같은 워크플로의 GitHub run 이 돌고 있으면 그쪽에 맡긴다
-# 조회가 실패하면 진행한다 (GitHub 쪽 판정은 DB 를 보고 물러난다: 분석은 이번 주 WeeklyTrend 행, 발송은 시작 표시)
+# 조회가 실패하면 진행한다 (GitHub 쪽 판정은 DB 를 보고 물러난다: 완료 표시나 최근 시작 표시)
 set +e
 "$PYTHON" insight/tasks/wait_daily_stats.py "$WORKFLOW"
 active=$?

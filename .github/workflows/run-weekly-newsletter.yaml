@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
   schedule:
     # 평소에는 BO 서버 crontab(run-weekly.sh)이 월요일 09:30 KST 에 돌린다.
-    # 이 예약은 서버가 그 주 발송을 시작하지 못했을 때만 일하는 안전망이다 (월요일 13:10 KST, 정각은 늦거나 빠지기 쉬워 피한다)
+    # 이 예약은 이번 주 발송이 끝나지 않았고 실행 중도 아닐 때만 일하는 안전망이다 (월요일 13:10 KST, 정각은 늦거나 빠지기 쉬워 피한다)
     - cron: "10 13 * * 1"
       timezone: "Asia/Seoul"
 
 jobs:
-  # 서버가 이번 주 발송을 이미 시작했거나 먼저 뜬 run 이 돌고 있으면 본 작업을 건너뛴다 (체크아웃·secret 파일·DB 쓰기 없음)
+  # 이번 주 발송이 끝났거나 실행 중이거나 먼저 뜬 run 이 돌고 있으면 본 작업을 건너뛴다 (체크아웃·secret 파일·DB 쓰기 없음)
   guard:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -53,20 +53,22 @@ jobs:
             decide false "건너뜀: 먼저 만들어진 run ${ACTIVE}개가 아직 끝나지 않음"
           fi
 
-          # 이번 주 발송이 끝났거나 서버가 발송을 시작했으면 서버가 끝까지 맡는다 (읽기 전용 트랜잭션)
+          # 이번 주 발송이 끝났거나 60분 안에 시작했으면(아직 도는 중) 물러난다 (읽기 전용 트랜잭션)
+          # 60분은 발송 시간 제한 48분에 여유를 더한 값이다. 시작했지만 끝나지 않은 채 멈춘 발송은
+          # GitHub 가 이어서 보낸다. 이번 주 뉴스레터를 이미 받은 이메일은 파이썬이 뺀다
           command -v psql || (sudo apt-get update && sudo apt-get install -y postgresql-client)
           # psql 오류 원문에는 DB 주소가 들어갈 수 있어 공개 로그에 남기지 않는다
-          if ! STARTED=$(psql -X -q -A -t -v ON_ERROR_STOP=1 -c 'BEGIN READ ONLY' \
-            -c "SELECT count(*) FROM insight_weeklytrend WHERE week_end_date >= (date_trunc('week', now() AT TIME ZONE 'Asia/Seoul')::date - 1) AND (is_processed OR insight->'_batch' ? 'newsletter_started_at')" \
+          if ! FOUND=$(psql -X -q -A -t -v ON_ERROR_STOP=1 -c 'BEGIN READ ONLY' \
+            -c "SELECT count(*) FROM insight_weeklytrend WHERE week_end_date >= (date_trunc('week', now() AT TIME ZONE 'Asia/Seoul')::date - 1) AND (is_processed OR (insight->'_batch'->>'newsletter_started_at')::timestamptz > now() - interval '60 minutes')" \
             -c 'COMMIT' 2>/dev/null); then
             echo "DB 조회 실패 (오류 원문은 남기지 않음)" >&2
             exit 1
           fi
-          if [ "$STARTED" != "0" ]; then
-            decide false "건너뜀: 이번 주 발송이 끝났거나 시작됨 (${STARTED}건, 서버가 처리)"
+          if [ "$FOUND" != "0" ]; then
+            decide false "건너뜀: 이번 주 발송이 끝났거나 실행 중 (${FOUND}건)"
           fi
 
-          decide true "실행: 서버가 이번 주 발송을 시작하지 못함"
+          decide true "실행: 이번 주 발송이 끝나지 않았고 실행 중도 아님"
 
       # 판정이 실패하면 본 작업이 skipped 라 본 작업 Slack 도 가지 않으므로 여기서 알린다
       - name: Send Slack Notification On Guard Failure
@@ -185,7 +187,7 @@ jobs:
           DELIM="SLACK_EOF_$(openssl rand -hex 16)"
           {
             echo "TEXT<<$DELIM"
-            printf '⚠️ GitHub 안전망 실행 — 이번 주 발송이 시작되지 않았음\n'
+            printf '⚠️ GitHub 안전망 실행 — 이번 주 발송이 끝나지 않았고 실행 중도 아니었음\n'
             printf '*Weekly Newsletter Batch*\n\n'
             printf '%s *Status:* %s\n' "$ICON" "$JOB_STATUS"
             printf '📅 *Timestamp (KST):* %s\n' "$KST_TIME"
