@@ -1,9 +1,15 @@
+import uuid
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from insight.models import UserWeeklyTrend, WeeklyTrend
+from insight.models import (
+    BATCH_STATE_KEY,
+    BATCH_USER_ANALYSIS_COMPLETED,
+    UserWeeklyTrend,
+    WeeklyTrend,
+)
 from modules.mail.exceptions import AuthenticationError, SendingBlockedError
 from modules.mail.unsubscribe import (
     build_legacy_unsubscribe_url,
@@ -11,7 +17,7 @@ from modules.mail.unsubscribe import (
 )
 from noti.models import NotiMailLog
 from users.models import User
-from utils.utils import get_local_now
+from utils.utils import get_local_now, get_this_week_monday
 
 
 @pytest.fixture
@@ -510,3 +516,58 @@ class TestWeeklyNewsletterBatch:
                 Exception, match="No WeeklyTrend data, batch stopped"
             ):
                 newsletter_batch.run()
+
+
+@pytest.fixture
+def work_dir(tmp_path, monkeypatch):
+    """결과 파일과 표시 파일을 임시 폴더에 쓴다"""
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
+
+
+def create_user(email: str) -> User:
+    """뉴스레터를 구독한 활성 사용자"""
+    return User.objects.create(
+        velog_uuid=uuid.uuid4(),
+        access_token="test-access-token",
+        refresh_token="test-refresh-token",
+        group_id=1,
+        email=email,
+        username=email.split("@")[0],
+        is_active=True,
+        newsletter_subscribed=True,
+    )
+
+
+def create_this_week_trend(insight: dict, **fields) -> WeeklyTrend:
+    """이번 주 공통 분석 행(종료일이 지난 일요일). 사용자 분석 완료 표시를 담는다"""
+    week_end = get_this_week_monday() - timedelta(days=1)
+    insight[BATCH_STATE_KEY] = {
+        BATCH_USER_ANALYSIS_COMPLETED: get_local_now().isoformat()
+    }
+    return WeeklyTrend.objects.create(
+        week_start_date=week_end - timedelta(days=6),
+        week_end_date=week_end,
+        insight=insight,
+        **fields,
+    )
+
+
+@pytest.mark.django_db
+class TestWeeklyNewsletterBatchRun:
+    """실제 DB·템플릿으로 run() 전체를 돌리는 테스트"""
+
+    def test_sends_to_every_target_and_marks_week_processed(
+        self, newsletter_batch, work_dir, user, sample_weekly_trend_insight
+    ):
+        """대상 이메일마다 메일을 한 통씩 보내고 이번 주 행을 발송 완료로 표시한다"""
+        create_user("other@example.com")
+        trend = create_this_week_trend(
+            sample_weekly_trend_insight.to_json_dict()
+        )
+
+        newsletter_batch.run()
+
+        assert newsletter_batch.ses_client.send_email.call_count == 2
+        trend.refresh_from_db()
+        assert trend.is_processed is True
