@@ -45,12 +45,7 @@ class TestWeeklyNewsletterTemplate:
         with patch.object(
             newsletter_batch, "_select_weekly_trend"
         ) as mock_select:
-            mock_select.return_value = {
-                "id": weekly_trend.id,
-                "insight": weekly_trend.insight,
-                "week_start_date": weekly_trend.week_start_date,
-                "week_end_date": weekly_trend.week_end_date,
-            }
+            mock_select.return_value = weekly_trend
 
             weekly_trend_html = newsletter_batch._get_weekly_trend_html()
 
@@ -95,12 +90,7 @@ class TestWeeklyNewsletterTemplate:
         with patch.object(
             newsletter_batch, "_select_weekly_trend"
         ) as mock_select:
-            mock_select.return_value = {
-                "id": weekly_trend.id,
-                "insight": weekly_trend.insight,
-                "week_start_date": weekly_trend.week_start_date,
-                "week_end_date": weekly_trend.week_end_date,
-            }
+            mock_select.return_value = weekly_trend
 
             with patch(
                 "insight.tasks.weekly_newsletter_batch.render_to_string"

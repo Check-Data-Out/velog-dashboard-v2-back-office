@@ -81,6 +81,8 @@ class WeeklyNewsletterBatch:
             "s_date": None,
             "e_date": None,
         }
+        # 발송할 이번 주 공통 분석 행 (_get_weekly_trend_html 이 고른다)
+        self.weekly_trend: WeeklyTrend | None = None
         # 배치 실행 시점 기준의 local 날짜 로드
         self.before_a_week = get_local_now_date() - timedelta(weeks=1)
         self.today = get_local_now_date()
@@ -140,7 +142,7 @@ class WeeklyNewsletterBatch:
             logger.error(f"Failed to get target user chunks: {e}")
             raise
 
-    def _select_weekly_trend(self) -> dict | None:
+    def _select_weekly_trend(self) -> WeeklyTrend | None:
         """발송할 WeeklyTrend 1건 선택.
 
         검수 보류(needs_review)는 제외하고 최신 주차부터 고른다. 정렬 없이
@@ -153,7 +155,6 @@ class WeeklyNewsletterBatch:
                 review_status__in=SENDABLE_REVIEW_STATUSES,
             )
             .order_by("-week_end_date")
-            .values("id", "insight", "week_start_date", "week_end_date")
             .first()
         )
 
@@ -168,15 +169,16 @@ class WeeklyNewsletterBatch:
                 raise Exception("No WeeklyTrend data, batch stopped")
 
             # 주간 정보 상태 저장
+            self.weekly_trend = weekly_trend
             self.weekly_info = {
-                "newsletter_id": weekly_trend["id"],
-                "s_date": weekly_trend["week_start_date"],
-                "e_date": weekly_trend["week_end_date"],
+                "newsletter_id": weekly_trend.id,
+                "s_date": weekly_trend.week_start_date,
+                "e_date": weekly_trend.week_end_date,
             }
 
             # dataclass로 변환 & 벨리데이션
             weekly_trend_insight = from_dict(
-                WeeklyTrendInsight, weekly_trend["insight"]
+                WeeklyTrendInsight, weekly_trend.insight
             )
             context = {"insight": weekly_trend_insight.to_dict()}
             weekly_trend_html = render_to_string(
@@ -189,14 +191,14 @@ class WeeklyNewsletterBatch:
                 or "주간 트렌드 분석" not in weekly_trend_html
             ):
                 logger.error(
-                    f"Failed to build weekly trend HTML for newsletter #{weekly_trend['id']}"
+                    f"Failed to build weekly trend HTML for newsletter #{weekly_trend.id}"
                 )
                 raise Exception(
-                    f"Failed to build weekly trend HTML for newsletter #{weekly_trend['id']}"
+                    f"Failed to build weekly trend HTML for newsletter #{weekly_trend.id}"
                 )
 
             logger.info(
-                f"Generated weekly trend HTML for newsletter #{weekly_trend['id']}"
+                f"Generated weekly trend HTML for newsletter #{weekly_trend.id}"
             )
             return weekly_trend_html
 
@@ -549,10 +551,9 @@ class WeeklyNewsletterBatch:
             weekly_trend_html = self._get_weekly_trend_html()
 
             # 사용자 분석이 끝나지 않았으면 메일을 한 통도 보내지 않고 실패한다
-            weekly_trend = WeeklyTrend.objects.get(
-                id=self.weekly_info["newsletter_id"]
-            )
-            if not weekly_trend.batch_value(BATCH_USER_ANALYSIS_COMPLETED):
+            if not self.weekly_trend.batch_value(
+                BATCH_USER_ANALYSIS_COMPLETED
+            ):
                 logger.error(
                     "User weekly trend analysis is not completed, batch stopped"
                 )
@@ -589,7 +590,7 @@ class WeeklyNewsletterBatch:
                 return
 
             # 첫 메일을 보내기 전에 발송 시작을 남긴다
-            weekly_trend.mark_batch(BATCH_NEWSLETTER_STARTED)
+            self.weekly_trend.mark_batch(BATCH_NEWSLETTER_STARTED)
 
             # ========================================================== #
             # STEP4: 청크별로 뉴스레터 발송 및 결과 저장

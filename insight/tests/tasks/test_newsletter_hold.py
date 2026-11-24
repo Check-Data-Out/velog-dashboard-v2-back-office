@@ -37,7 +37,7 @@ class TestNewsletterHoldGate:
         )
         selected = newsletter_batch._select_weekly_trend()
         assert selected is not None
-        assert selected["insight"] == {"x": "auto"}
+        assert selected.insight == {"x": "auto"}
 
     def test_held_trend_is_not_selected(self, db, newsletter_batch):
         """검수 보류(needs_review) 주차는 발송 대상에서 제외된다."""
@@ -67,4 +67,4 @@ class TestNewsletterHoldGate:
         )
         selected = newsletter_batch._select_weekly_trend()
         assert selected is not None
-        assert selected["insight"] == {"x": "new_ready"}
+        assert selected.insight == {"x": "new_ready"}
