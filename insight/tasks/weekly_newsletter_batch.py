@@ -101,14 +101,22 @@ class WeeklyNewsletterBatch:
             # 삭제 실패 시에도 계속 진행
             logger.error(f"Failed to delete old mail logs: {e}")
 
-    def _received_emails(self) -> QuerySet:
-        """이번 주 뉴스레터(제목 끝 #id)를 이미 성공적으로 받은 이메일"""
+    @staticmethod
+    def _sent_logs(newsletter_id: int) -> QuerySet:
+        """newsletter_id 뉴스레터(제목 끝 #id)의 성공한 발송 기록"""
         return NotiMailLog.objects.filter(
             is_success=True,
-            subject__endswith=f"#{self.weekly_info['newsletter_id']}",
+            subject__endswith=f"#{newsletter_id}",
+        )
+
+    def _received_emails(self) -> QuerySet:
+        """이번 주 뉴스레터를 이미 성공적으로 받은 이메일"""
+        return (
+            self._sent_logs(self.weekly_info["newsletter_id"])
             # NULL 이 섞이면 NOT IN 이 모든 대상을 빼므로 수신자가 없는 기록은 뺀다
-            user__email__isnull=False,
-        ).values_list("user__email", flat=True)
+            .filter(user__email__isnull=False)
+            .values_list("user__email", flat=True)
+        )
 
     def _subscribers(self) -> QuerySet:
         """뉴스레터를 구독한 활성 사용자"""
@@ -528,10 +536,7 @@ class WeeklyNewsletterBatch:
             if sent_trend:
                 # 처리 완료 표시만 있고 보낸 메일이 없으면(admin 에서 잘못 표시 등)
                 # 표시 파일 없이 끝내 Slack 으로 알린다
-                if not NotiMailLog.objects.filter(
-                    is_success=True,
-                    subject__endswith=f"#{sent_trend.id}",
-                ).exists():
+                if not self._sent_logs(sent_trend.id).exists():
                     logger.warning(
                         "This week's newsletter is marked as sent but has no mail log"
                     )
