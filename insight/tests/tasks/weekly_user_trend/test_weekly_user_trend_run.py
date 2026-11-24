@@ -20,8 +20,7 @@ from scraping.velog.schemas import Post as VelogPost
 from users.models import User
 
 KST = ZoneInfo("Asia/Seoul")
-# 월요일 07:05 에 도는 배치. 분석 주차는 11/16(월) 00:00 ~ 11/23(월) 00:00
-NOW = datetime(2026, 11, 23, 7, 5, tzinfo=KST)
+# monday fixture(11/23 월 07:05)에 도는 배치. 분석 주차는 11/16(월) 00:00 ~ 11/23(월) 00:00
 WEEK_START = datetime(2026, 11, 16, tzinfo=KST)
 WEEK_END = datetime(2026, 11, 23, tzinfo=KST)
 TUESDAY = datetime(2026, 11, 24, 10, 0, tzinfo=KST)
@@ -72,7 +71,7 @@ def create_post(
 
 
 def create_weekly_trend(insight: dict | None = None) -> WeeklyTrend:
-    """NOW 가 속한 주의 공통 분석 행 (11/16 ~ 11/22)"""
+    """monday 가 속한 주의 공통 분석 행 (11/16 ~ 11/22)"""
     return WeeklyTrend.objects.create(
         week_start_date=WEEK_START.date(),
         week_end_date=(WEEK_END - timedelta(days=1)).date(),
@@ -95,13 +94,6 @@ def create_writer(create_user):
         return user, post
 
     return _create_writer
-
-
-@pytest.fixture
-def monday():
-    """오늘을 월요일 07:05 KST 로 고정한다"""
-    with patch("utils.utils.get_local_now", return_value=NOW):
-        yield NOW
 
 
 @pytest.fixture

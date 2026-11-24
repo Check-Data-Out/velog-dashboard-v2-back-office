@@ -50,6 +50,7 @@ def create_weekly_trend(weeks_ago: int) -> WeeklyTrend:
 
 
 @pytest.mark.django_db
+@pytest.mark.usefixtures("monday")
 class TestWeeklyTrendMain:
     def test_skips_without_velog_and_llm_when_this_week_exists(
         self, weekly_trend_main, work_dir, mock_velog_client_cls, mock_llm

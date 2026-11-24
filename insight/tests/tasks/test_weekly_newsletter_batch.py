@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -475,9 +475,20 @@ def create_this_week_trend(
     )
 
 
+def create_old_mail_log(user: User, sent_at: datetime) -> NotiMailLog:
+    """sent_at 에 성공한 발송 기록. 지난 기록 삭제가 돌면 지워진다"""
+    log = NotiMailLog.objects.create(
+        user=user, subject="벨로그 대시보드 주간 뉴스레터 #0", is_success=True
+    )
+    # sent_at 은 auto_now_add 라서 만든 뒤에 바꾼다
+    NotiMailLog.objects.filter(pk=log.pk).update(sent_at=sent_at)
+    return log
+
+
 @pytest.mark.django_db
+@pytest.mark.usefixtures("monday")
 class TestWeeklyNewsletterBatchRun:
-    """실제 DB·템플릿으로 run() 전체를 돌리는 테스트"""
+    """실제 DB·템플릿으로 run() 전체를 돌리는 테스트. 오늘은 월요일로 고정한다"""
 
     def test_sends_to_every_target_and_marks_week_processed(
         self,
@@ -500,42 +511,44 @@ class TestWeeklyNewsletterBatchRun:
         assert trend.is_processed is True
 
     def test_skips_before_deleting_logs_when_this_week_is_sent(
-        self, newsletter_batch, work_dir, user, sample_weekly_trend_insight
+        self,
+        newsletter_batch,
+        work_dir,
+        user,
+        monday,
+        sample_weekly_trend_insight,
     ):
-        """이번 주 뉴스레터를 이미 보냈으면 기록 삭제·대상 조회 없이 건너뜀 표시를 남긴다"""
+        """이번 주 뉴스레터를 이미 보냈으면 지난 발송 기록을 지우지 않고 메일 없이 건너뜀 표시를 남긴다"""
         create_this_week_trend(
             sample_weekly_trend_insight.to_json_dict(), is_processed=True
         )
+        old_log = create_old_mail_log(user, monday - timedelta(weeks=2))
 
-        with (
-            patch.object(newsletter_batch, "_delete_old_maillogs") as delete,
-            patch.object(
-                newsletter_batch, "_get_target_user_chunks"
-            ) as get_chunks,
-        ):
-            newsletter_batch.run()
+        newsletter_batch.run()
 
-        delete.assert_not_called()
-        get_chunks.assert_not_called()
+        assert NotiMailLog.objects.filter(pk=old_log.pk).exists()
         newsletter_batch.ses_client.send_email.assert_not_called()
         assert (work_dir / SKIP_MARKER).exists()
         assert "건너뜀" in (work_dir / RESULT_FILE).read_text()
 
     def test_fails_without_mail_when_user_analysis_is_not_completed(
-        self, newsletter_batch, work_dir, user, sample_weekly_trend_insight
+        self,
+        newsletter_batch,
+        work_dir,
+        user,
+        monday,
+        sample_weekly_trend_insight,
     ):
         """사용자 분석 완료 표시가 없으면 기록을 지우지 않고 메일 0통으로 실패한다"""
         trend = create_this_week_trend(
             sample_weekly_trend_insight.to_json_dict(), completed=False
         )
+        old_log = create_old_mail_log(user, monday - timedelta(weeks=2))
 
-        with (
-            patch.object(newsletter_batch, "_delete_old_maillogs") as delete,
-            pytest.raises(Exception, match="analysis is not completed"),
-        ):
+        with pytest.raises(Exception, match="analysis is not completed"):
             newsletter_batch.run()
 
-        delete.assert_not_called()
+        assert NotiMailLog.objects.filter(pk=old_log.pk).exists()
         newsletter_batch.ses_client.send_email.assert_not_called()
         trend.refresh_from_db()
         assert trend.batch_value(BATCH_NEWSLETTER_STARTED) is None

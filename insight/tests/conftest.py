@@ -1,7 +1,8 @@
 import sys
 import uuid
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.conf import settings
@@ -25,6 +26,8 @@ from users.models import User
 from utils.utils import get_previous_week_range
 
 TEST_UNSUBSCRIBE_SECRET = "test-newsletter-unsubscribe-secret-0123456789"
+# 시계를 고정하는 배치 테스트의 지금 (월요일 07:05 KST)
+MONDAY_NOW = datetime(2026, 11, 23, 7, 5, tzinfo=ZoneInfo("Asia/Seoul"))
 
 
 @pytest.fixture(autouse=True)
@@ -77,6 +80,13 @@ def create_user(db):
         )
 
     return _create_user
+
+
+@pytest.fixture
+def monday():
+    """오늘을 2026-11-23(월) 07:05 KST 로 고정한다"""
+    with patch("utils.utils.get_local_now", return_value=MONDAY_NOW):
+        yield MONDAY_NOW
 
 
 @pytest.fixture
