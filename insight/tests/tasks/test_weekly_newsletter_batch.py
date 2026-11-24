@@ -667,6 +667,27 @@ class TestWeeklyNewsletterBatchRun:
         assert trend.is_processed is True
         assert "✅" in (work_dir / RESULT_FILE).read_text()
 
+    def test_marks_newsletter_started_before_first_mail(
+        self, newsletter_batch, work_dir, user, sample_weekly_trend_insight
+    ):
+        """첫 메일을 보내기 전에 이번 주 행에 발송 시작 표시를 남긴다"""
+        trend = create_this_week_trend(
+            sample_weekly_trend_insight.to_json_dict()
+        )
+        started_at_send = []
+        newsletter_batch.ses_client.send_email.side_effect = (
+            lambda message: started_at_send.append(
+                WeeklyTrend.objects.get(pk=trend.pk).batch_value(
+                    BATCH_NEWSLETTER_STARTED
+                )
+            )
+        )
+
+        newsletter_batch.run()
+
+        assert len(started_at_send) == 1
+        assert started_at_send[0] is not None
+
 
 @pytest.fixture
 def newsletter_main(mock_setup_django):

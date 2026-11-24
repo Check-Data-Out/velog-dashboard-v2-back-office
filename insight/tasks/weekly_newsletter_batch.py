@@ -23,6 +23,7 @@ from django.db.models import QuerySet
 from django.template.loader import render_to_string
 
 from insight.models import (
+    BATCH_NEWSLETTER_STARTED,
     BATCH_USER_ANALYSIS_COMPLETED,
     SENDABLE_REVIEW_STATUSES,
     UserWeeklyTrend,
@@ -585,6 +586,9 @@ class WeeklyNewsletterBatch:
             if settings.DEBUG:
                 logger.info("DEBUG mode: Skipping newsletter sending")
                 return
+
+            # 첫 메일을 보내기 전에 발송 시작을 남긴다
+            weekly_trend.mark_batch(BATCH_NEWSLETTER_STARTED)
 
             # ========================================================== #
             # STEP4: 청크별로 뉴스레터 발송 및 결과 저장
