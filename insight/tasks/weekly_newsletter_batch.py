@@ -623,7 +623,8 @@ class WeeklyNewsletterBatch:
             raise
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """메인 실행 함수"""
     # SES 클라이언트 초기화
     try:
         aws_credentials = AWSSESCredentials(
@@ -641,3 +642,7 @@ if __name__ == "__main__":
 
     # 배치 실행
     WeeklyNewsletterBatch(ses_client=ses_client).run()
+
+
+if __name__ == "__main__":
+    main()
