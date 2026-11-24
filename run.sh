@@ -4,6 +4,15 @@
 # chmod +x run.sh
 set -euo pipefail
 
+# 주간 배치(run-weekly.sh)가 도는 중이면 배포를 멈춘다. 배치가 쥔 잠금을 잡아 보고, 못 잡으면 실행 중이다
+for job in trend user-analysis newsletter; do
+    lock="$HOME/weekly-batch/$job.lock"
+    if [[ -e "$lock" ]] && ! flock -n "$lock" true; then
+        echo "주간 배치($job) 실행 중이라 배포를 멈춥니다" >&2
+        exit 1
+    fi
+done
+
 readonly PID_FILE=./gunicorn.pid
 readonly HEALTH_URL=http://127.0.0.1:8000/admin/login/
 # 운영 ALLOWED_HOSTS 에 127.0.0.1 이 없어 Host 를 지정한다
