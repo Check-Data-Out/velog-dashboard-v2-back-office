@@ -535,16 +535,15 @@ class WeeklyNewsletterBatch:
             )
             if sent_trend:
                 # 처리 완료 표시만 있고 보낸 메일이 없으면(admin 에서 잘못 표시 등)
-                # 표시 파일 없이 끝내 Slack 으로 알린다
+                # 실패로 끝내 Slack ❌ 로 알린다. 성공으로 끝내면 지표가 갱신돼 묻힌다
                 if not self._sent_logs(sent_trend.id).exists():
-                    logger.warning(
-                        "This week's newsletter is marked as sent but has no mail log"
+                    error = Exception(
+                        "처리 완료 표시는 있으나 이번 주 발송 기록이 없음"
                     )
-                    with open("newsletter_batch_result.txt", "w") as f:
-                        f.write(
-                            "⚠️ 뉴스레터 발송 건너뜀: 처리 완료 표시는 있으나 이번 주 발송 기록이 없음\n"
-                        )
-                    return
+                    error.add_note(
+                        "복구: admin 에서 처리 완료를 해제한 뒤 ./run-weekly.sh newsletter"
+                    )
+                    raise error
 
                 logger.info("This week's newsletter is already sent, skipped")
                 with open("newsletter_batch_result.txt", "w") as f:
@@ -724,6 +723,9 @@ class WeeklyNewsletterBatch:
                     f.write(
                         f"❌ 뉴스레터 발송 실패: {e} (성공 {total_processed}명, 실패 {total_failed}명)\n"
                     )
+                    # 예외에 붙인 복구 방법은 다음 줄에 남긴다
+                    for note in getattr(e, "__notes__", []):
+                        f.write(f"   - {note}\n")
             except Exception as e:
                 logger.error(f"Failed to save newsletter batch result: {e}")
 

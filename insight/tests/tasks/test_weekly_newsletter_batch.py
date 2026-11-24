@@ -477,10 +477,10 @@ class TestWeeklyNewsletterBatchRun:
         assert (work_dir / SKIP_MARKER).exists()
         assert "건너뜀" in (work_dir / RESULT_FILE).read_text()
 
-    def test_reports_processed_week_without_mail_log(
+    def test_fails_with_recovery_line_when_processed_week_has_no_mail_log(
         self, newsletter_batch, work_dir, user, sample_weekly_trend_insight
     ):
-        """처리 완료 표시만 있고 이번 주 발송 기록이 없으면 메일을 보내지 않고, 건너뜀 표시 없이 성공으로 끝나 Slack 이 가게 한다"""
+        """처리 완료 표시만 있고 이번 주 발송 기록이 없으면 메일 없이 실패하고, 결과 파일 다음 줄에 복구 방법을 남긴다"""
         trend = create_this_week_trend(
             sample_weekly_trend_insight.to_json_dict(), is_processed=True
         )
@@ -496,14 +496,17 @@ class TestWeeklyNewsletterBatchRun:
             is_success=True,
         )
 
-        newsletter_batch.run()
+        with pytest.raises(
+            Exception, match="처리 완료 표시는 있으나 이번 주 발송 기록이 없음"
+        ):
+            newsletter_batch.run()
 
         newsletter_batch.ses_client.send_email.assert_not_called()
         assert not (work_dir / SKIP_MARKER).exists()
-        assert (
-            "처리 완료 표시는 있으나 이번 주 발송 기록이 없음"
-            in (work_dir / RESULT_FILE).read_text()
-        )
+        assert (work_dir / RESULT_FILE).read_text().splitlines() == [
+            "❌ 뉴스레터 발송 실패: 처리 완료 표시는 있으나 이번 주 발송 기록이 없음 (성공 0명, 실패 0명)",
+            "   - 복구: admin 에서 처리 완료를 해제한 뒤 ./run-weekly.sh newsletter",
+        ]
 
     def test_fails_without_mail_when_user_analysis_is_not_completed(
         self,
