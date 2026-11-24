@@ -18,6 +18,8 @@ from collections.abc import Callable
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+logger = logging.getLogger("newsletter")
+
 GITHUB_REPO = "Check-Data-Out/velog-dashboard-v2-back-office"
 RUNS_URL = f"https://api.github.com/repos/{GITHUB_REPO}/actions/runs"
 KST = ZoneInfo("Asia/Seoul")
@@ -129,14 +131,11 @@ def wait_for_daily_stats(
     fetch: Callable[[datetime], list[dict]],
     sleep: Callable[[float], None],
     clock: Callable[[], float],
-    logger: logging.Logger,
-    timeout_sec: int = WAIT_TIMEOUT_SEC,
-    interval_sec: int = WAIT_INTERVAL_SEC,
 ) -> list[int]:
     """오늘 일일 통계 세트가 모두 성공할 때까지 기다린다.
 
-    다 모였으면 바로 끝난다. 아니면 interval_sec 마다(조회가 실패했으면
-    FETCH_RETRY_SEC 뒤) 다시 보고, timeout_sec 이 지나거나 조회가 잇달아
+    다 모였으면 바로 끝난다. 아니면 WAIT_INTERVAL_SEC 마다(조회가 실패했으면
+    FETCH_RETRY_SEC 뒤) 다시 보고, WAIT_TIMEOUT_SEC 이 지나거나 조회가 잇달아
     실패하면 빠진 세트를 경고로 남기고 끝낸다.
     통계가 덜 모여도 분석은 진행해야 하므로 예외를 내지 않는다.
 
@@ -145,14 +144,11 @@ def wait_for_daily_stats(
         fetch: now 를 받아 성공 run 목록을 돌려주는 함수
         sleep: 초 단위로 기다리는 함수
         clock: 지금 시각을 초로 돌려주는 단조 시계
-        logger: 진행·경고 로그
-        timeout_sec: 최대 대기 시간(초)
-        interval_sec: 조회 간격(초)
 
     Returns:
         끝까지 성공 run 이 없던 세트 번호. 모두 끝났으면 빈 리스트.
     """
-    deadline = clock() + timeout_sec
+    deadline = clock() + WAIT_TIMEOUT_SEC
     # 한 번도 조회하지 못하면 모든 세트를 빠진 것으로 본다
     missing = list(range(1, DAILY_STATS_SET_COUNT + 1))
     errors = 0
@@ -170,7 +166,7 @@ def wait_for_daily_stats(
                 return []
             logger.info("Waiting for daily stats sets: %s", missing)
 
-        wait_sec = FETCH_RETRY_SEC if errors else interval_sec
+        wait_sec = FETCH_RETRY_SEC if errors else WAIT_INTERVAL_SEC
         if errors >= MAX_FETCH_ERRORS or clock() + wait_sec > deadline:
             break
         sleep(wait_sec)
@@ -179,17 +175,14 @@ def wait_for_daily_stats(
     return missing
 
 
-def main(argv: list[str]) -> int:
-    """active-run "<워크플로 이름>": 진행 중 run 이 있으면 3, 없으면 0
+def main(workflow_name: str) -> int:
+    """workflow_name 에 진행 중 run 이 있으면 3, 없으면 0
 
     조회 실패는 잡지 않아 다른 코드로 끝난다.
     """
-    command, workflow_name = argv
-    if command != "active-run":
-        sys.exit(f"알 수 없는 명령: {command}")
     return 3 if has_active_run(fetch_recent_runs(), workflow_name) else 0
 
 
 if __name__ == "__main__":
-    # python insight/tasks/wait_daily_stats.py active-run "<워크플로 이름>"
-    sys.exit(main(sys.argv[1:]))
+    # python insight/tasks/wait_daily_stats.py "<워크플로 이름>"
+    sys.exit(main(sys.argv[1]))

@@ -1,13 +1,14 @@
 import urllib.error
 import urllib.parse
 from datetime import datetime
-from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from insight.tasks import wait_daily_stats
 from insight.tasks.wait_daily_stats import (
+    WAIT_INTERVAL_SEC,
+    WAIT_TIMEOUT_SEC,
     fetch_today_success_runs,
     has_active_run,
     missing_sets,
@@ -135,7 +136,7 @@ class TestWaitForDailyStats:
         clock = FakeClock()
 
         missing = wait_for_daily_stats(
-            NOW, lambda now: all_stats_runs(), clock.sleep, clock, MagicMock()
+            NOW, lambda now: all_stats_runs(), clock.sleep, clock
         )
 
         assert missing == []
@@ -147,17 +148,11 @@ class TestWaitForDailyStats:
         responses = iter([all_stats_runs()[1:], all_stats_runs()])
 
         missing = wait_for_daily_stats(
-            NOW,
-            lambda now: next(responses),
-            clock.sleep,
-            clock,
-            MagicMock(),
-            timeout_sec=900,
-            interval_sec=300,
+            NOW, lambda now: next(responses), clock.sleep, clock
         )
 
         assert missing == []
-        assert clock.now == 300
+        assert 0 < clock.now < WAIT_TIMEOUT_SEC
 
     def test_times_out_with_missing_sets(self):
         """제한 시간이 지나면 기다림을 멈추고 빠진 세트를 돌려준다"""
@@ -165,17 +160,11 @@ class TestWaitForDailyStats:
         runs = [run for run in all_stats_runs() if run != stats_run(5)]
 
         missing = wait_for_daily_stats(
-            NOW,
-            lambda now: runs,
-            clock.sleep,
-            clock,
-            MagicMock(),
-            timeout_sec=900,
-            interval_sec=300,
+            NOW, lambda now: runs, clock.sleep, clock
         )
 
         assert missing == [5]
-        assert clock.now <= 900
+        assert clock.now <= WAIT_TIMEOUT_SEC
 
     def test_fetch_errors_do_not_raise(self):
         """조회가 계속 실패해도 예외 없이 모든 세트를 빠진 것으로 돌려준다"""
@@ -184,9 +173,7 @@ class TestWaitForDailyStats:
         def failing_fetch(now):
             raise urllib.error.URLError("network down")
 
-        missing = wait_for_daily_stats(
-            NOW, failing_fetch, clock.sleep, clock, MagicMock()
-        )
+        missing = wait_for_daily_stats(NOW, failing_fetch, clock.sleep, clock)
 
         assert missing == list(range(1, 21))
 
@@ -202,16 +189,11 @@ class TestWaitForDailyStats:
             return all_stats_runs()
 
         missing = wait_for_daily_stats(
-            NOW,
-            fetch_once_failing,
-            clock.sleep,
-            clock,
-            MagicMock(),
-            interval_sec=300,
+            NOW, fetch_once_failing, clock.sleep, clock
         )
 
         assert missing == []
-        assert 0 < clock.now < 300
+        assert 0 < clock.now < WAIT_INTERVAL_SEC
 
 
 class TestMain:
@@ -236,7 +218,4 @@ class TestMain:
             ],
         )
 
-        assert (
-            wait_daily_stats.main(["active-run", "Weekly Analysis"])
-            == exit_code
-        )
+        assert wait_daily_stats.main("Weekly Analysis") == exit_code

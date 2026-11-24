@@ -634,7 +634,6 @@ async def main():
         fetch_today_success_runs,
         time.sleep,
         time.monotonic,
-        logger,
     )
 
     # 기다리는 사이 겹친 실행이 분석을 끝냈을 수 있으므로 한 번 더 확인한다
