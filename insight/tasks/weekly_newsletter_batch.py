@@ -585,7 +585,7 @@ class WeeklyNewsletterBatch:
                 self._update_weekly_trend_result()
                 with open("newsletter_batch_result.txt", "w") as f:
                     f.write(
-                        "✅ 뉴스레터 발송 완료: 남은 대상 없음 (이번 주 뉴스레터를 모두 이미 받음)\\n"
+                        "✅ 뉴스레터 발송 완료: 남은 대상 없음 (이번 주 뉴스레터를 모두 이미 받음)\n"
                     )
                 return
 
@@ -688,10 +688,10 @@ class WeeklyNewsletterBatch:
             try:
                 with open("newsletter_batch_result.txt", "w") as f:
                     f.write(
-                        f"✅ 뉴스레터 발송 완료: 성공 {total_processed}명, 실패 {total_failed}명\\n"
+                        f"✅ 뉴스레터 발송 완료: 성공 {total_processed}명, 실패 {total_failed}명\n"
                     )
-                    f.write(f"   - 소요 시간: {elapsed_time}초\\n")
-                    f.write(f"   - 성공률: {success_rate:.2%}\\n")
+                    f.write(f"   - 소요 시간: {elapsed_time}초\n")
+                    f.write(f"   - 성공률: {success_rate:.2%}\n")
             except Exception as e:
                 logger.error(f"Failed to save newsletter batch result: {e}")
 
@@ -701,7 +701,7 @@ class WeeklyNewsletterBatch:
                 with open("newsletter_batch_result.txt", "w") as f:
                     # 발송 도중 멈춘 경우 이미 받은 사람 수를 함께 남긴다
                     f.write(
-                        f"❌ 뉴스레터 발송 실패: {e} (성공 {total_processed}명, 실패 {total_failed}명)"
+                        f"❌ 뉴스레터 발송 실패: {e} (성공 {total_processed}명, 실패 {total_failed}명)\n"
                     )
             except Exception as e:
                 logger.error(f"Failed to save newsletter batch result: {e}")

@@ -503,8 +503,8 @@ class TestWeeklyUserTrendMain:
         assert exit_code == 0
         mock_wait.assert_called_once()
         assert (
-            "✅ 사용자 주간 분석 완료: 성공 1명, 토큰 만료 0명"
-            in (work_dir / RESULT_FILE).read_text()
+            "✅ 사용자 주간 분석 완료: 성공 1명, 토큰 만료 0명, 실패 0명"
+            in (work_dir / RESULT_FILE).read_text().splitlines()
         )
         assert not (work_dir / SKIP_MARKER).exists()
         assert UserWeeklyTrend.objects.filter(user=writer).count() == 1

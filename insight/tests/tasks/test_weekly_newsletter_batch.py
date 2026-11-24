@@ -486,6 +486,10 @@ class TestWeeklyNewsletterBatchRun:
         assert newsletter_batch.ses_client.send_email.call_count == 2
         trend.refresh_from_db()
         assert trend.is_processed is True
+        # Slack 에 그대로 옮겨지므로 결과는 실제 줄바꿈으로 나뉜 줄이다
+        assert (work_dir / RESULT_FILE).read_text().splitlines()[0] == (
+            "✅ 뉴스레터 발송 완료: 성공 2명, 실패 0명"
+        )
 
     def test_skips_before_deleting_logs_when_this_week_is_sent(
         self,

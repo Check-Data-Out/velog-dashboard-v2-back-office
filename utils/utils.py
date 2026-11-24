@@ -187,7 +187,6 @@ def record_peak_memory(logger: logging.Logger, result_file: str) -> None:
     logger.info("Peak memory: %d MB", peak_mb)
     try:
         with open(result_file, "a") as f:
-            # 위 결과 줄은 실제 줄바꿈 없이 끝날 수 있으므로 새 줄에서 시작한다
-            f.write(f"\n최대 메모리: {peak_mb} MB\n")
+            f.write(f"최대 메모리: {peak_mb} MB\n")
     except Exception as e:
         logger.error("Failed to save peak memory to %s: %s", result_file, e)

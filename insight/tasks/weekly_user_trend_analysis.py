@@ -657,17 +657,17 @@ async def main():
         try:
             with open("weekly_analysis_result.txt", "a") as f:
                 f.write(
-                    f"✅ 사용자 주간 분석 완료: 성공 {successful}명, 토큰 만료 {expired}명, 실패 {failed}명\\n"
+                    f"✅ 사용자 주간 분석 완료: 성공 {successful}명, 토큰 만료 {expired}명, 실패 {failed}명\n"
                 )
                 f.write(
-                    f"   - 토큰 만료 사용자: {metadata.get('expired_user_ids', [])}"
+                    f"   - 토큰 만료 사용자: {metadata.get('expired_user_ids', [])}\n"
                 )
         except Exception as e:
             print(f"결과 파일 저장 실패: {e}")
     else:
         try:
             with open("weekly_analysis_result.txt", "a") as f:
-                f.write(f"❌ 사용자 주간 분석 실패: {result.error}")
+                f.write(f"❌ 사용자 주간 분석 실패: {result.error}\n")
         except Exception as e:
             print(f"결과 파일 저장 실패: {e}")
 

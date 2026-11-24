@@ -291,16 +291,16 @@ async def main():
             preview = build_filter_preview(analyzer.filter_preview)
             with open("weekly_analysis_result.txt", "w") as f:
                 f.write(
-                    f"✅ 주간 트렌드 분석 완료{review_note}: {result.metadata}\\n"
+                    f"✅ 주간 트렌드 분석 완료{review_note}: {result.metadata}\n"
                 )
                 if preview:
-                    f.write(f"\\n[광고 필터 후보]\\n{preview}\\n")
+                    f.write(f"\n[광고 필터 후보]\n{preview}\n")
         except Exception as e:
             print(f"결과 파일 저장 실패: {e}")
     else:
         try:
             with open("weekly_analysis_result.txt", "w") as f:
-                f.write(f"❌ 주간 트렌드 분석 실패: {result.error}\\n")
+                f.write(f"❌ 주간 트렌드 분석 실패: {result.error}\n")
         except Exception as e:
             print(f"결과 파일 저장 실패: {e}")
 
