@@ -152,6 +152,7 @@ class TestWeeklyNewsletterBatch:
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     @pytest.mark.django_db
+    @pytest.mark.usefixtures("monday")
     def test_get_users_weekly_trend_chunk_success(
         self, mock_logger, newsletter_batch, user_weekly_trend
     ):
@@ -343,6 +344,7 @@ class TestWeeklyNewsletterBatch:
 
     @patch("insight.tasks.weekly_newsletter_batch.logger")
     @pytest.mark.django_db
+    @pytest.mark.usefixtures("monday")
     def test_update_user_weekly_trend_results_success(
         self, mock_logger, newsletter_batch, user_weekly_trend
     ):
