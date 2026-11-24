@@ -56,31 +56,26 @@ class TestWeeklyUserTrendFetch:
             assert is_valid is False
             mock_logger.warning.assert_called_once()
 
-    @patch("insight.tasks.weekly_user_trend_analysis.User.objects.filter")
     @patch("insight.tasks.weekly_user_trend_analysis.Post.objects")
     @patch(
         "insight.tasks.weekly_user_trend_analysis.PostDailyStatistics.objects"
     )
-    async def test_fetch_data_handles_token_expired_error(
-        self,
-        mock_stats,
-        mock_posts,
-        mock_users,
-        analyzer_user,
-        mock_context,
+    async def test_collect_user_data_marks_token_expired_user(
+        self, mock_stats, mock_posts, analyzer_user, mock_context
     ):
-        """TokenExpiredError 발생 시 사용자 ID를 expired_token_users에 추가하는지 테스트"""
-        mock_users.return_value.exclude.return_value.values.return_value = [
-            {"id": 1, "username": "tester"}
-        ]
+        """오늘자 통계가 없는 사용자는 본문을 조회하지 않고 expired_token_users에 추가하는지 테스트"""
         mock_posts.filter.return_value.values_list.return_value = [123]
         mock_stats.filter.return_value.count.return_value = 0
 
         with patch.object(analyzer_user, "logger") as mock_logger:
-            result = await analyzer_user._fetch_data(mock_context)
+            user_data = await analyzer_user._collect_user_data(
+                1, "tester", mock_context
+            )
 
-            assert result == []
+            assert user_data is None
             assert 1 in analyzer_user.expired_token_users
+            assert 1 not in analyzer_user.successful_users
+            mock_context.velog_client.get_post.assert_not_called()
             mock_logger.warning.assert_any_call(
                 "User %s token expired - no today stats", 1
             )

@@ -205,3 +205,20 @@ class TestWeeklyUserTrendRun:
             },
             "user_weekly_reminder": {"title": "마지막 글", "days_ago": 13},
         }
+
+    def test_fetch_data_returns_only_newsletter_target_users(
+        self, analyzer_user
+    ):
+        """이메일이 있고 활성이며 수신 동의한 사용자의 id·username 만 돌려준다"""
+        target = create_user("target")
+        User.objects.filter(pk=create_user("inactive").pk).update(
+            is_active=False
+        )
+        User.objects.filter(pk=create_user("unsubscribed").pk).update(
+            newsletter_subscribed=False
+        )
+        User.objects.filter(pk=create_user("no-email").pk).update(email="")
+
+        users = async_to_sync(analyzer_user._fetch_data)(None)
+
+        assert users == [{"id": target.id, "username": "target"}]

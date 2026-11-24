@@ -30,7 +30,11 @@ from insight.models import (
     WeeklyUserStats,
     WeeklyUserTrendInsight,
 )
-from insight.tasks.base_analysis import AnalysisContext, BaseBatchAnalyzer
+from insight.tasks.base_analysis import (
+    AnalysisContext,
+    AnalysisResult,
+    BaseBatchAnalyzer,
+)
 from insight.tasks.weekly_llm_analyzer import analyze_user_posts
 from posts.models import Post, PostDailyStatistics
 from scraping.velog.schemas import Post as VelogPost
@@ -277,58 +281,50 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
                 )
             return trending_items, None
 
-    async def _fetch_data(
-        self, context: AnalysisContext
-    ) -> list[UserWeeklyData]:
-        """사용자별 주간 데이터 수집"""
+    async def _fetch_data(self, context: AnalysisContext) -> list[dict]:
+        """분석 대상 사용자 목록(id, username) 조회"""
+        users = await sync_to_async(list)(
+            User.objects.filter(
+                email__isnull=False,
+                is_active=True,
+                newsletter_subscribed=True,
+            )
+            .exclude(email="")
+            .values("id", "username")
+        )
+
+        self.all_target_users = {user["id"] for user in users}
+        return users
+
+    async def _process_user(
+        self, user_id: int, username: str, context: AnalysisContext
+    ) -> int:
+        """사용자 한 명을 수집 → 분석 → 저장한다.
+
+        본문 참조가 이 함수 안에서 끝나므로, 동시에 메모리에 있는 본문은
+        한 명분이다.
+
+        Returns:
+            분석한 사용자 수 (0 또는 1)
+        """
         try:
-            # 대상 사용자 조회
-            users = await sync_to_async(list)(
-                User.objects.filter(
-                    email__isnull=False,
-                    is_active=True,
-                    newsletter_subscribed=True,
-                )
-                .exclude(email="")
-                .values("id", "username")
+            user_data = await self._collect_user_data(
+                user_id, username, context
             )
+            if user_data is None:
+                return 0
 
-            self.all_target_users = {user["id"] for user in users}
-            user_weekly_data = []
+            results = await self._analyze_data([user_data], context)
+            await self._save_results(results, context)
+            return len(results)
 
-            self.logger.info(
-                "Starting data collection for %d users", len(users)
-            )
-
-            for user in users:
-                user_id = user["id"]
-                username = user["username"]
-
-                try:
-                    user_data = await self._collect_user_data(
-                        user_id, username, context
-                    )
-                    if user_data is not None:
-                        user_weekly_data.append(user_data)
-
-                except TokenExpiredError:
-                    self.expired_token_users.add(user_id)
-                    self.logger.warning("Token expired for user %s", user_id)
-                except Exception as e:
-                    self.logger.warning(
-                        "Failed to collect data for user %s: %s", user_id, e
-                    )
-
-            self.logger.info(
-                "Data collection completed: %d successful, %d expired",
-                len(self.successful_users),
-                len(self.expired_token_users),
-            )
-            return user_weekly_data
-
+        except TokenExpiredError:
+            self.expired_token_users.add(user_id)
+            self.logger.warning("Token expired for user %s", user_id)
         except Exception as e:
-            self.logger.error("Failed to fetch user data: %s", e)
-            raise
+            self.logger.warning("Failed to process user %s: %s", user_id, e)
+
+        return 0
 
     async def _collect_user_data(
         self, user_id: int, username: str, context: AnalysisContext
@@ -412,8 +408,6 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
 
         results = []
 
-        self.logger.info("Starting analysis for %d users", len(raw_data))
-
         for user_data in raw_data:
             try:
                 insight = await self._analyze_user_data(user_data, context)
@@ -430,7 +424,6 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
                     "Failed to analyze user %s: %s", user_data.user_id, e
                 )
 
-        self.logger.info("Analysis completed: %d users analyzed", len(results))
         return results
 
     async def _analyze_user_data(
@@ -498,18 +491,48 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
                     e,
                 )
 
-        self.logger.info(
-            "Batch completed: %d records saved, %d users expired",
-            len(results),
-            len(self.expired_token_users),
-        )
+    async def run(self) -> AnalysisResult[list[dict]]:
+        """배치 실행.
 
-    async def run(self):
-        """배치 실행"""
-        result = await super().run()
+        전원의 본문을 한꺼번에 쌓지 않도록, 컨텍스트를 한 번 만들고 사용자
+        한 명씩 수집 → 분석 → 저장한다. 그래서 결과(data)는 모아 두지 않는다.
+        """
+        self.logger.info("Starting %s", self.__class__.__name__)
 
-        if result.metadata is None:
-            result.metadata = {}
+        context = None
+        try:
+            context = await self._initialize_context()
+
+            users = await self._fetch_data(context)
+            self.logger.info("Starting analysis for %d users", len(users))
+
+            processed_count = 0
+            for user in users:
+                processed_count += await self._process_user(
+                    user["id"], user["username"], context
+                )
+
+            self.logger.info(
+                "Batch completed: %d users analyzed, %d users expired",
+                processed_count,
+                len(self.expired_token_users),
+            )
+            result = AnalysisResult(
+                success=True,
+                data=[],
+                metadata={"processed_count": processed_count},
+            )
+
+        except Exception as e:
+            self.logger.exception(
+                "Failed to run %s: %s", self.__class__.__name__, e
+            )
+            result = AnalysisResult(success=False, error=e, metadata={})
+
+        finally:
+            # 성공·실패 모두 컨텍스트가 연 aiohttp 세션을 닫는다
+            if context is not None and context.session is not None:
+                await context.session.close()
 
         result.metadata.update(
             {

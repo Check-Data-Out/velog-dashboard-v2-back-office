@@ -24,11 +24,9 @@ class TestWeeklyUserTrendSave:
             ),
         }
 
-        with patch.object(analyzer_user, "logger") as mock_logger:
-            await analyzer_user._save_results([mock_result], mock_context)
+        await analyzer_user._save_results([mock_result], mock_context)
 
-            mock_create.assert_called_once()
-            mock_logger.info.assert_called()
+        mock_create.assert_called_once()
 
     @patch(
         "insight.tasks.weekly_user_trend_analysis.UserWeeklyTrend.objects.create",
@@ -60,4 +58,3 @@ class TestWeeklyUserTrendSave:
 
             assert mock_create.call_count == 2
             mock_logger.error.assert_called_once()
-            mock_logger.info.assert_called()
