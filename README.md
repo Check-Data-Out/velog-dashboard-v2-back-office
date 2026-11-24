@@ -243,7 +243,7 @@ END $$;
 
 ## 주간 분석·뉴스레터 실행
 
-평소에는 운영 BO 서버 crontab 이 `run-weekly.sh` 로 정시에 실행한다. GitHub Actions 는 서버가 그 주 작업을 시작조차 못 했을 때만 일하는 안전망이다.
+평소에는 운영 BO 서버 crontab 이 `run-weekly.sh` 로 정시에 실행한다. GitHub Actions 는 그 주 작업이 끝나지 않았고 실행 중도 아닐 때만 일하는 안전망이다.
 
 ### 실행 시각 (KST)
 
@@ -303,9 +303,9 @@ cd <레포>
 ./run-weekly.sh newsletter      # 뉴스레터 발송
 ```
 
-GitHub 에서 돌릴 때는 `gh workflow run "Weekly Analysis Batch"` 또는 `gh workflow run "Weekly Newsletter Batch"`. `workflow_dispatch` 도 판정 job(`guard`)을 거치므로, 서버가 이미 시작했거나 끝낸 주에는 본 작업 없이 조용히 건너뛴다.
+GitHub 에서 돌릴 때는 `gh workflow run "Weekly Analysis Batch"` 또는 `gh workflow run "Weekly Newsletter Batch"`. `workflow_dispatch` 도 판정 job(`guard`)을 거치므로, 이번 주 작업이 이미 끝났거나 실행 중이면 본 작업 없이 조용히 건너뛴다.
 
-실패한 GitHub run 은 다시 돌리지 않는다(`Re-run all jobs` 포함). `guard` 가 첫 시도가 남긴 DB 기록(이번 주 공통 분석 행, 발송 시작 표시)을 보고 본 작업 없이 조용히 끝날 수 있다. 실패한 주를 다시 돌릴 때는 서버에서 `./run-weekly.sh <작업>` 으로만 한다.
+실패한 GitHub run 은 다시 돌리지 않는다(`Re-run all jobs` 포함). `guard` 가 첫 시도가 남긴 시작 표시(사용자 분석 150분, 발송 60분 안)를 실행 중으로 보고 본 작업 없이 조용히 끝날 수 있다. 실패한 주를 다시 돌릴 때는 서버에서 `./run-weekly.sh <작업>` 으로만 한다.
 
 ### 건너뜀과 중복 방지
 
@@ -332,10 +332,10 @@ GitHub 에서 돌릴 때는 `gh workflow run "Weekly Analysis Batch"` 또는 `gh
 |---|---|---|
 | 1 | 예약 이벤트인데 KST 요일이 월요일이 아님 | 건너뜀 |
 | 2 | 같은 워크플로에서 먼저 만들어진 예약·수동 run 이 대기·진행 중 | 건너뜀 |
-| 3 | 분석: 이번 주 `WeeklyTrend` 행이 있음 / 발송: 이번 주 행이 `is_processed` 이거나 `_batch.newsletter_started_at` 이 있음 | 건너뜀 |
-| 4 | 그 밖(서버가 그 주 작업을 시작하지 못함) | 본 작업 실행, Slack 첫 줄에 "GitHub 안전망 실행" 표시 |
+| 3 | 분석: 이번 주 행에 `_batch.user_analysis_completed_at` 이 있거나 `_batch.user_analysis_started_at` 이 150분 안 / 발송: 이번 주 행이 `is_processed` 이거나 `_batch.newsletter_started_at` 이 60분 안 | 건너뜀(끝났거나 실행 중) |
+| 4 | 그 밖(이번 주 작업이 끝나지 않았고 실행 중도 아님) | 본 작업 실행, Slack 첫 줄에 "GitHub 안전망 실행" 표시 |
 
-서버가 시작한 주는 서버가 끝까지 맡는다. 분석 판정은 공통 분석 행만 보고 사용자 분석 완료 여부는 보지 않는다. 그래서 행이 생긴 뒤 사용자 분석이 실패한 주는(GitHub 가 돌린 주도) GitHub 가 이어서 하지 않으니 서버에서 `./run-weekly.sh user-analysis` 로 잇는다. 서버 공통 분석이 실패해 행이 없는 주는 12:10 에 GitHub 가 다시 돈다. `guard` 가 실패하면 Slack 에 "안전망 판정 실패"가 간다.
+끝났거나 실행 중인 주에는 GitHub 가 아무것도 하지 않는다. 시작 표시가 사용자 분석은 150분(시간 제한 135분 + 여유), 발송은 60분(시간 제한 48분 + 여유) 안이면 아직 도는 중으로 본다. 그보다 오래됐는데 완료 표시가 없으면 도중에 멈춘 것이므로 GitHub 가 이어서 돈다. 서버 공통 분석이 실패해 행이 없는 주도 12:10 에 GitHub 가 다시 돈다. 같은 주를 다시 돌려도 공통 분석은 건너뛰고, 사용자 분석은 결과가 없는 사용자만, 발송은 이번 주 뉴스레터를 아직 받지 않은 이메일만 처리한다. `guard` 가 실패하면 Slack 에 "안전망 판정 실패"가 간다.
 
 ### 배포 금지 시간
 
