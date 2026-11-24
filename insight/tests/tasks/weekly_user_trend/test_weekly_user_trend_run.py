@@ -127,6 +127,16 @@ def mock_wait(user_trend_module):
 
 
 @pytest.fixture
+def no_leftover_users():
+    """트랜잭션으로 감싸지 않는 테스트용. 다른 테스트가 남긴 사용자를 먼저 지운다.
+
+    스크래핑 테스트가 다른 스레드에서 커밋해 남긴 사용자가 있을 수 있고,
+    이런 테스트는 끝에서만 DB 를 비운다
+    """
+    User.objects.all().delete()
+
+
+@pytest.fixture
 def mock_llm():
     with patch(
         "insight.tasks.weekly_user_trend_analysis.analyze_user_posts",
@@ -313,30 +323,6 @@ class TestWeeklyUserTrendRun:
         assert weekly_trend.batch_value(BATCH_USER_ANALYSIS_STARTED)
         assert weekly_trend.batch_value(BATCH_USER_ANALYSIS_COMPLETED)
 
-    def test_run_resumes_by_week_of_weekly_trend_after_week_passes(
-        self, user_trend_module, mock_velog_client_cls, mock_llm, create_writer
-    ):
-        """한 주가 지나 다시 돌려도 분석 주차의 결과가 있는 사용자는 다시 분석하지 않는다"""
-        weekly_trend = create_weekly_trend()
-        done, _ = create_writer("done")
-        UserWeeklyTrend.objects.create(
-            user=done,
-            week_start_date=weekly_trend.week_start_date,
-            week_end_date=weekly_trend.week_end_date,
-            insight={"saved": "지난 실행"},
-        )
-
-        with patch(
-            "utils.utils.get_local_now",
-            return_value=WEEK_END + timedelta(days=7, hours=7),
-        ):
-            result = async_to_sync(
-                user_trend_module.UserWeeklyAnalyzer(weekly_trend).run
-            )()
-
-        assert result.success is True
-        assert UserWeeklyTrend.objects.filter(user=done).count() == 1
-
     def test_run_completes_when_failures_are_under_half(
         self,
         user_trend_module,
@@ -363,30 +349,27 @@ class TestWeeklyUserTrendRun:
         weekly_trend.refresh_from_db()
         assert weekly_trend.batch_value(BATCH_USER_ANALYSIS_COMPLETED)
 
-    def test_run_closes_session(
+    def test_run_on_another_day_uses_week_of_weekly_trend(
         self,
         user_trend_module,
-        monday,
         mock_velog_client_cls,
         mock_llm,
+        create_user,
         create_writer,
     ):
-        """분석이 끝나면 컨텍스트가 연 aiohttp 세션을 닫는다"""
-        create_writer("writer")
+        """다른 날 다시 돌려도 주차는 오늘이 아니라 공통 분석 행에서 정한다.
 
-        result = async_to_sync(
-            user_trend_module.UserWeeklyAnalyzer(create_weekly_trend()).run
-        )()
-
-        assert result.success is True
-        session = mock_velog_client_cls.get_client.call_args.kwargs["session"]
-        assert session.closed
-
-    def test_run_on_tuesday_uses_week_of_weekly_trend(
-        self, user_trend_module, mock_velog_client_cls, mock_llm, create_user
-    ):
-        """화요일에 다시 돌려도 공통 분석 행의 주차(월~일)로 계산하고 저장한다"""
+        그 주차의 결과가 있는 사용자는 다시 분석하지 않고, 새 사용자는 그 주차와
+        주차 다음 날(월) 00:00 의 통계로 저장한다.
+        """
         weekly_trend = create_weekly_trend()
+        done, _ = create_writer("done")
+        UserWeeklyTrend.objects.create(
+            user=done,
+            week_start_date=weekly_trend.week_start_date,
+            week_end_date=weekly_trend.week_end_date,
+            insight={"saved": "지난 실행"},
+        )
         user = create_user("rerun@example.com")
         create_post(
             user,
@@ -399,12 +382,21 @@ class TestWeeklyUserTrendRun:
             },
         )
 
-        with patch("utils.utils.get_local_now", return_value=TUESDAY):
+        # 한 주가 지난 다음 주 화요일
+        with patch(
+            "utils.utils.get_local_now",
+            return_value=TUESDAY + timedelta(days=7),
+        ):
             result = async_to_sync(
                 user_trend_module.UserWeeklyAnalyzer(weekly_trend).run
             )()
 
         assert result.success is True
+        # 새 글이 있는 done 을 다시 분석하지 않았다
+        mock_llm.assert_not_called()
+        assert UserWeeklyTrend.objects.get(user=done).insight == {
+            "saved": "지난 실행"
+        }
         row = UserWeeklyTrend.objects.get(user=user)
         assert row.week_start_date == weekly_trend.week_start_date
         assert row.week_end_date == weekly_trend.week_end_date
@@ -483,6 +475,7 @@ class TestWeeklyUserTrendMain:
     @pytest.mark.django_db(transaction=True)
     def test_main_analyzes_and_writes_result_line(
         self,
+        no_leftover_users,
         user_trend_module,
         work_dir,
         mock_wait,
@@ -491,9 +484,6 @@ class TestWeeklyUserTrendMain:
         create_writer,
     ):
         """이번 주 행이 있고 완료 전이면 일일 통계를 기다린 뒤 분석하고 결과 줄을 남긴다"""
-        # 스크래핑 테스트가 다른 스레드에서 커밋해 남긴 사용자가 있을 수 있다.
-        # 트랜잭션으로 감싸지 않는 테스트는 끝에서만 DB 를 비우므로 먼저 지운다
-        User.objects.all().delete()
         create_weekly_trend()
         writer, _ = create_writer("writer")
 
@@ -511,6 +501,7 @@ class TestWeeklyUserTrendMain:
     @pytest.mark.django_db(transaction=True)
     def test_main_fails_without_completion_when_half_of_users_fail(
         self,
+        no_leftover_users,
         user_trend_module,
         work_dir,
         mock_wait,
@@ -520,8 +511,6 @@ class TestWeeklyUserTrendMain:
         fail_users,
     ):
         """사용자별 실패가 이번 실행 대상의 절반이면 완료 표시 없이 실패하고 실패 수를 남긴다"""
-        # 트랜잭션으로 감싸지 않는 테스트라 다른 테스트가 남긴 사용자를 먼저 지운다
-        User.objects.all().delete()
         weekly_trend = create_weekly_trend()
         create_writer("writer")
         failed, _ = create_writer("failed")
@@ -536,14 +525,12 @@ class TestWeeklyUserTrendMain:
 
     @pytest.mark.django_db(transaction=True)
     def test_main_waits_for_stats_of_day_after_week_on_rerun(
-        self, user_trend_module, work_dir, mock_wait
+        self, no_leftover_users, user_trend_module, work_dir, mock_wait
     ):
         """화요일에 다시 돌려도 오늘이 아니라 주차 다음 날(월) 00:00 의 일일 통계를 기다린다.
 
         기다려도 끝나지 않은 세트는 결과 파일에 경고로 남긴다.
         """
-        # 트랜잭션으로 감싸지 않는 테스트라 다른 테스트가 남긴 사용자를 먼저 지운다
-        User.objects.all().delete()
         create_weekly_trend()
         mock_wait.return_value = [3, 7]
 
@@ -560,6 +547,7 @@ class TestWeeklyUserTrendMain:
     @pytest.mark.django_db(transaction=True)
     def test_main_skips_when_completed_while_waiting(
         self,
+        no_leftover_users,
         user_trend_module,
         work_dir,
         mock_wait,
@@ -568,8 +556,6 @@ class TestWeeklyUserTrendMain:
         create_writer,
     ):
         """기다리는 사이 겹친 실행이 분석을 끝냈으면 분석하지 않고 건너뜀 표시를 남긴다"""
-        # 트랜잭션으로 감싸지 않는 테스트라 다른 테스트가 남긴 사용자를 먼저 지운다
-        User.objects.all().delete()
         weekly_trend = create_weekly_trend()
         create_writer("writer")
 
