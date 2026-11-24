@@ -243,7 +243,7 @@ END $$;
 
 ## 주간 분석·뉴스레터 실행
 
-평소에는 운영 BO 서버 crontab 이 `run-weekly.sh` 로 정시에 실행한다. GitHub Actions 는 그 주 작업이 끝나지 않았고 실행 중도 아닐 때만 일하는 안전망이다.
+평소에는 운영 BO 서버 crontab 이 `run-weekly.sh` 로 정시에 실행한다. GitHub Actions 는 그 주 작업이 끝나지 않았고 실행 중도 아닐 때만 일하는 안전망이다. 공통 분석은 실행 중 표시를 남기지 않아 서버 실행과 겹칠 수 있지만, 저장 직전에 이번 주 행을 다시 확인해 이미 있으면 저장하지 않고 건너뛰므로(종료 코드 0) 이번 주 행은 하나만 생긴다.
 
 ### 실행 시각 (KST)
 
@@ -313,7 +313,7 @@ GitHub 에서 돌릴 때는 `gh workflow run "Weekly Analysis Batch"` 또는 `gh
 |---|---|
 | `flock` | 같은 작업이 이미 돌고 있으면 "이미 실행 중, 건너뜀"을 로그에 남기고 종료 코드 0 |
 | GitHub 진행 중 run | 같은 워크플로의 run 이 진행 중이면 "GitHub run 진행 중, 건너뜀"으로 종료 코드 0. 조회가 실패하면 그대로 진행 |
-| 이번 주 처리 표시 | 공통 분석: 이번 주 `WeeklyTrend` 행이 있으면 건너뜀. 사용자 분석: `insight._batch.user_analysis_completed_at` 이 있으면 건너뜀(없으면 이번 주 `UserWeeklyTrend` 가 없는 대상만 처리). 발송: 이번 주 행이 발송 완료(`is_processed`)면 건너뜀(그 주 발송 기록이 없으면 메일 없이 종료 코드 1 로 실패해 Slack ❌. 복구: admin 에서 처리 완료를 해제한 뒤 `./run-weekly.sh newsletter`), 첫 메일 전에 `_batch.newsletter_started_at` 기록 |
+| 이번 주 처리 표시 | 공통 분석: 이번 주 `WeeklyTrend` 행이 있으면 건너뜀. 사용자 분석: `insight._batch.user_analysis_completed_at` 이 있으면 건너뜀(없으면 이번 주 `UserWeeklyTrend` 가 없는 대상만 처리). 발송: 이번 주 행이 발송 완료(`is_processed`)면 건너뜀(그 주 발송 기록이 없으면 메일 없이 종료 코드 1 로 실패해 Slack ❌. 복구: admin 에서 처리 완료를 해제한 뒤 `./run-weekly.sh newsletter`. 단, 발송 기록을 메일마다 바로 저장하는 버전을 배포하기 전에 보낸 주(배포 시점의 이번 주까지)에는 이 복구를 쓰지 않는다. 예전 코드는 발송 기록을 청크 끝에 한꺼번에 저장하고 저장이 실패해도 넘어가서 실제로 보낸 메일의 기록이 빠졌을 수 있고, 해제 후 다시 돌리면 중복 발송된다. 그런 주는 SES 발송 내역으로 실제 발송 여부를 먼저 확인한다), 첫 메일 전에 `_batch.newsletter_started_at` 기록 |
 | 이미 받은 이메일 제외 | 이번 주 뉴스레터를 이미 받은 이메일은 대상에서 빼고(청크마다 다시 적용), 남은 대상이 0명이면 발송 완료로 표시 |
 
 할 일 없이 끝나면 `<스크립트>.skipped` 표시 파일이 생기고 Slack 은 보내지 않는다. 발송은 `user_analysis_completed_at` 이 없으면 메일 0통으로 실패한다. 사용자 분석은 대상의 절반 이상이 실패하면 완료 표시 없이 종료 코드 1 로 끝난다.
