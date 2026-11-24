@@ -437,25 +437,6 @@ class TestWeeklyNewsletterBatch:
             mock_update_user.assert_called_once()
             mock_update_weekly.assert_called_once()
 
-    @patch("insight.tasks.weekly_newsletter_batch.logger")
-    @pytest.mark.django_db
-    def test_run_no_target_users_failure(
-        self, mock_logger, newsletter_batch, sample_weekly_trend_insight
-    ):
-        """대상 유저 없음 실패 테스트"""
-        create_this_week_trend(sample_weekly_trend_insight.to_json_dict())
-
-        with patch.object(
-            newsletter_batch, "_get_target_user_chunks"
-        ) as mock_get_chunks:
-            mock_get_chunks.return_value = []
-
-            with pytest.raises(
-                Exception,
-                match="No target users found for newsletter, batch stopped",
-            ):
-                newsletter_batch.run()
-
     @pytest.mark.parametrize(
         "secret",
         ["", "x" * 31],
@@ -665,6 +646,26 @@ class TestWeeklyNewsletterBatchRun:
             for call in newsletter_batch.ses_client.send_email.call_args_list
         )
         assert recipients == ["failed@example.com", "other-week@example.com"]
+
+    def test_marks_week_processed_when_every_target_already_received(
+        self, newsletter_batch, work_dir, user, sample_weekly_trend_insight
+    ):
+        """대상이 모두 이미 받았는데 발송 완료 표시만 없으면 메일 없이 표시하고 성공한다"""
+        trend = create_this_week_trend(
+            sample_weekly_trend_insight.to_json_dict()
+        )
+        NotiMailLog.objects.create(
+            user=user,
+            subject=f"벨로그 대시보드 주간 뉴스레터 #{trend.id}",
+            is_success=True,
+        )
+
+        newsletter_batch.run()
+
+        newsletter_batch.ses_client.send_email.assert_not_called()
+        trend.refresh_from_db()
+        assert trend.is_processed is True
+        assert "✅" in (work_dir / RESULT_FILE).read_text()
 
 
 @pytest.fixture

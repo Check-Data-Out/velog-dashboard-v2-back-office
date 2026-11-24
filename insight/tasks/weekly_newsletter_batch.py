@@ -568,14 +568,18 @@ class WeeklyNewsletterBatch:
             # ========================================================== #
             target_user_chunks = self._get_target_user_chunks()
 
-            # 대상 유저 없을 시 배치 종료
+            # 남은 대상이 없으면 이번 주 발송을 끝난 것으로 표시하고 마친다
+            # (지난 실행이 다 보내고 발송 완료 표시만 못 남긴 경우)
             if not target_user_chunks:
-                logger.error(
-                    "No target users found for newsletter, batch stopped"
+                logger.info(
+                    "No remaining target users for newsletter, marked as sent"
                 )
-                raise Exception(
-                    "No target users found for newsletter, batch stopped"
-                )
+                self._update_weekly_trend_result()
+                with open("newsletter_batch_result.txt", "w") as f:
+                    f.write(
+                        "✅ 뉴스레터 발송 완료: 남은 대상 없음 (이번 주 뉴스레터를 모두 이미 받음)\\n"
+                    )
+                return
 
             # 로컬 환경에선 뉴스레터 발송 건너뜀
             if settings.DEBUG:
