@@ -524,7 +524,7 @@ class TestWeeklyUserTrendMain:
         assert weekly_trend.batch_value(BATCH_USER_ANALYSIS_COMPLETED) is None
 
     @pytest.mark.django_db(transaction=True)
-    def test_main_waits_for_stats_of_day_after_week_on_rerun(
+    def test_main_waits_for_stats_of_day_after_week_on_rerun_and_reports_missing_sets(
         self, no_leftover_users, user_trend_module, work_dir, mock_wait
     ):
         """화요일에 다시 돌려도 오늘이 아니라 주차 다음 날(월) 00:00 의 일일 통계를 기다린다.
