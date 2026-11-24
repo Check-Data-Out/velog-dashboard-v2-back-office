@@ -321,8 +321,8 @@ GitHub 에서 돌릴 때는 `gh workflow run "Weekly Analysis Batch"` 또는 `gh
 ### 검수 보류 주
 
 - admin 에서 이번 주 행을 "발송 보류"로 두면 09:30 서버 발송 실패 Slack, 10:30 Grafana 미실행 알림, 13:10 GitHub 안전망 실패 Slack 이 가는 것이 정상이다.
-- "보류 해제"를 하면 그날 GitHub 안전망이 자동으로 보낼 수 있다. 발송을 미루려면 보류를 유지한다.
-- 검수가 끝난 뒤 수동 발송은 서버에서 `./run-weekly.sh newsletter` 로 한다.
+- "보류 해제"를 했으면 바로 서버에서 `./run-weekly.sh newsletter` 로 보낸다. 해제만 하고 수동 발송을 하지 않으면 13:10 GitHub 안전망이 그날 자동으로 보낼 수 있다.
+- 아직 보내지 않을 거면 보류를 유지한다.
 
 ### GitHub 안전망이 도는 조건
 
