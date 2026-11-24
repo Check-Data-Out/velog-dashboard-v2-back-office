@@ -313,7 +313,7 @@ GitHub 에서 돌릴 때는 `gh workflow run "Weekly Analysis Batch"` 또는 `gh
 |---|---|
 | `flock` | 같은 작업이 이미 돌고 있으면 "이미 실행 중, 건너뜀"을 로그에 남기고 종료 코드 0 |
 | GitHub 진행 중 run | 같은 워크플로의 run 이 진행 중이면 "GitHub run 진행 중, 건너뜀"으로 종료 코드 0. 조회가 실패하면 그대로 진행 |
-| 이번 주 처리 표시 | 공통 분석: 이번 주 `WeeklyTrend` 행이 있으면 건너뜀. 사용자 분석: `insight._batch.user_analysis_completed_at` 이 있으면 건너뜀(없으면 이번 주 `UserWeeklyTrend` 가 없는 대상만 처리). 발송: 이번 주 행이 발송 완료(`is_processed`)면 건너뜀(그 주 발송 기록이 없으면 표시 파일 없이 끝내 Slack 으로 알림), 첫 메일 전에 `_batch.newsletter_started_at` 기록 |
+| 이번 주 처리 표시 | 공통 분석: 이번 주 `WeeklyTrend` 행이 있으면 건너뜀. 사용자 분석: `insight._batch.user_analysis_completed_at` 이 있으면 건너뜀(없으면 이번 주 `UserWeeklyTrend` 가 없는 대상만 처리). 발송: 이번 주 행이 발송 완료(`is_processed`)면 건너뜀(그 주 발송 기록이 없으면 메일 없이 종료 코드 1 로 실패해 Slack ❌. 복구: admin 에서 처리 완료를 해제한 뒤 `./run-weekly.sh newsletter`), 첫 메일 전에 `_batch.newsletter_started_at` 기록 |
 | 이미 받은 이메일 제외 | 이번 주 뉴스레터를 이미 받은 이메일은 대상에서 빼고(청크마다 다시 적용), 남은 대상이 0명이면 발송 완료로 표시 |
 
 할 일 없이 끝나면 `<스크립트>.skipped` 표시 파일이 생기고 Slack 은 보내지 않는다. 발송은 `user_analysis_completed_at` 이 없으면 메일 0통으로 실패한다. 사용자 분석은 대상의 절반 이상이 실패하면 완료 표시 없이 종료 코드 1 로 끝난다.
