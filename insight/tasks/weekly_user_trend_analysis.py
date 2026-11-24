@@ -13,7 +13,6 @@
 
 import asyncio
 import logging
-import resource
 import time
 from collections import defaultdict
 from dataclasses import dataclass
@@ -52,7 +51,7 @@ from insight.tasks.weekly_llm_analyzer import analyze_user_posts
 from posts.models import Post, PostDailyStatistics
 from scraping.velog.schemas import Post as VelogPost
 from users.models import User
-from utils.utils import to_local_date
+from utils.utils import record_peak_memory, to_local_date
 
 logger = logging.getLogger("newsletter")
 
@@ -667,15 +666,7 @@ async def main():
         except Exception as e:
             print(f"결과 파일 저장 실패: {e}")
 
-    # 최대 메모리 (Linux 의 ru_maxrss 단위는 KiB)
-    peak_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024
-    logger.info("Peak memory: %d MB", peak_mb)
-    try:
-        with open("weekly_analysis_result.txt", "a") as f:
-            # 위 결과 줄은 실제 줄바꿈 없이 끝나므로 새 줄에서 시작한다
-            f.write(f"\n최대 메모리: {peak_mb} MB\n")
-    except Exception as e:
-        print(f"결과 파일 저장 실패: {e}")
+    record_peak_memory(logger, "weekly_analysis_result.txt")
 
     return 0 if result.success else 1
 

@@ -8,7 +8,6 @@
 """
 
 import asyncio
-import resource
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
@@ -30,6 +29,7 @@ from insight.models import (
 from insight.tasks.base_analysis import AnalysisContext, BaseBatchAnalyzer
 from insight.tasks.weekly_llm_analyzer import analyze_trending_posts
 from scraping.velog.schemas import Post
+from utils.utils import record_peak_memory
 
 # 할 일 없이 끝났음을 실행 스크립트에 알리는 표시 파일 (현재 폴더)
 SKIP_MARKER = "weekly_trend_analysis.skipped"
@@ -304,15 +304,7 @@ async def main():
         except Exception as e:
             print(f"결과 파일 저장 실패: {e}")
 
-    # 최대 메모리 (Linux 의 ru_maxrss 단위는 KiB)
-    peak_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024
-    analyzer.logger.info("Peak memory: %d MB", peak_mb)
-    try:
-        with open("weekly_analysis_result.txt", "a") as f:
-            # 위 결과 줄은 실제 줄바꿈 없이 끝나므로 새 줄에서 시작한다
-            f.write(f"\n최대 메모리: {peak_mb} MB\n")
-    except Exception as e:
-        print(f"결과 파일 저장 실패: {e}")
+    record_peak_memory(analyzer.logger, "weekly_analysis_result.txt")
 
     return 0 if result.success else 1
 

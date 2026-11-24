@@ -12,7 +12,6 @@
 """
 
 import logging
-import resource
 from datetime import timedelta
 from pathlib import Path
 from time import sleep
@@ -47,6 +46,7 @@ from utils.utils import (
     from_dict,
     get_local_now,
     get_local_now_date,
+    record_peak_memory,
     strip_html_tags,
     to_dict,
 )
@@ -715,15 +715,7 @@ def main() -> None:
     try:
         WeeklyNewsletterBatch(ses_client=ses_client).run()
     finally:
-        # 최대 메모리 (Linux 의 ru_maxrss 단위는 KiB)
-        peak_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024
-        logger.info(f"Peak memory: {peak_mb} MB")
-        try:
-            with open("newsletter_batch_result.txt", "a") as f:
-                # 위 결과 줄은 실제 줄바꿈 없이 끝날 수 있으므로 새 줄에서 시작한다
-                f.write(f"\n최대 메모리: {peak_mb} MB\n")
-        except Exception as e:
-            logger.error(f"Failed to save newsletter batch result: {e}")
+        record_peak_memory(logger, "newsletter_batch_result.txt")
 
 
 if __name__ == "__main__":

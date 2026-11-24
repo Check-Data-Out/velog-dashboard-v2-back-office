@@ -1,6 +1,8 @@
 import json
+import logging
 import random
 import re
+import resource
 from dataclasses import fields, is_dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Type, TypeVar, get_args, get_origin, no_type_check
@@ -167,3 +169,22 @@ def get_previous_week_range(
     )
 
     return week_start, week_end
+
+
+def record_peak_memory(logger: logging.Logger, result_file: str) -> None:
+    """이 프로세스의 최대 메모리를 로그 한 줄과 결과 파일 한 줄로 남긴다.
+
+    Linux 의 ru_maxrss 단위는 KiB 라서 1024 로 나눠 MB 로 적는다.
+
+    Args:
+        logger: 로그를 남길 로거
+        result_file: 줄을 덧붙일 결과 파일 경로
+    """
+    peak_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024
+    logger.info("Peak memory: %d MB", peak_mb)
+    try:
+        with open(result_file, "a") as f:
+            # 위 결과 줄은 실제 줄바꿈 없이 끝날 수 있으므로 새 줄에서 시작한다
+            f.write(f"\n최대 메모리: {peak_mb} MB\n")
+    except Exception as e:
+        logger.error("Failed to save peak memory to %s: %s", result_file, e)
