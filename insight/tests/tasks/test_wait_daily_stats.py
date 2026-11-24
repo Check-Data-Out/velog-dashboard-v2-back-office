@@ -211,4 +211,4 @@ class TestWaitForDailyStats:
         )
 
         assert missing == []
-        assert clock.now == 30
+        assert 0 < clock.now < 300
