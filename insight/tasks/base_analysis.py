@@ -19,6 +19,8 @@ class AnalysisContext:
     week_start: datetime
     week_end: datetime
     velog_client: VelogClient
+    # run() 이 분석을 마치면 닫는다
+    session: aiohttp.ClientSession | None = None
 
 
 @dataclass
@@ -38,41 +40,53 @@ class BaseBatchAnalyzer(ABC, Generic[T]):
         self.logger = logging.getLogger("newsletter")
 
     async def run(self) -> AnalysisResult[list[T]]:
-        """메인 실행 메서드"""
+        """메인 실행 메서드.
+
+        컨텍스트를 만들어 본처리(_process)에 넘기고, 성공·실패 모두 컨텍스트가
+        연 aiohttp 세션을 닫는다. 본처리에서 난 예외는 실패 결과로 돌려준다.
+        """
         self.logger.info("Starting %s", self.__class__.__name__)
 
+        context = None
         try:
-            # 1. 컨텍스트 초기화
             context = await self._initialize_context()
-
-            # 2. 데이터 수집
-            raw_data = await self._fetch_data(context)
-            if not raw_data:
-                self.logger.info("No data to process")
-                return AnalysisResult(
-                    success=True, data=[], metadata={"reason": "no_data"}
-                )
-
-            # 3. 분석 실행
-            analysis_results = await self._analyze_data(raw_data, context)
-
-            # 4. 결과 저장
-            await self._save_results(analysis_results, context)
-
-            self.logger.info(
-                "Completed %s successfully", self.__class__.__name__
-            )
-            return AnalysisResult(
-                success=True,
-                data=analysis_results,
-                metadata={"processed_count": len(analysis_results)},
-            )
+            return await self._process(context)
 
         except Exception as e:
             self.logger.exception(
                 "Failed to run %s: %s", self.__class__.__name__, e
             )
             return AnalysisResult(success=False, error=e)
+
+        finally:
+            # 성공·실패 모두 컨텍스트가 연 aiohttp 세션을 닫는다
+            if context is not None and context.session is not None:
+                await context.session.close()
+
+    async def _process(
+        self, context: AnalysisContext
+    ) -> AnalysisResult[list[T]]:
+        """본처리: 데이터 수집 → 분석 → 저장"""
+        # 1. 데이터 수집
+        raw_data = await self._fetch_data(context)
+        if not raw_data:
+            self.logger.info("No data to process")
+            return AnalysisResult(
+                success=True, data=[], metadata={"reason": "no_data"}
+            )
+
+        # 2. 분석 실행
+        analysis_results = await self._analyze_data(raw_data, context)
+
+        # 3. 결과 저장
+        await self._save_results(analysis_results, context)
+
+        self.logger.info("Completed %s successfully", self.__class__.__name__)
+        return AnalysisResult(
+            success=True,
+            data=analysis_results,
+            metadata={"processed_count": len(analysis_results)},
+        )
 
     async def _initialize_context(self) -> AnalysisContext:
         """분석 컨텍스트 초기화"""
@@ -89,6 +103,7 @@ class BaseBatchAnalyzer(ABC, Generic[T]):
             week_start=week_start,
             week_end=week_end,
             velog_client=velog_client,
+            session=session,
         )
 
     @abstractmethod

@@ -12,39 +12,66 @@
 """
 
 import asyncio
+import logging
+import time
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import setup_django  # noqa
 from asgiref.sync import sync_to_async
 from django.conf import settings
+from django.db import connections
 from django.db.models import Q
+from django.utils import timezone
 
 from insight.models import (
+    BATCH_USER_ANALYSIS_COMPLETED,
+    BATCH_USER_ANALYSIS_STARTED,
     TrendAnalysis,
     TrendingItem,
     UserWeeklyTrend,
+    WeeklyTrend,
     WeeklyUserReminder,
     WeeklyUserStats,
     WeeklyUserTrendInsight,
 )
-from insight.tasks.base_analysis import AnalysisContext, BaseBatchAnalyzer
+from insight.tasks.base_analysis import (
+    AnalysisContext,
+    AnalysisResult,
+    BaseBatchAnalyzer,
+)
+from insight.tasks.wait_daily_stats import (
+    fetch_today_success_runs,
+    wait_for_daily_stats,
+)
 from insight.tasks.weekly_llm_analyzer import analyze_user_posts
 from posts.models import Post, PostDailyStatistics
 from scraping.velog.schemas import Post as VelogPost
 from users.models import User
-from utils.utils import to_local_date
+from utils.utils import record_peak_memory, to_local_date
+
+logger = logging.getLogger("newsletter")
+
+# 할 일 없이 끝났음을 실행 스크립트에 알리는 표시 파일 (현재 폴더)
+SKIP_MARKER = "weekly_user_trend_analysis.skipped"
 
 
-class TokenExpiredError(Exception):
-    """토큰 만료 예외"""
+def _to_local_midnight(day: date) -> datetime:
+    """day 의 00:00 (Django 현재 시간대, KST)"""
+    return timezone.make_aware(datetime.combine(day, datetime.min.time()))
 
-    def __init__(self, user_id: int, message: str = "Token expired"):
-        self.user_id = user_id
-        self.message = message
-        super().__init__(message)
+
+def _skip_when_completed(weekly_trend: WeeklyTrend) -> bool:
+    """이번 주 사용자 분석이 이미 끝났으면 건너뜀 줄과 표시 파일을 남기고 True"""
+    if not weekly_trend.batch_value(BATCH_USER_ANALYSIS_COMPLETED):
+        return False
+    with open("weekly_analysis_result.txt", "a") as f:
+        f.write("⏭ 사용자 주간 분석 건너뜀: 이번 주 분석이 이미 끝남\n")
+    Path(SKIP_MARKER).touch()
+    return True
 
 
 @dataclass
@@ -60,11 +87,32 @@ class UserWeeklyData:
 class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
     """사용자별 주간 분석기"""
 
-    def __init__(self):
+    def __init__(self, weekly_trend: WeeklyTrend):
+        """
+        Args:
+            weekly_trend: 이번 주 공통 분석 행. 분석 주차와 시작·완료 표시의 기준이다.
+        """
         super().__init__()
+        self.weekly_trend = weekly_trend
         self.expired_token_users = set()
         self.successful_users = set()
+        self.failed_users = set()
         self.all_target_users = set()
+
+    async def _initialize_context(self) -> AnalysisContext:
+        """분석 컨텍스트 초기화.
+
+        주차를 오늘이 아니라 이번 주 공통 분석 행에서 가져온다. 그래서 다른
+        요일에 다시 돌려도 같은 주차로 계산하고 저장한다.
+        """
+        context = await super()._initialize_context()
+        context.week_start = _to_local_midnight(
+            self.weekly_trend.week_start_date
+        )
+        context.week_end = _to_local_midnight(
+            self.weekly_trend.week_end_date + timedelta(days=1)
+        )
+        return context
 
     async def _check_user_token_validity(
         self, user_id: int, context: AnalysisContext
@@ -277,93 +325,97 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
                 )
             return trending_items, None
 
-    async def _fetch_data(
-        self, context: AnalysisContext
-    ) -> list[UserWeeklyData]:
-        """사용자별 주간 데이터 수집"""
+    async def _fetch_data(self, context: AnalysisContext) -> list[dict]:
+        """분석 대상 사용자 목록(id, username) 조회.
+
+        분석 주차의 결과가 이미 저장된 사용자는 뺀다. 그래서 중간에 끊긴
+        실행을 다시 돌리면 남은 사용자만 처리한다.
+        """
+        users = await sync_to_async(list)(
+            User.objects.filter(
+                email__isnull=False,
+                is_active=True,
+                newsletter_subscribed=True,
+            )
+            .exclude(email="")
+            .exclude(
+                id__in=UserWeeklyTrend.objects.filter(
+                    week_end_date=self.weekly_trend.week_end_date
+                ).values("user_id")
+            )
+            .values("id", "username")
+        )
+
+        self.all_target_users = {user["id"] for user in users}
+        return users
+
+    async def _process_user(
+        self, user_id: int, username: str, context: AnalysisContext
+    ) -> bool:
+        """사용자 한 명을 수집 → 분석 → 저장한다.
+
+        본문 참조가 이 함수 안에서 끝나므로, 동시에 메모리에 있는 본문은
+        한 명분이다.
+
+        Returns:
+            분석했으면 True. 토큰이 만료됐거나 실패하면 False.
+            예외로 실패한 사용자는 failed_users 에 남긴다.
+        """
         try:
-            # 대상 사용자 조회
-            users = await sync_to_async(list)(
-                User.objects.filter(
-                    email__isnull=False,
-                    is_active=True,
-                    newsletter_subscribed=True,
-                )
-                .exclude(email="")
-                .values("id", "username")
+            user_data = await self._collect_user_data(
+                user_id, username, context
             )
+            if user_data is None:
+                return False
 
-            self.all_target_users = {user["id"] for user in users}
-            user_weekly_data = []
-
-            self.logger.info(
-                "Starting data collection for %d users", len(users)
-            )
-
-            for user in users:
-                user_id = user["id"]
-                username = user["username"]
-
-                try:
-                    # 토큰 유효성 확인
-                    if not await self._check_user_token_validity(
-                        user_id, context
-                    ):
-                        self.expired_token_users.add(user_id)
-                        continue
-
-                    # 토큰이 유효하면 successful_users에 추가
-                    self.successful_users.add(user_id)
-
-                    # 1. 주간 새글 수집 (LLM 분석용)
-                    weekly_new_posts = await self._fetch_user_weekly_new_posts(
-                        user_id, context
-                    )
-
-                    # 2. 주간 전체 통계 계산
-                    weekly_total_stats = (
-                        await self._calculate_user_weekly_total_stats(
-                            user_id, context
-                        )
-                    )
-
-                    # UserWeeklyData 생성
-                    user_data = UserWeeklyData(
-                        user_id=user_id,
-                        username=username,
-                        weekly_new_posts=weekly_new_posts,
-                        weekly_total_stats=weekly_total_stats,
-                    )
-                    user_weekly_data.append(user_data)
-
-                    self.logger.debug(
-                        "Collected data for user %s: %d new posts, stats(posts=%d, new_posts=%d, views=%d, likes=%d)",
-                        user_id,
-                        len(weekly_new_posts),
-                        weekly_total_stats.posts,
-                        weekly_total_stats.new_posts,
-                        weekly_total_stats.views,
-                        weekly_total_stats.likes,
-                    )
-
-                except TokenExpiredError:
-                    self.expired_token_users.add(user_id)
-                    self.logger.warning("Token expired for user %s", user_id)
-                except Exception as e:
-                    self.logger.warning(
-                        "Failed to collect data for user %s: %s", user_id, e
-                    )
-
-            self.logger.info(
-                "Data collection completed: %d successful, %d expired",
-                len(self.successful_users),
-                len(self.expired_token_users),
-            )
-            return user_weekly_data
+            results = await self._analyze_data([user_data], context)
+            await self._save_results(results, context)
+            return True
 
         except Exception as e:
-            self.logger.error("Failed to fetch user data: %s", e)
-            raise
+            self.logger.warning("Failed to process user %s: %s", user_id, e)
+            self.successful_users.discard(user_id)
+            self.failed_users.add(user_id)
+            return False
+
+    async def _collect_user_data(
+        self, user_id: int, username: str, context: AnalysisContext
+    ) -> UserWeeklyData | None:
+        """사용자 한 명의 주간 데이터 수집. 토큰이 만료됐으면 None"""
+        # 토큰 유효성 확인
+        if not await self._check_user_token_validity(user_id, context):
+            self.expired_token_users.add(user_id)
+            return None
+
+        # 토큰이 유효하면 successful_users에 추가
+        self.successful_users.add(user_id)
+
+        # 1. 주간 새글 수집 (LLM 분석용)
+        weekly_new_posts = await self._fetch_user_weekly_new_posts(
+            user_id, context
+        )
+
+        # 2. 주간 전체 통계 계산
+        weekly_total_stats = await self._calculate_user_weekly_total_stats(
+            user_id, context
+        )
+
+        self.logger.debug(
+            "Collected data for user %s: %d new posts, stats(posts=%d, new_posts=%d, views=%d, likes=%d)",
+            user_id,
+            len(weekly_new_posts),
+            weekly_total_stats.posts,
+            weekly_total_stats.new_posts,
+            weekly_total_stats.views,
+            weekly_total_stats.likes,
+        )
+
+        return UserWeeklyData(
+            user_id=user_id,
+            username=username,
+            weekly_new_posts=weekly_new_posts,
+            weekly_total_stats=weekly_total_stats,
+        )
 
     async def _fetch_user_weekly_new_posts(
         self, user_id: int, context: AnalysisContext
@@ -404,29 +456,21 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
     async def _analyze_data(
         self, raw_data: list[UserWeeklyData], context: AnalysisContext
     ) -> list[dict]:
-        """사용자별 데이터 분석"""
+        """사용자별 데이터 분석.
+
+        실패는 삼키지 않는다. _process_user 가 받아 실패한 사용자로 센다.
+        """
 
         results = []
 
-        self.logger.info("Starting analysis for %d users", len(raw_data))
-
         for user_data in raw_data:
-            try:
-                insight = await self._analyze_user_data(user_data, context)
+            insight = await self._analyze_user_data(user_data, context)
 
-                results.append(
-                    {"user_id": user_data.user_id, "insight": insight}
-                )
-                self.logger.debug(
-                    "Successfully analyzed user %s", user_data.user_id
-                )
+            results.append({"user_id": user_data.user_id, "insight": insight})
+            self.logger.debug(
+                "Successfully analyzed user %s", user_data.user_id
+            )
 
-            except Exception as e:
-                self.logger.error(
-                    "Failed to analyze user %s: %s", user_data.user_id, e
-                )
-
-        self.logger.info("Analysis completed: %d users analyzed", len(results))
         return results
 
     async def _analyze_user_data(
@@ -466,89 +510,162 @@ class UserWeeklyAnalyzer(BaseBatchAnalyzer[dict]):
     async def _save_results(
         self, results: list[dict], context: AnalysisContext
     ) -> None:
-        """결과를 데이터베이스에 저장"""
+        """결과를 데이터베이스에 저장.
+
+        실패는 삼키지 않는다. _process_user 가 받아 실패한 사용자로 센다.
+        """
 
         for result in results:
-            try:
-                user_id = result["user_id"]
-                insight = result["insight"]
+            # WeeklyUserTrendInsight 객체를 딕셔너리로 변환
+            insight_data = result["insight"].to_dict()
 
-                # WeeklyUserTrendInsight 객체를 딕셔너리로 변환
-                insight_data = insight.to_dict()
+            await sync_to_async(UserWeeklyTrend.objects.create)(
+                user_id=result["user_id"],
+                week_start_date=context.week_start.date(),
+                week_end_date=(context.week_end - timedelta(days=1)).date(),
+                insight=insight_data,
+                is_processed=False,
+                processed_at=context.week_end,
+            )
 
-                await sync_to_async(UserWeeklyTrend.objects.create)(
-                    user_id=user_id,
-                    week_start_date=context.week_start.date(),
-                    week_end_date=(
-                        context.week_end - timedelta(days=1)
-                    ).date(),
-                    insight=insight_data,
-                    is_processed=False,
-                    processed_at=context.week_end,
-                )
+    async def _process(
+        self, context: AnalysisContext
+    ) -> AnalysisResult[list[dict]]:
+        """본처리.
 
-            except Exception as e:
-                self.logger.error(
-                    "Failed to save UserWeeklyTrend for user %s: %s",
-                    user_id,
-                    e,
-                )
+        전원의 본문을 한꺼번에 쌓지 않도록 사용자 한 명씩 수집 → 분석 →
+        저장한다. 그래서 결과(data)는 모아 두지 않는다.
+        """
+        users = await self._fetch_data(context)
+        self.logger.info("Starting analysis for %d users", len(users))
+
+        processed_count = 0
+        for user in users:
+            if await self._process_user(user["id"], user["username"], context):
+                processed_count += 1
+
+        # 사용자별 실패가 이번 실행 대상의 절반 이상이면(수집·분석·저장 단계 DB 장애 등)
+        # 완료 표시 없이 실패로 끝낸다. 뉴스레터는 완료 표시가 있어야 보내므로
+        # 개인 통계 없는 메일이 전원에게 나가지 않는다.
+        # OpenAI 장애는 "[분석 실패]" 요약으로 저장되므로 실패 수에 들어가지 않는다
+        failed_count = len(self.failed_users)
+        if users and failed_count * 2 >= len(users):
+            raise Exception(
+                f"사용자별 실패 {failed_count}명 / 이번 실행 대상 {len(users)}명 (절반 이상). "
+                "완료 표시를 남기지 않음. 다시 돌리면 결과가 없는 사용자만 분석하며, "
+                "그 사용자들이 계속 실패하면 완료되지 않음"
+            )
+
+        # 실패가 절반 미만이면 로그만 남기고, 대상 전원을 다 돌았으면 완료로 본다
+        await sync_to_async(self.weekly_trend.mark_batch)(
+            BATCH_USER_ANALYSIS_COMPLETED
+        )
 
         self.logger.info(
-            "Batch completed: %d records saved, %d users expired",
-            len(results),
+            "Batch completed: %d users analyzed, %d users expired",
+            processed_count,
             len(self.expired_token_users),
         )
-
-    async def run(self):
-        """배치 실행"""
-        result = await super().run()
-
-        if result.metadata is None:
-            result.metadata = {}
-
-        result.metadata.update(
-            {
-                "expired_token_users": len(self.expired_token_users),
-                "successful_users": len(self.successful_users),
-                "expired_user_ids": list(self.expired_token_users),
-            }
+        return AnalysisResult(
+            success=True,
+            data=[],
+            metadata={"processed_count": processed_count},
         )
 
+    async def run(self) -> AnalysisResult[list[dict]]:
+        """배치 실행. 성공·실패 모두 사용자 집계를 metadata 에 붙인다"""
+        result = await super().run()
+        result.metadata = {
+            **(result.metadata or {}),
+            "expired_token_users": len(self.expired_token_users),
+            "successful_users": len(self.successful_users),
+            "failed_users": len(self.failed_users),
+            "expired_user_ids": list(self.expired_token_users),
+        }
         return result
 
 
 async def main():
     """메인 실행 함수"""
-    analyzer = UserWeeklyAnalyzer()
+    # 공통 분석이 먼저다. 이번 주 행이 없으면 주차를 정할 수 없다
+    weekly_trend = await sync_to_async(
+        WeeklyTrend.objects.this_week().order_by("-week_end_date").first
+    )()
+    if weekly_trend is None:
+        with open("weekly_analysis_result.txt", "a") as f:
+            f.write(
+                "❌ 사용자 주간 분석 실패: 이번 주 공통 분석 결과가 없음\n"
+            )
+        return 1
+
+    # 이미 끝난 주는 세션·velog·LLM 을 건드리기 전에 끝낸다
+    if _skip_when_completed(weekly_trend):
+        return 0
+
+    # 기다리는 동안에도 GitHub 안전망이 실행 중으로 보도록 대기 전에 시작 표시를 남긴다
+    await sync_to_async(weekly_trend.mark_batch)(BATCH_USER_ANALYSIS_STARTED)
+
+    # 기다리는 동안(최대 90분) 쉬는 DB 연결은 서버가 끊을 수 있다.
+    # 닫아 두면 분석이 새 연결을 연다. 연결은 스레드마다 따로라서
+    # 쿼리를 돌린 스레드에서 닫는다
+    await sync_to_async(connections.close_all)()
+
+    # 개인 통계는 주차가 끝난 다음 날(월요일)의 일일 통계로 만든다.
+    # 그날 세트가 다 모일 때까지 기다린다. 동기 대기라 이벤트 루프 밖에서 돌린다
+    missing = await asyncio.to_thread(
+        wait_for_daily_stats,
+        _to_local_midnight(weekly_trend.week_end_date + timedelta(days=1)),
+        fetch_today_success_runs,
+        time.sleep,
+        time.monotonic,
+    )
+
+    # 기다리는 사이 겹친 실행이 분석을 끝냈을 수 있으므로 한 번 더 확인한다
+    await sync_to_async(weekly_trend.refresh_from_db)()
+    if _skip_when_completed(weekly_trend):
+        return 0
+
+    analyzer = UserWeeklyAnalyzer(weekly_trend)
     result = await analyzer.run()
 
     if result.success:
         metadata = result.metadata or {}
         successful = metadata.get("successful_users", 0)
         expired = metadata.get("expired_token_users", 0)
+        failed = metadata.get("failed_users", 0)
 
         # 결과 파일 저장 (for slack notification)
         try:
             with open("weekly_analysis_result.txt", "a") as f:
                 f.write(
-                    f"✅ 사용자 주간 분석 완료: 성공 {successful}명, 토큰 만료 {expired}명\\n"
+                    f"✅ 사용자 주간 분석 완료: 성공 {successful}명, 토큰 만료 {expired}명, 실패 {failed}명\n"
                 )
                 f.write(
-                    f"   - 토큰 만료 사용자: {metadata.get('expired_user_ids', [])}"
+                    f"   - 토큰 만료 사용자: {metadata.get('expired_user_ids', [])}\n"
                 )
         except Exception as e:
             print(f"결과 파일 저장 실패: {e}")
     else:
         try:
             with open("weekly_analysis_result.txt", "a") as f:
-                f.write(f"❌ 사용자 주간 분석 실패: {result.error}")
+                f.write(f"❌ 사용자 주간 분석 실패: {result.error}\n")
         except Exception as e:
             print(f"결과 파일 저장 실패: {e}")
 
-        return 1
+    # 기다려도 완료를 확인하지 못한 세트가 있으면 Slack 에서 보이게 남긴다.
+    # GitHub 조회가 잇달아 실패해도 이 목록이 오므로 미완료라고 단정하지 않는다
+    if missing:
+        try:
+            with open("weekly_analysis_result.txt", "a") as f:
+                f.write(
+                    f"경고: 일일 통계 세트 {missing} 완료를 확인하지 못함(미완료 또는 GitHub 조회 실패) — 그 세트 사용자는 토큰 만료로 분류됐을 수 있음\n"
+                )
+        except Exception as e:
+            print(f"결과 파일 저장 실패: {e}")
 
-    return 0
+    record_peak_memory(logger, "weekly_analysis_result.txt")
+
+    return 0 if result.success else 1
 
 
 if __name__ == "__main__":

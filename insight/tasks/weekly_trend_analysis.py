@@ -10,6 +10,7 @@
 import asyncio
 from dataclasses import dataclass, field
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 import setup_django  # noqa
@@ -28,6 +29,10 @@ from insight.models import (
 from insight.tasks.base_analysis import AnalysisContext, BaseBatchAnalyzer
 from insight.tasks.weekly_llm_analyzer import analyze_trending_posts
 from scraping.velog.schemas import Post
+from utils.utils import record_peak_memory
+
+# 할 일 없이 끝났음을 실행 스크립트에 알리는 표시 파일 (현재 폴더)
+SKIP_MARKER = "weekly_trend_analysis.skipped"
 
 
 @dataclass
@@ -267,6 +272,13 @@ class WeeklyTrendAnalyzer(BaseBatchAnalyzer[WeeklyTrendInsight]):
 
 async def main():
     """메인 실행 함수"""
+    # 이번 주 결과가 이미 있으면 세션·velog·LLM 을 건드리기 전에 끝낸다
+    if await sync_to_async(WeeklyTrend.objects.this_week().exists)():
+        with open("weekly_analysis_result.txt", "w") as f:
+            f.write("⏭ 주간 트렌드 분석 건너뜀: 이번 주 결과가 이미 있음\n")
+        Path(SKIP_MARKER).touch()
+        return 0
+
     analyzer = WeeklyTrendAnalyzer(trending_limit=10)
     result = await analyzer.run()
 
@@ -276,21 +288,22 @@ async def main():
             preview = build_filter_preview(analyzer.filter_preview)
             with open("weekly_analysis_result.txt", "w") as f:
                 f.write(
-                    f"✅ 주간 트렌드 분석 완료{review_note}: {result.metadata}\\n"
+                    f"✅ 주간 트렌드 분석 완료{review_note}: {result.metadata}\n"
                 )
                 if preview:
-                    f.write(f"\\n[광고 필터 후보]\\n{preview}\\n")
+                    f.write(f"\n[광고 필터 후보]\n{preview}\n")
         except Exception as e:
             print(f"결과 파일 저장 실패: {e}")
     else:
         try:
             with open("weekly_analysis_result.txt", "w") as f:
-                f.write(f"❌ 주간 트렌드 분석 실패: {result.error}\\n")
+                f.write(f"❌ 주간 트렌드 분석 실패: {result.error}\n")
         except Exception as e:
             print(f"결과 파일 저장 실패: {e}")
-        return 1
 
-    return 0
+    record_peak_memory(analyzer.logger, "weekly_analysis_result.txt")
+
+    return 0 if result.success else 1
 
 
 if __name__ == "__main__":

@@ -3,12 +3,93 @@ name: Weekly Analysis Batch
 on:
   workflow_dispatch:
   schedule:
-    # 매주 월요일 오전 7시(KST, UTC+9) 실행 -> UTC 기준 일요일 22:00
-    - cron: "0 22 * * 0"
+    # 평소에는 BO 서버 crontab(run-weekly.sh)이 월요일 07:00 KST 에 공통 분석, 이어서 사용자 분석을 돌린다.
+    # 이 예약은 이번 주 분석이 끝나지 않았고 실행 중도 아닐 때만 일하는 안전망이다. 서버가 공통 분석이나 사용자 분석을 끝내지 못한 주는 여기서 이어서 돈다
+    # (월요일 12:10 KST, 정각은 늦거나 빠지기 쉬워 피한다)
+    - cron: "10 12 * * 1"
+      timezone: "Asia/Seoul"
 
 jobs:
-  weekly-trend-analysis-batch:
+  # 이번 주 분석이 끝났거나 실행 중이거나 먼저 뜬 run 이 돌고 있으면 본 작업을 건너뛴다 (체크아웃·secret 파일·DB 쓰기 없음)
+  guard:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+
+    steps:
+      - name: Decide Whether To Run
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_ID: ${{ github.run_id }}
+          PGHOST: ${{ secrets.POSTGRES_HOST }}
+          PGPORT: ${{ secrets.POSTGRES_PORT }}
+          PGUSER: ${{ secrets.POSTGRES_USER }}
+          PGPASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          PGDATABASE: ${{ secrets.DATABASE_NAME }}
+          PGCONNECT_TIMEOUT: "15"
+        run: |
+          decide() {
+            echo "run=$1" >> "$GITHUB_OUTPUT"
+            echo "$2" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          }
+
+          # 늦게 뜬 예약 run 이 화요일에 돌면 다른 주차가 만들어진다
+          if [ "$EVENT_NAME" = "schedule" ] && [ "$(TZ=Asia/Seoul date +%u)" != "1" ]; then
+            decide false "건너뜀: 예약 run 인데 KST 월요일이 아님"
+          fi
+
+          # 먼저 만들어진 예약·수동 run 만 본다 (둘이 동시에 떠서 서로를 보고 함께 건너뛰지 않게)
+          # fork PR 등 다른 이벤트 run 은 이름이 같아도 세지 않는다
+          ACTIVE=$(gh api "repos/${{ github.repository }}/actions/workflows/run-weekly-analysis.yaml/runs?per_page=50" \
+            --jq '[.workflow_runs[] | select(.id < '"$RUN_ID"'
+              and (.event == "schedule" or .event == "workflow_dispatch")
+              and (.status | test("^(queued|in_progress|waiting|pending|requested)$")))] | length')
+          if [ "$ACTIVE" != "0" ]; then
+            decide false "건너뜀: 먼저 만들어진 run ${ACTIVE}개가 아직 끝나지 않음"
+          fi
+
+          # 이번 주 사용자 분석이 끝났거나 150분 안에 시작했으면(아직 도는 중) 물러난다 (읽기 전용 트랜잭션)
+          # 150분은 사용자 분석 시간 제한 135분에 여유를 더한 값이다. 이번 주 행이 없거나(공통 분석 실패)
+          # 사용자 분석이 끝나지 않은 채 멈춘 주는 GitHub 가 이어서 돈다. 끝난 부분은 파이썬이 건너뛴다
+          command -v psql || (sudo apt-get update && sudo apt-get install -y postgresql-client)
+          # psql 오류 원문에는 DB 주소가 들어갈 수 있어 공개 로그에 남기지 않는다
+          if ! FOUND=$(psql -X -q -A -t -v ON_ERROR_STOP=1 -c 'BEGIN READ ONLY' \
+            -c "SELECT count(*) FROM insight_weeklytrend WHERE week_end_date >= (date_trunc('week', now() AT TIME ZONE 'Asia/Seoul')::date - 1) AND (insight->'_batch' ? 'user_analysis_completed_at' OR (insight->'_batch'->>'user_analysis_started_at')::timestamptz > now() - interval '150 minutes')" \
+            -c 'COMMIT' 2>/dev/null); then
+            echo "DB 조회 실패 (오류 원문은 남기지 않음)" >&2
+            exit 1
+          fi
+          if [ "$FOUND" != "0" ]; then
+            decide false "건너뜀: 이번 주 분석이 끝났거나 실행 중 (${FOUND}건)"
+          fi
+
+          decide true "실행: 이번 주 분석이 끝나지 않았고 실행 중도 아님"
+
+      # 판정이 실패하면 본 작업이 skipped 라 본 작업 Slack 도 가지 않으므로 여기서 알린다
+      - name: Send Slack Notification On Guard Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": ${{ toJSON(format('❌ *Weekly Analysis Batch* 안전망 판정 실패 <{0}/{1}/actions/runs/{2}|View Workflow>', github.server_url, github.repository, github.run_id)) }}
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  weekly-trend-analysis-batch:
+    needs: guard
+    if: needs.guard.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
 
     steps:
       - name: Checkout repository
@@ -75,12 +156,14 @@ jobs:
           set -e
           poetry run python ./insight/tasks/weekly_trend_analysis.py
 
+      # 월요일 일일 통계 대기(최대 90분)가 이 스크립트 안에 있어 시간 제한에 더한다. 대기 조회는 GITHUB_TOKEN 으로 인증한다
       - name: Run Weekly User Trend Analysis Batch Script
         id: weekly-user-trend-analysis-main
-        timeout-minutes: 40
+        timeout-minutes: 135
         env:
           DJANGO_SETTINGS_MODULE: backoffice.settings.prod
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -e
           poetry run python ./insight/tasks/weekly_user_trend_analysis.py
@@ -100,12 +183,17 @@ jobs:
           KST_TIME: ${{ env.KST_TIME }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          # 두 분석이 모두 할 일 없이 성공으로 끝났으면 알리지 않는다
+          if [ "$JOB_STATUS" = "success" ] && [ -e weekly_trend_analysis.skipped ] && [ -e weekly_user_trend_analysis.skipped ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
           RESULT=$(cat weekly_analysis_result.txt 2>/dev/null || echo "No output file found")
           if [ "$JOB_STATUS" = "success" ]; then ICON="✅"; else ICON="❌"; fi
           # delimiter 가 RESULT 값에 한 줄로 등장해 출력이 잘리는 일을 막기 위해 매 실행 유니크 delimiter 사용
           DELIM="SLACK_EOF_$(openssl rand -hex 16)"
           {
             echo "TEXT<<$DELIM"
+            printf '⚠️ GitHub 안전망 실행 — 이번 주 분석이 끝나지 않았고 실행 중도 아니었음\n'
             printf '*Weekly Analysis Batch*\n\n'
             printf '%s *Status:* %s\n' "$ICON" "$JOB_STATUS"
             printf '📅 *Timestamp (KST):* %s\n' "$KST_TIME"
@@ -116,7 +204,7 @@ jobs:
 
       # toJSON 으로 escape — payload JSON 이 절대 깨지지 않는다 (성공/실패 공통)
       - name: Send Slack Notification
-        if: always()
+        if: always() && steps.compose.outputs.skip != 'true'
         uses: slackapi/slack-github-action@v1.24.0
         with:
           payload: |

@@ -13,14 +13,18 @@
 
 import logging
 from datetime import timedelta
+from pathlib import Path
 from time import sleep
 
 import setup_django  # noqa
 from django.conf import settings
-from django.db import transaction
+from django.db import DatabaseError, transaction
+from django.db.models import QuerySet
 from django.template.loader import render_to_string
 
 from insight.models import (
+    BATCH_NEWSLETTER_STARTED,
+    BATCH_USER_ANALYSIS_COMPLETED,
     SENDABLE_REVIEW_STATUSES,
     UserWeeklyTrend,
     WeeklyTrend,
@@ -42,11 +46,15 @@ from utils.utils import (
     from_dict,
     get_local_now,
     get_local_now_date,
+    record_peak_memory,
     strip_html_tags,
     to_dict,
 )
 
 logger = logging.getLogger("newsletter")
+
+# 할 일 없이 끝났음을 실행 스크립트에 알리는 표시 파일 (현재 폴더)
+SKIP_MARKER = "weekly_newsletter_batch.skipped"
 
 
 class WeeklyNewsletterBatch:
@@ -73,6 +81,8 @@ class WeeklyNewsletterBatch:
             "s_date": None,
             "e_date": None,
         }
+        # 발송할 이번 주 공통 분석 행 (_get_weekly_trend_html 이 고른다)
+        self.weekly_trend: WeeklyTrend | None = None
         # 배치 실행 시점 기준의 local 날짜 로드
         self.before_a_week = get_local_now_date() - timedelta(weeks=1)
         self.today = get_local_now_date()
@@ -91,15 +101,41 @@ class WeeklyNewsletterBatch:
             # 삭제 실패 시에도 계속 진행
             logger.error(f"Failed to delete old mail logs: {e}")
 
+    @staticmethod
+    def _sent_logs(newsletter_id: int) -> QuerySet:
+        """newsletter_id 뉴스레터(제목 끝 #id)의 성공한 발송 기록"""
+        return NotiMailLog.objects.filter(
+            is_success=True,
+            subject__endswith=f"#{newsletter_id}",
+        )
+
+    def _received_emails(self) -> QuerySet:
+        """이번 주 뉴스레터를 이미 성공적으로 받은 이메일"""
+        return (
+            self._sent_logs(self.weekly_info["newsletter_id"])
+            # NULL 이 섞이면 NOT IN 이 모든 대상을 빼므로 수신자가 없는 기록은 뺀다
+            .filter(user__email__isnull=False)
+            .values_list("user__email", flat=True)
+        )
+
+    def _subscribers(self) -> QuerySet:
+        """뉴스레터를 구독한 활성 사용자"""
+        return User.objects.filter(
+            is_active=True,
+            email__isnull=False,
+            newsletter_subscribed=True,
+        )
+
     def _get_target_user_chunks(self) -> list[list[dict]]:
-        """뉴스레터 발송 대상 유저 목록 조회 후 청크 단위로 분할"""
+        """뉴스레터 발송 대상 유저 목록 조회 후 청크 단위로 분할
+
+        이메일당 한 계정만 뽑으므로(distinct) 이미 받은 사람은 사용자 id 가
+        아니라 이메일로 뺀다. 그래야 같은 이메일의 다른 계정이 다시 받지 않는다.
+        """
         try:
             target_users = list(
-                User.objects.filter(
-                    is_active=True,
-                    email__isnull=False,
-                    newsletter_subscribed=True,
-                )
+                self._subscribers()
+                .exclude(email__in=self._received_emails())
                 .values("id", "email", "username")
                 .distinct("email")
             )
@@ -118,20 +154,19 @@ class WeeklyNewsletterBatch:
             logger.error(f"Failed to get target user chunks: {e}")
             raise
 
-    def _select_weekly_trend(self) -> dict | None:
+    def _select_weekly_trend(self) -> WeeklyTrend | None:
         """발송할 WeeklyTrend 1건 선택.
 
         검수 보류(needs_review)는 제외하고 최신 주차부터 고른다. 정렬 없이
         is_processed=False 만 보면 묵은 보류 row 가 신주 발송을 잠식한다(데드락).
         """
         return (
-            WeeklyTrend.objects.filter(
-                week_end_date__gte=self.before_a_week,
+            WeeklyTrend.objects.this_week()
+            .filter(
                 is_processed=False,
                 review_status__in=SENDABLE_REVIEW_STATUSES,
             )
             .order_by("-week_end_date")
-            .values("id", "insight", "week_start_date", "week_end_date")
             .first()
         )
 
@@ -146,15 +181,16 @@ class WeeklyNewsletterBatch:
                 raise Exception("No WeeklyTrend data, batch stopped")
 
             # 주간 정보 상태 저장
+            self.weekly_trend = weekly_trend
             self.weekly_info = {
-                "newsletter_id": weekly_trend["id"],
-                "s_date": weekly_trend["week_start_date"],
-                "e_date": weekly_trend["week_end_date"],
+                "newsletter_id": weekly_trend.id,
+                "s_date": weekly_trend.week_start_date,
+                "e_date": weekly_trend.week_end_date,
             }
 
             # dataclass로 변환 & 벨리데이션
             weekly_trend_insight = from_dict(
-                WeeklyTrendInsight, weekly_trend["insight"]
+                WeeklyTrendInsight, weekly_trend.insight
             )
             context = {"insight": weekly_trend_insight.to_dict()}
             weekly_trend_html = render_to_string(
@@ -167,14 +203,14 @@ class WeeklyNewsletterBatch:
                 or "주간 트렌드 분석" not in weekly_trend_html
             ):
                 logger.error(
-                    f"Failed to build weekly trend HTML for newsletter #{weekly_trend['id']}"
+                    f"Failed to build weekly trend HTML for newsletter #{weekly_trend.id}"
                 )
                 raise Exception(
-                    f"Failed to build weekly trend HTML for newsletter #{weekly_trend['id']}"
+                    f"Failed to build weekly trend HTML for newsletter #{weekly_trend.id}"
                 )
 
             logger.info(
-                f"Generated weekly trend HTML for newsletter #{weekly_trend['id']}"
+                f"Generated weekly trend HTML for newsletter #{weekly_trend.id}"
             )
             return weekly_trend_html
 
@@ -187,11 +223,11 @@ class WeeklyNewsletterBatch:
     ) -> dict[int, WeeklyUserTrendInsight]:
         """여러 유저의 UserWeeklyTrend 일괄 조회 후 매핑"""
         try:
-            user_weekly_trends = UserWeeklyTrend.objects.filter(
-                week_end_date__gte=self.before_a_week,
-                user_id__in=user_ids,
-                is_processed=False,
-            ).values("user_id", "insight")
+            user_weekly_trends = (
+                UserWeeklyTrend.objects.this_week()
+                .filter(user_id__in=user_ids, is_processed=False)
+                .values("user_id", "insight")
+            )
 
             # user_id를 키로 하는 딕셔너리로 변환 (매핑)
             users_weekly_trends_dict = {}
@@ -377,9 +413,13 @@ class WeeklyNewsletterBatch:
             return []
 
     def _send_newsletters(self, newsletters: list[Newsletter]) -> list[int]:
-        """뉴스레터 발송 (실패시 max_retry_count 만큼 재시도)"""
+        """뉴스레터 발송 (실패시 max_retry_count 만큼 재시도)
+
+        메일 1건을 보낼 때마다 발송 기록을 바로 저장한다. 그래서 도중에
+        프로세스가 죽어도 다시 돌리면 이미 받은 이메일은 대상에서 빠진다.
+        기록을 저장하지 못하면 중복 발송을 막을 수 없으므로 예외를 그대로 올린다.
+        """
         success_user_ids = []
-        mail_logs = []
         # 인증 실패·계정 정지는 받는 사람을 바꿔도 계속 실패하므로 남은 발송·재시도를 멈춘다
         blocked_error = None
 
@@ -415,32 +455,18 @@ class WeeklyNewsletterBatch:
                     if failed_count != self.max_retry_count:
                         sleep(failed_count)
 
-            try:
-                # bulk_create를 위한 메일 발송 로그 생성
-                mail_logs.append(
-                    NotiMailLog(
-                        user_id=newsletter.user_id,
-                        subject=newsletter.email_message.subject,
-                        body=newsletter.email_message.text_body,
-                        is_success=success,
-                        sent_at=get_local_now(),
-                        error_message=error_message if not success else "",
-                    )
-                )
-            except Exception as e:
-                # 로그 생성 실패해도 청크는 계속 진행
-                logger.error(f"Failed to create NotiMailLog object: {e}")
+            # 다음 메일을 보내기 전에 이 메일의 발송 기록을 저장한다
+            NotiMailLog.objects.create(
+                user_id=newsletter.user_id,
+                subject=newsletter.email_message.subject,
+                body=newsletter.email_message.text_body,
+                is_success=success,
+                sent_at=get_local_now(),
+                error_message=error_message if not success else "",
+            )
 
             if blocked_error:
                 break
-
-        # 메일 발송 로그 저장
-        if mail_logs:
-            try:
-                NotiMailLog.objects.bulk_create(mail_logs)
-            except Exception as e:
-                # 저장 실패 시에도 계속 진행
-                logger.error(f"Failed to save mail logs: {e}")
 
         logger.info(
             f"Successfully sent {len(success_user_ids)} newsletters out of {len(newsletters)}"
@@ -474,12 +500,13 @@ class WeeklyNewsletterBatch:
         """개별 부분(UserWeeklyTrend) 발송 결과 일괄 저장"""
         try:
             with transaction.atomic():
-                updated_count = UserWeeklyTrend.objects.filter(
-                    user_id__in=success_user_ids,
-                    week_end_date__gte=self.before_a_week,
-                ).update(
-                    is_processed=True,
-                    processed_at=get_local_now(),
+                updated_count = (
+                    UserWeeklyTrend.objects.this_week()
+                    .filter(user_id__in=success_user_ids)
+                    .update(
+                        is_processed=True,
+                        processed_at=get_local_now(),
+                    )
                 )
             logger.info(
                 f"Updated {updated_count} UserWeeklyTrend records as processed"
@@ -500,6 +527,32 @@ class WeeklyNewsletterBatch:
         total_failed = 0
 
         try:
+            # 이번 주 뉴스레터를 이미 보냈으면 기록 삭제·대상 조회 전에 끝낸다
+            sent_trend = (
+                WeeklyTrend.objects.this_week()
+                .filter(is_processed=True)
+                .first()
+            )
+            if sent_trend:
+                # 처리 완료 표시만 있고 보낸 메일이 없으면(admin 에서 잘못 표시 등)
+                # 실패로 끝내 Slack ❌ 로 알린다. 성공으로 끝내면 지표가 갱신돼 묻힌다
+                if not self._sent_logs(sent_trend.id).exists():
+                    error = Exception(
+                        "처리 완료 표시는 있으나 이번 주 발송 기록이 없음"
+                    )
+                    error.add_note(
+                        "복구: admin 에서 처리 완료를 해제한 뒤 ./run-weekly.sh newsletter"
+                    )
+                    raise error
+
+                logger.info("This week's newsletter is already sent, skipped")
+                with open("newsletter_batch_result.txt", "w") as f:
+                    f.write(
+                        "⏭ 뉴스레터 발송 건너뜀: 이번 주 뉴스레터를 이미 보냄\n"
+                    )
+                Path(SKIP_MARKER).touch()
+                return
+
             # 서명 키가 없어도 발송은 멈추지 않고 기존 email 수신거부 링크로 보낸다
             if not is_usable_secret(settings.NEWSLETTER_UNSUBSCRIBE_SECRET):
                 logger.warning(
@@ -508,17 +561,33 @@ class WeeklyNewsletterBatch:
                 )
 
             # ========================================================== #
-            # STEP1: 토큰이 유효성 체크 및 업데이트. 이후 사용자 정보 업데이트
+            # STEP1: 공통 WeeklyTrend 조회 및 템플릿 생성 (없거나 보류면 예외)
+            # ========================================================== #
+            weekly_trend_html = self._get_weekly_trend_html()
+
+            # 사용자 분석이 끝나지 않았으면 메일을 한 통도 보내지 않고 실패한다
+            if not self.weekly_trend.batch_value(
+                BATCH_USER_ANALYSIS_COMPLETED
+            ):
+                logger.error(
+                    "User weekly trend analysis is not completed, batch stopped"
+                )
+                raise Exception(
+                    "User weekly trend analysis is not completed, batch stopped"
+                )
+
+            # ========================================================== #
+            # STEP2: 오래된 발송 기록 삭제
             # ========================================================== #
             self._delete_old_maillogs()
 
             # ========================================================== #
-            # STEP2: 뉴스레터 발송 대상 유저 목록 조회
+            # STEP3: 뉴스레터 발송 대상 유저 목록 조회
             # ========================================================== #
             target_user_chunks = self._get_target_user_chunks()
 
-            # 대상 유저 없을 시 배치 종료
-            if not target_user_chunks:
+            # 구독자가 아예 없으면 배치 종료
+            if not target_user_chunks and not self._subscribers().exists():
                 logger.error(
                     "No target users found for newsletter, batch stopped"
                 )
@@ -526,15 +595,27 @@ class WeeklyNewsletterBatch:
                     "No target users found for newsletter, batch stopped"
                 )
 
-            # ========================================================== #
-            # STEP3: 공통 WeeklyTrend 조회 및 템플릿 생성
-            # ========================================================== #
-            weekly_trend_html = self._get_weekly_trend_html()
+            # 구독자는 있는데 남은 대상이 없으면 모두 이번 주 뉴스레터를 이미 받은 것이므로
+            # 이번 주 발송을 끝난 것으로 표시하고 마친다
+            # (지난 실행이 다 보내고 발송 완료 표시만 못 남긴 경우)
+            if not target_user_chunks:
+                logger.info(
+                    "No remaining target users for newsletter, marked as sent"
+                )
+                self._update_weekly_trend_result()
+                with open("newsletter_batch_result.txt", "w") as f:
+                    f.write(
+                        "✅ 뉴스레터 발송 완료: 남은 대상 없음 (이번 주 뉴스레터를 모두 이미 받음)\n"
+                    )
+                return
 
             # 로컬 환경에선 뉴스레터 발송 건너뜀
             if settings.DEBUG:
                 logger.info("DEBUG mode: Skipping newsletter sending")
                 return
+
+            # 첫 메일을 보내기 전에 발송 시작을 남긴다
+            self.weekly_trend.mark_batch(BATCH_NEWSLETTER_STARTED)
 
             # ========================================================== #
             # STEP4: 청크별로 뉴스레터 발송 및 결과 저장
@@ -545,6 +626,25 @@ class WeeklyNewsletterBatch:
                 )
 
                 try:
+                    # 겹친 실행이 그사이 보낸 이메일은 보내기 직전에 다시 뺀다
+                    received_emails = set(
+                        self._received_emails().filter(
+                            user__email__in=[
+                                user["email"] for user in user_chunk
+                            ]
+                        )
+                    )
+                    user_chunk = [
+                        user
+                        for user in user_chunk
+                        if user["email"] not in received_emails
+                    ]
+                    if not user_chunk:
+                        logger.info(
+                            f"All users in chunk {chunk_index} already received, skipped"
+                        )
+                        continue
+
                     # 해당 청크에 대한 뉴스레터 객체 일괄 생성
                     # 토큰 만료로 판단되는 경우 user_weekly_trend_html 가 None
                     newsletters = self._build_newsletters(
@@ -566,7 +666,13 @@ class WeeklyNewsletterBatch:
                     total_processed += len(success_user_ids)
                     total_failed += len(newsletters) - len(success_user_ids)
 
-                except (AuthenticationError, SendingBlockedError):
+                except (
+                    AuthenticationError,
+                    SendingBlockedError,
+                    DatabaseError,
+                ):
+                    # 발송 중지와 발송 기록 저장 실패·DB 장애는 배치를 멈춘다.
+                    # 기록 없이 다음 청크를 보내면 다시 돌릴 때 중복 발송된다
                     raise
 
                 except Exception as e:
@@ -602,10 +708,10 @@ class WeeklyNewsletterBatch:
             try:
                 with open("newsletter_batch_result.txt", "w") as f:
                     f.write(
-                        f"✅ 뉴스레터 발송 완료: 성공 {total_processed}명, 실패 {total_failed}명\\n"
+                        f"✅ 뉴스레터 발송 완료: 성공 {total_processed}명, 실패 {total_failed}명\n"
                     )
-                    f.write(f"   - 소요 시간: {elapsed_time}초\\n")
-                    f.write(f"   - 성공률: {success_rate:.2%}\\n")
+                    f.write(f"   - 소요 시간: {elapsed_time}초\n")
+                    f.write(f"   - 성공률: {success_rate:.2%}\n")
             except Exception as e:
                 logger.error(f"Failed to save newsletter batch result: {e}")
 
@@ -615,15 +721,19 @@ class WeeklyNewsletterBatch:
                 with open("newsletter_batch_result.txt", "w") as f:
                     # 발송 도중 멈춘 경우 이미 받은 사람 수를 함께 남긴다
                     f.write(
-                        f"❌ 뉴스레터 발송 실패: {e} (성공 {total_processed}명, 실패 {total_failed}명)"
+                        f"❌ 뉴스레터 발송 실패: {e} (성공 {total_processed}명, 실패 {total_failed}명)\n"
                     )
+                    # 예외에 붙인 복구 방법은 다음 줄에 남긴다
+                    for note in getattr(e, "__notes__", []):
+                        f.write(f"   - {note}\n")
             except Exception as e:
                 logger.error(f"Failed to save newsletter batch result: {e}")
 
             raise
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """메인 실행 함수"""
     # SES 클라이언트 초기화
     try:
         aws_credentials = AWSSESCredentials(
@@ -640,4 +750,11 @@ if __name__ == "__main__":
         raise
 
     # 배치 실행
-    WeeklyNewsletterBatch(ses_client=ses_client).run()
+    try:
+        WeeklyNewsletterBatch(ses_client=ses_client).run()
+    finally:
+        record_peak_memory(logger, "newsletter_batch_result.txt")
+
+
+if __name__ == "__main__":
+    main()

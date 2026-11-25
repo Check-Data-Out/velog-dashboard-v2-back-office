@@ -12,6 +12,8 @@ SYSTEM_DESIGN.md
 **/timescale_data*/**
 **/postgres_data/**
 *_result.txt
+# 배치가 할 일 없이 끝났음을 알리는 표시 파일
+*.skipped
 .vscode
 
 # Environment files (contain sensitive credentials)

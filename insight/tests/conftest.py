@@ -1,7 +1,8 @@
 import sys
 import uuid
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.conf import settings
@@ -25,6 +26,8 @@ from users.models import User
 from utils.utils import get_previous_week_range
 
 TEST_UNSUBSCRIBE_SECRET = "test-newsletter-unsubscribe-secret-0123456789"
+# 시계를 고정하는 배치 테스트의 지금 (월요일 07:05 KST)
+MONDAY_NOW = datetime(2026, 11, 23, 7, 5, tzinfo=ZoneInfo("Asia/Seoul"))
 
 
 @pytest.fixture(autouse=True)
@@ -58,6 +61,39 @@ def user(db):
         is_active=True,
         newsletter_subscribed=True,
     )
+
+
+@pytest.fixture
+def create_user(db):
+    """뉴스레터를 구독한 활성 사용자를 이메일로 만드는 함수. username 은 이메일 앞부분"""
+
+    def _create_user(email: str) -> User:
+        return User.objects.create(
+            velog_uuid=uuid.uuid4(),
+            access_token="test-access-token",
+            refresh_token="test-refresh-token",
+            group_id=1,
+            email=email,
+            username=email.split("@")[0],
+            is_active=True,
+            newsletter_subscribed=True,
+        )
+
+    return _create_user
+
+
+@pytest.fixture
+def monday():
+    """오늘을 2026-11-23(월) 07:05 KST 로 고정한다"""
+    with patch("utils.utils.get_local_now", return_value=MONDAY_NOW):
+        yield MONDAY_NOW
+
+
+@pytest.fixture
+def work_dir(tmp_path, monkeypatch):
+    """결과 파일과 표시 파일을 임시 폴더에 쓴다"""
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
 
 
 @pytest.fixture

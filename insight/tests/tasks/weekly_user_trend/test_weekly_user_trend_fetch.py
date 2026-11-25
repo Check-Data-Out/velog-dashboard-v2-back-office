@@ -55,32 +55,3 @@ class TestWeeklyUserTrendFetch:
             )
             assert is_valid is False
             mock_logger.warning.assert_called_once()
-
-    @patch("insight.tasks.weekly_user_trend_analysis.User.objects.filter")
-    @patch("insight.tasks.weekly_user_trend_analysis.Post.objects")
-    @patch(
-        "insight.tasks.weekly_user_trend_analysis.PostDailyStatistics.objects"
-    )
-    async def test_fetch_data_handles_token_expired_error(
-        self,
-        mock_stats,
-        mock_posts,
-        mock_users,
-        analyzer_user,
-        mock_context,
-    ):
-        """TokenExpiredError 발생 시 사용자 ID를 expired_token_users에 추가하는지 테스트"""
-        mock_users.return_value.exclude.return_value.values.return_value = [
-            {"id": 1, "username": "tester"}
-        ]
-        mock_posts.filter.return_value.values_list.return_value = [123]
-        mock_stats.filter.return_value.count.return_value = 0
-
-        with patch.object(analyzer_user, "logger") as mock_logger:
-            result = await analyzer_user._fetch_data(mock_context)
-
-            assert result == []
-            assert 1 in analyzer_user.expired_token_users
-            mock_logger.warning.assert_any_call(
-                "User %s token expired - no today stats", 1
-            )
